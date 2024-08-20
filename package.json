@@ -1,0 +1,18 @@
+{
+  "name": "choir-manager",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "app": "node dist/app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.3.0",
+    "typescript": "^5.5.4"
+  },
+  "author": "ziminas1990@gmail.com",
+  "license": "ISC"
+}
