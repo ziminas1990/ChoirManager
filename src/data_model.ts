@@ -37,24 +37,25 @@ abstract class Entity<T> {
     abstract clone(): T;
 }
 
-type PackedChoristerEntity = [ChoristerId, string, string, Vocal];
+type PackedChoristerEntity = [ChoristerId, string, string, Vocal, number];
 
 export class ChoristerEntity extends Entity<ChoristerEntity> {
     constructor(
         id: ChoristerId,
         public name: string,
         public surname: string,
-        public vocal: Vocal
+        public vocal: Vocal,
+        public joined: Date
     ) {
         super(id, ['name', 'surname', 'vocal']);
     }
 
     pack(): PackedChoristerEntity {
-        return [this.id, this.name, this.surname, this.vocal];
+        return [this.id, this.name, this.surname, this.vocal, this.joined.getTime()];
     }
 
     static unpack(data: PackedChoristerEntity): ChoristerEntity {
-        return new ChoristerEntity(data[0], data[1], data[2], data[3] as Vocal);
+        return new ChoristerEntity(data[0], data[1], data[2], data[3] as Vocal, new Date(data[4]));
     }
 
     clone(): ChoristerEntity {
@@ -164,6 +165,16 @@ export type RehersalSummary = {
     choristers: ChoristerEntity[]
 };
 
+export class ChoristerSummary {
+
+    constructor(
+        public chorister: ChoristerEntity,
+        public rehersals: RehersalEntity[])
+    {
+        rehersals.sort((a, b) => b.when - a.when);
+    }
+};
+
 type PackedDatabase = [
     PackedChoristerEntity[],
     PackedPieceEntity[],
@@ -173,23 +184,21 @@ type PackedDatabase = [
 ];
 
 export class Database {
-    private choristers: ChoristerEntity[] = [];
-    private pieces: PieceEntity[] = [];
-    private rehersals: RehersalEntity[] = [];
+    public choristers: ChoristerEntity[] = [];
+    public pieces: PieceEntity[] = [];
+    public rehersals: RehersalEntity[] = [];
+    public song_rehersals: SongRehersalRelation[] = [];
+    public choristers_on_rehersals: ChoristerRehersalRelation[] = [];
 
-    private song_rehersals: SongRehersalRelation[] = [];
-    private choristers_on_rehersals: ChoristerRehersalRelation[] = [];
-
-    create_chorister(name: string, surname: string, vocal: Vocal): ChoristerEntity {
+    create_chorister(name: string, surname: string, vocal: Vocal, joined: Date): ChoristerEntity {
         const id = this.choristers.length;
-        const chorister = new ChoristerEntity(id, name, surname, vocal);
+        const chorister = new ChoristerEntity(id, name, surname, vocal, joined);
         this.choristers.push(chorister);
-        return chorister.clone();
+        return chorister;
     }
 
     get_chorister(what: Partial<ChoristerEntity>): StatusWith<ChoristerEntity> {
-        const status = Database.find_in_array(this.choristers, what);
-        return status.is_ok() ? Status.ok().with(status.value!.clone()) : status;
+        return Database.find_in_array(this.choristers, what);
     }
 
     create_piece(author: string, title: string): PieceEntity {
@@ -200,8 +209,7 @@ export class Database {
     }
 
     get_piece(what: Partial<PieceEntity>): StatusWith<PieceEntity> {
-        const status = Database.find_in_array(this.pieces, what);
-        return status.is_ok() ? Status.ok().with(status.value!.clone()) : status;
+        return Database.find_in_array(this.pieces, what);
     }
 
     create_rehersal(date: Date): RehersalEntity {
@@ -257,6 +265,15 @@ export class Database {
                 pieces,
                 choristers
             }; 
+        });
+    }
+
+    fetch_choristers_summary(): ChoristerSummary[] {
+        return this.choristers.map(chorister => {
+            const rehersals = this.choristers_on_rehersals
+                .filter(cr => cr.chorister === chorister.id)
+                .map(cr => this.rehersals[cr.rehersal]);
+            return new ChoristerSummary(chorister.clone(), rehersals);
         });
     }
 

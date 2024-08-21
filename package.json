@@ -11,8 +11,12 @@
   },
   "devDependencies": {
     "@types/node": "^22.3.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "@types/mustache": "^4.2.5"
   },
   "author": "ziminas1990@gmail.com",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "mustache": "^4.2.0"
+  }
 }

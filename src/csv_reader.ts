@@ -4,6 +4,7 @@ export type Chorister = {
     vocal: string,
     name: string,
     surname: string,
+    joined: Date,
     minutes: number[]
 }
 
@@ -49,12 +50,13 @@ export function load_data(file: string): Data {
                 minutes: minutes.map((minutes) => parseInt(minutes) ?? 0)
             });
         } else {
-            const [_, chorister, ...hours] = line.split(',');
+            const [_, chorister, joined, ...hours] = line.split(',');
             const [name, surname] = chorister.split(' ');
             result.participants.push({
                 vocal,
                 name,
                 surname,
+                joined: parse_date(joined),
                 minutes: hours.map(h => 60 * parseInt(h) ?? 0)
             });
         }

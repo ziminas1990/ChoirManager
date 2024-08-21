@@ -1,6 +1,8 @@
 import assert from "assert";
 import { load_data } from "./csv_reader.js";
 import { Database, Vocal } from "./data_model.js";
+import fs from 'fs';
+import mustache from 'mustache';
 
 const data = load_data('data.csv');
 
@@ -26,7 +28,7 @@ const rehersals = data.rehersals.map(rehersal => {
 
 data.participants.forEach(participant => {
     const chorister = database.create_chorister(
-        participant.name, participant.surname, convert_vocal(participant.vocal));
+        participant.name, participant.surname, convert_vocal(participant.vocal), participant.joined);
     
     participant.minutes.forEach((time, index) => {
         if (time > 0) {
@@ -49,14 +51,12 @@ data.songs.forEach(song => {
     });
 });
 
-const rehersals_summary = database.fetch_rehersals_summary();
 
-rehersals_summary.forEach(summary => {
-    console.log(`Rehersal on ${summary.date.toLocaleDateString()}`);
-    summary.pieces.forEach(piece => {
-        console.log(`\t${piece.piece.title}: ${piece.time} minutes`);
-    });
-    summary.choristers.forEach(chorister => {
-        console.log(`\t${chorister.name} ${chorister.surname}`);
-    });
-});
+const report_template = fs.readFileSync('./src/report.template.html', 'utf8');
+const render_options = {
+    escape: (text: string) => text
+}
+const report = mustache.render(report_template, {
+    packed_json: JSON.stringify(database.pack())
+}, undefined, render_options);
+fs.writeFileSync('report.html', report);
