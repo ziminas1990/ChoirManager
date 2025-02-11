@@ -1,11 +1,10 @@
 import assert from "assert";
-//import { load_data } from "./extractors/csv_reader.js";
 import { Database, Vocal } from "./data_model.js";
 import fs from 'fs';
 import mustache from 'mustache';
 
 import { load_spreadsheet } from "./extractors/google_spreadsheet.js"
-import { load_data as load_csv_data } from "./extractors/csv_reader.js";
+import { load_csv_data } from "./extractors/csv_reader.js";
 import { StatusWith } from "./status.js";
 import { Data } from "./extractors/types.js";
 
@@ -80,6 +79,7 @@ const render_options = {
     escape: (text: string) => text
 }
 const report = mustache.render(report_template, {
-    packed_json: JSON.stringify(database.pack())
+    packed_json: JSON.stringify(database.pack()),
+    application_code: fs.readFileSync('./dist/webapp/index.js', 'utf8')
 }, undefined, render_options);
 fs.writeFileSync('report.html', report);

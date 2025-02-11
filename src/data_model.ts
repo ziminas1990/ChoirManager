@@ -1,4 +1,4 @@
-import { Status, StatusWith } from './status.js';
+import { Status, StatusWith } from "./status.js";
 
 export enum Vocal {
     Unknown = 0,
