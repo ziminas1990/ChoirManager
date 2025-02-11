@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc",
     "app": "node dist/app.js",
+    "build_and_run": "npm run build && npm run app",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {
@@ -17,6 +18,7 @@
   "author": "ziminas1990@gmail.com",
   "license": "ISC",
   "dependencies": {
+    "googleapis": "^144.0.0",
     "mustache": "^4.2.0"
   }
 }

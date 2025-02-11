@@ -1,10 +1,33 @@
 import assert from "assert";
-import { load_data } from "./csv_reader.js";
+//import { load_data } from "./extractors/csv_reader.js";
 import { Database, Vocal } from "./data_model.js";
 import fs from 'fs';
 import mustache from 'mustache';
 
-const data = load_data('data.csv');
+import { load_spreadsheet } from "./extractors/google_spreadsheet.js"
+import { load_data as load_csv_data } from "./extractors/csv_reader.js";
+import { StatusWith } from "./status.js";
+import { Data } from "./extractors/types.js";
+
+async function load_data(source: "csv" | "google spreadsheet"): Promise<StatusWith<Data>> {
+    switch (source) {
+        case "csv":
+            return load_csv_data('data.csv');
+        case "google spreadsheet":
+            const sheet_id = "1v97DtsLwKh0fxIGUoZOioRkHvHJxQRSNJRxwPFdym44"
+            const credentials_file = "./src/extractors/credentials.json"
+            return load_spreadsheet(credentials_file, sheet_id);
+    }
+}
+
+const status_and_data = await load_data("csv");
+
+if (!status_and_data.is_ok()) {
+    console.error("Failed to read data:", status_and_data.what());
+    process.exit(1);
+}
+
+const data = status_and_data.value!;
 
 function convert_vocal(vocal: string): Vocal {
     switch (vocal) {

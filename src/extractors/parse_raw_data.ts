@@ -1,23 +1,7 @@
-import * as fs from 'fs';
+import { Data } from "./types";
 
-export type Chorister = {
-    vocal: string,
-    name: string,
-    surname: string,
-    joined: Date,
-    minutes: number[]
-}
-
-export type Song = {
-    name: string,
-    minutes: number[]
-}
-
-export type Data = {
-    participants: Chorister[],
-    songs: Song[],
-    rehersals: Date[]
-}
+export type Row = string[];
+export type Table = Row[];
 
 // Assuming the date format is DD.MM.YY
 function parse_date(date: string): Date {
@@ -28,12 +12,13 @@ function parse_date(date: string): Date {
     return new Date(year, month, day);
 }
 
-export function load_data(file: string): Data {
-    const data = fs.readFileSync(file, 'utf8');
-    const lines = data.split('\n');
-    const header = lines[0];
+export function parse_raw_data(table: Table): Data {
+    const vocals = ['soprano', 'alto', 'tenor', 'bass'];
 
-    const [,, ...dates] = header.split(',');
+    const header = table[0];
+    //console.log(header)
+
+    const [,, ...dates] = header;
 
     const result = {
         rehersals: dates.map(parse_date),
@@ -41,19 +26,19 @@ export function load_data(file: string): Data {
         songs: []
     } as Data;
     
-    lines.slice(1).forEach((line) => {
-        const vocal = line.split(',')[0];
-        if (vocal.toLowerCase() === "song") {
-            const [_, name, ...minutes] = line.split(',');
+    table.slice(1).forEach((row) => {
+        const tag = row[0];
+        if (tag.toLowerCase() === "song") {
+            const [,, name, ...minutes] = row;
             result.songs.push({
                 name,
                 minutes: minutes.map((minutes) => parseInt(minutes) ?? 0)
             });
-        } else {
-            const [_, chorister, joined, ...hours] = line.split(',');
+        } else if (vocals.includes(tag.toLowerCase())) {
+            const [, joined, chorister, ...hours] = row;
             const [name, surname] = chorister.split(' ');
             result.participants.push({
-                vocal,
+                vocal: tag,
                 name,
                 surname,
                 joined: parse_date(joined),
@@ -61,6 +46,6 @@ export function load_data(file: string): Data {
             });
         }
     });
-
+    
     return result;
 }
