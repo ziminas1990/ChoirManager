@@ -11,6 +11,10 @@ module.exports = {
             },
         ],
     },
+    externals: {
+        // To avoid bundling Plotly (it will be loaded from CDN)
+        'plotly.js': 'Plotly',
+    },
     resolve: {
         extensions: ['.tsx', '.ts', '.js'],
         // This is required, because data_model.ts is used both in server and web sides

@@ -2,16 +2,13 @@ import { google } from 'googleapis';
 import fs from 'fs';
 
 import { Status, StatusWith } from "../status.js"
-import { Data } from './types.js';
-import { parse_raw_data } from './parse_raw_data.js';
-
-export type Row = string[];
-export type Table = Row[];
+import { Table, build_data_model } from './data_model_adapter.js';
+import { Database } from 'src/data_model.js';
 
 export async function load_spreadsheet(
     credentials_file: string,
     sheet_id: string)
-: Promise<StatusWith<Data>>
+: Promise<StatusWith<Database>>
 {
 
     let credentials: any | undefined = undefined;
@@ -38,5 +35,5 @@ export async function load_spreadsheet(
     });
 
     const data = response.data.values as Table;
-    return Status.ok().with(parse_raw_data(data));
+    return build_data_model(data)
 }
