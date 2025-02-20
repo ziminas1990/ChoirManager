@@ -1,0 +1,352 @@
+{
+    "users": [
+        {
+            "name": "Аарон",
+            "surname": "",
+            "roles": ["chorister"],
+            "tgig": "@apwood"
+        },
+        {
+            "name": "Агата",
+            "surname": "Гурко",
+            "roles": ["chorister"],
+            "tgig": "@youngbabypeach"
+        },
+        {
+            "name": "Александр",
+            "surname": "Зимин",
+            "roles": ["chorister", "manager"],
+            "tgig": "@alexander_in_tg"
+        },
+        {
+            "name": "Алексей",
+            "surname": "Лазарев",
+            "roles": ["chorister"],
+            "tgig": "@teonika"
+        },
+        {
+            "name": "Алексей",
+            "surname": "Иорданский",
+            "roles": ["chorister"],
+            "tgig": "@a_iordanskiy"
+        },
+        {
+            "name": "Алексей",
+            "surname": "Глебко",
+            "roles": ["chorister"],
+            "tgig": "@alexei_khebko"
+        },
+        {
+            "name": "Алена",
+            "surname": "Полякова",
+            "roles": ["chorister"],
+            "tgig": "@alyopo"
+        },
+        {
+            "name": "Алена",
+            "surname": "Пугачева",
+            "roles": ["chorister"],
+            "tgig": "@ALENAPUGACHEVA78"
+        },
+        {
+            "name": "Алессандро",
+            "surname": "",
+            "roles": ["chorister"],
+            "tgig": "@godog42"
+        },
+        {
+            "name": "Алиса",
+            "surname": "Зелкова",
+            "roles": ["chorister"],
+            "tgig": "@smesio"
+        },
+        {
+            "name": "Анастасия",
+            "surname": "Дорожкина",
+            "roles": ["chorister"],
+            "tgig": "@risenroad"
+        },
+        {
+            "name": "Анастасия",
+            "surname": "Черняева",
+            "roles": ["chorister"],
+            "tgig": "@prillatakki"
+        },
+        {
+            "name": "Анна",
+            "surname": "Михайлова",
+            "roles": ["chorister"],
+            "tgig": "@wildcrimean"
+        },
+        {
+            "name": "Аркадий",
+            "surname": "",
+            "roles": ["chorister"],
+            "tgig": "@MokiKifovich"
+        },
+        {
+            "name": "Булат",
+            "surname": "Гаисин",
+            "roles": ["chorister"],
+            "tgig": "@anastasia_chernyaeva"
+        },
+        {
+            "name": "Виктория",
+            "surname": "Хилинченко",
+            "roles": ["chorister"],
+            "tgig": "@khilinichenko"
+        },
+        {
+            "name": "Владимир",
+            "surname": "Лопаткин",
+            "roles": ["chorister"],
+            "tgig": "@ilovecmajor"
+        },
+        {
+            "name": "Всеволод",
+            "surname": "Шувалов",
+            "roles": ["chorister"],
+            "tgig": "@VsevolodShuvalov"
+        },
+        {
+            "name": "Дарья",
+            "surname": "Крапоткина",
+            "roles": ["chorister"],
+            "tgig": "@DaryaKrapotkina"
+        },
+        {
+            "name": "Евгения",
+            "surname": "Шлоссман",
+            "roles": ["chorister"],
+            "tgig": "@shlossy"
+        },
+        {
+            "name": "Егор",
+            "surname": "Богданов",
+            "roles": ["chorister"],
+            "tgig": "@EgorGrecha"
+        },
+        {
+            "name": "Екатерина",
+            "surname": "Кожара",
+            "roles": ["chorister"],
+            "tgig": "@ek_korzh"
+        },
+        {
+            "name": "Елена",
+            "surname": "Вержбицкая",
+            "roles": ["chorister"],
+            "tgig": "@Verzhba1"
+        },
+        {
+            "name": "Игорь",
+            "surname": "Бокарев",
+            "roles": ["chorister"],
+            "tgig": "@Igorboq"
+        },
+        {
+            "name": "Инна",
+            "surname": "Головина",
+            "roles": ["chorister"],
+            "tgig": "@MeowBios"
+        },
+        {
+            "name": "Ирина",
+            "surname": "Тищенко",
+            "roles": ["chorister"],
+            "tgig": "@irina_tishe"
+        },
+        {
+            "name": "Ким",
+            "surname": "Адамейко",
+            "roles": ["chorister"],
+            "tgig": "@kimster"
+        },
+        {
+            "name": "Лука",
+            "surname": "Одишвили",
+            "roles": ["chorister"],
+            "tgig": "@Imonlyee"
+        },
+        {
+            "name": "Мария",
+            "surname": "Батова",
+            "roles": ["chorister"],
+            "tgig": "@ArsCantandi"
+        },
+        {
+            "name": "Мария",
+            "surname": "Дидуренко",
+            "roles": ["chorister"],
+            "tgig": "@Maria_Didu"
+        },
+        {
+            "name": "Марта",
+            "surname": "Апанасенко",
+            "roles": ["chorister"],
+            "tgig": "@inco1ae"
+        },
+        {
+            "name": "Митя",
+            "surname": "Черняков",
+            "roles": ["chorister"],
+            "tgig": "@its_mitya_ch"
+        },
+        {
+            "name": "Нана",
+            "surname": "Макхарашвили",
+            "roles": ["chorister"],
+            "tgig": "@nperatrice"
+        },
+        {
+            "name": "Павел",
+            "surname": "Писцов",
+            "roles": ["chorister"],
+            "tgig": "@pes04niy"
+        },
+        {
+            "name": "Полина",
+            "surname": "Калач",
+            "roles": ["chorister", "manager"],
+            "tgig": "@kudzierka"
+        },
+        {
+            "name": "Полина",
+            "surname": "Сафронова",
+            "roles": ["chorister"],
+            "tgig": "@pvsafro"
+        },
+        {
+            "name": "Слава",
+            "surname": "Смирнов",
+            "roles": ["chorister"],
+            "tgig": "@plamensenior"
+        },
+        {
+            "name": "Тимофей",
+            "surname": "Немцов",
+            "roles": ["chorister"],
+            "tgig": "@Aubreau"
+        },
+        {
+            "name": "Тимур",
+            "surname": "Аитов",
+            "roles": ["chorister"],
+            "tgig": "@ddwgg"
+        },
+        {
+            "name": "Яна",
+            "surname": "Владимирова",
+            "roles": ["chorister"],
+            "tgig": "@yankee_gohome"
+        },
+        {
+            "name": "Вадим",
+            "surname": "",
+            "roles": ["ex-chorister"],
+            "tgig": "@greasecake"
+        },
+        {
+            "name": "Михаил",
+            "surname": "Лобанов",
+            "roles": ["ex-chorister"],
+            "tgig": "@Strange_qrk"
+        },
+        {
+            "name": "Ая",
+            "surname": "",
+            "roles": ["ex-chorister"],
+            "tgig": "@a_dagkes"
+        },
+        {
+            "name": "Стася",
+            "surname": "Полякович",
+            "roles": ["ex-chorister"],
+            "tgig": "@skazochnica"
+        },
+        {
+            "name": "Рома",
+            "surname": "Каргин",
+            "roles": ["ex-chorister"],
+            "tgig": "@thefoku"
+        },
+        {
+            "name": "Ольга",
+            "surname": "Зотова",
+            "roles": ["ex-chorister"],
+            "tgig": "@kyso4ekpiroga"
+        },
+        {
+            "name": "Анастасия",
+            "surname": "Медведева",
+            "roles": ["ex-chorister"],
+            "tgig": "@no_way_punk"
+        },
+        {
+            "name": "Александра",
+            "surname": "Шкарина",
+            "roles": ["ex-chorister"],
+            "tgig": "@sshshkrn"
+        },
+        {
+            "name": "Тимофей",
+            "surname": "Вишневский",
+            "roles": ["ex-chorister"],
+            "tgig": "@tint_wi"
+        },
+        {
+            "name": "Павел",
+            "surname": "Чернов",
+            "roles": ["ex-chorister"],
+            "tgig": "@PachaTchernof"
+        },
+        {
+            "name": "Артем",
+            "surname": "Гусев",
+            "roles": ["ex-chorister"],
+            "tgig": "@arteam_gusev"
+        },
+        {
+            "name": "Алиса",
+            "surname": "Валиулина",
+            "roles": ["ex-chorister"],
+            "tgig": "@cybershmelik"
+        },
+        {
+            "name": "Владимир",
+            "surname": "Гусев",
+            "roles": ["ex-chorister"],
+            "tgig": "@gusevvova"
+        },
+        {
+            "name": "Владимир",
+            "surname": "Тимофеев",
+            "roles": ["ex-chorister"],
+            "tgig": "@tf_vv"
+        },
+        {
+            "name": "Григорий",
+            "surname": "Левченко",
+            "roles": ["ex-chorister"],
+            "tgig": "@grishalevchenko"
+        },
+        {
+            "name": "Ирина",
+            "surname": "Думарёнок",
+            "roles": ["ex-chorister"],
+            "tgig": "@damavenak"
+        },
+        {
+            "name": "Евгений",
+            "surname": "Чеков",
+            "roles": ["ex-chorister"],
+            "tgig": "@argbcmyk"
+        },
+        {
+            "name": "Анастасия",
+            "surname": "Стрыгина",
+            "roles": ["ex-chorister"],
+            "tgig": "@kjet_il"
+        }
+    ]
+}
