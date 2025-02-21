@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { StatusWith } from '../status.js';
-import TelegramBot from 'node-telegram-bot-api';
+import { Status, StatusWith } from '../status.js';
+import { User } from './items/user.js';
+import { BotAPI } from './globals.js';
 
 type Config = {
     token: string;
@@ -21,9 +22,6 @@ function load_configuration(): StatusWith<Config> {
     }
 }
 
-const FILES_DIR = path.join(process.cwd(), 'files');
-
-
 const config_status = load_configuration();
 if (!config_status.is_ok()) {
     console.error('Failed to load configuration:', config_status.what());
@@ -36,77 +34,121 @@ if (!config.token) {
     process.exit(1);
 }
 
-const bot = new TelegramBot(config.token, { polling: true });
+BotAPI.init(config.token);
 
-function start(bot: TelegramBot, chatId: TelegramBot.ChatId) {
-    const keyboard: TelegramBot.SendMessageOptions = {
-        reply_markup: {
-            keyboard: [
-                [{ text: 'Заново' }, { text: 'Скачать ноты' }]
-            ],
-            is_persistent: true,
-            resize_keyboard: true,
-        },
+const bot = BotAPI.instance();
+
+function check_user_json(user_json: any): Status {
+    const expected_keys_and_types = {
+        name: 'string',
+        surname: 'string',
+        tgig: 'string',
     };
-    bot.sendMessage(chatId, "Привет! Что я могу сделать?", keyboard);
+
+    for (const [key, type] of Object.entries(expected_keys_and_types)) {
+        if (typeof user_json[key] !== type) {
+            return Status.fail(`${key} is not a ${type} or is missing`);
+        }
+    }
+
+    return Status.ok();
 }
 
-// Главное меню с кнопкой "Скачать ноты"
-bot.onText(/\/start/, (msg) => {
-    start(bot, msg.chat.id);
-});
+function load_users(): StatusWith<User[]> {
+    const users_path = path.join(process.cwd(), 'src/data/users.json');
+    const raw = fs.readFileSync(users_path, 'utf-8');
+    if (!raw) {
+        return StatusWith.fail('users.json is empty');
+    }
+
+    let next_user_id = 1;
+
+    const users_json = JSON.parse(raw) as {
+        name: string;
+        surname: string;
+        roles: string[];
+        tgig: string;
+    }[];
+
+    const users = users_json.map((user_json) => {
+        const check_status = check_user_json(user_json);
+        if (!check_status.is_ok()) {
+            console.error(`User ${user_json.name ?? 'unknown'} is invalid: ${check_status.what()}`);
+            return undefined;
+        }
+
+        return new User(
+            next_user_id++,
+            user_json.name,
+            user_json.surname,
+            user_json.roles,
+            user_json.tgig
+        );
+    }).filter((user) => user !== undefined) as User[];
+
+    return StatusWith.ok().with(users);
+}
+
+const users_status = load_users();
+if (!users_status.is_ok()) {
+    console.error('Failed to load users:', users_status.what());
+    process.exit(1);
+}
+
+
+const users: Map<string, User> = new Map(users_status.value!.map(user => [user.tgig.slice(1), user]));
+const guest = new User(0, "Guest", "", [], "");
 
 // Обработка кнопки "Скачать ноты"
 bot.on("message", async (msg) => {
-    console.log("message:",JSON.stringify(msg, null, 2));
 
-    const chatId = msg.chat.id;
-    if (msg.text === "Заново") {
-        start(bot, chatId);
-    } else if (msg.text === "Скачать ноты") {
-        try {
-            const files = fs.readdirSync(FILES_DIR).filter(file => file.endsWith(".pdf"));
+    const username = msg.from?.username
 
-            if (files.length === 0) {
-                return bot.sendMessage(chatId, "Нет доступных файлов.");
-            }
+    console.log(`Message from ${username} in ${msg.chat.id}: ${msg.text}`);
 
-            // Формируем inline-кнопки со списком файлов
-            const fileButtons = files.map((file) => [
-                { text: file, callback_data: `get_${file}` }
-            ]);
-
-            bot.sendMessage(chatId, "Выберите файл для скачивания:", {
-                reply_markup: { inline_keyboard: fileButtons },
-            });
-
-        } catch (error) {
-            console.error("Ошибка чтения файлов:", error);
-            bot.sendMessage(chatId, "Произошла ошибка при загрузке списка файлов.");
-        }
+    if (username == undefined) {
+        return;
     }
+
+    let user = users.get(username);
+    if (user == undefined) {
+        user = guest;
+    }
+
+    user.on_message(msg);
     return;
 });
 
 // Обработка выбора файла
 bot.on("callback_query", (query) => {
-    console.log("callback_query:", JSON.stringify(query, null, 2));
+    const username = query.from?.username
 
+    console.log(`Callback query from ${username} in ${query.message?.chat.id}: ${query.data}`);
 
-    const chatId = query.message?.chat.id;
-    if (!chatId) return;
+    if (username == undefined) {
+        return;
+    }
 
-    const fileName = query.data?.replace("get_", "");
-    if (!fileName) return;
+    let user = users.get(username);
+    if (user == undefined) {
+        user = guest;
+    }
 
-    const filePath = path.join(FILES_DIR, fileName);
-
-    bot.sendDocument(chatId, fs.createReadStream(filePath), {
-        caption: `Ваш файл: ${fileName}`,
-    }).catch((err) => {
-        console.error("Ошибка отправки файла:", err);
-        bot.sendMessage(chatId, "Не удалось отправить файл.");
-    });
+    user.on_callback(query);
 });
 
-console.log("Бот запущен...");
+async function main() {
+    const all_users = Array.from(users.values());
+    all_users.push(guest);
+
+    console.log("Runnning...");
+    while (true) {
+        const now = new Date();
+        for (const user of all_users) {
+            user.proceed(now);
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+}
+
+main();

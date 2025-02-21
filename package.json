@@ -7,7 +7,8 @@
   "scripts": {
     "webpack-prod": "webpack --mode production",
     "webpack-dev": "webpack --mode development",
-    "build": "tsc && npm run webpack-dev",
+    "compile": "tsc",
+    "build": "npm run compile && npm run webpack-dev",
     "app": "node dist/app.js",
     "build_and_run": "npm run build && npm run app",
     "test": "echo \"Error: no test specified\" && exit 1",

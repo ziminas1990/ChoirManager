@@ -1,0 +1,16 @@
+files/scores/Alleluia.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Locus[[:space:]]Iste.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Mironczarnia.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/O[[:space:]]Magnum[[:space:]]Mysterium.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Trilo.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Agnus[[:space:]]Dei.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/O[[:space:]]Sapientia.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Christus[[:space:]]Factus[[:space:]]Est.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Da[[:space:]]Pacem[[:space:]]Domine.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Magnificat.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Northern[[:space:]]Lights.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/O[[:space:]]Lux[[:space:]]Beata[[:space:]]Trinitas.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/He[[:space:]]Wishes[[:space:]]For[[:space:]]The[[:space:]]Clothes[[:space:]]Of[[:space:]]Heavens.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Lamb.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Largo.pdf filter=lfs diff=lfs merge=lfs -text
+files/scores/Le[[:space:]]Chant[[:space:]]Des[[:space:]]Oiseaux.pdf filter=lfs diff=lfs merge=lfs -text
