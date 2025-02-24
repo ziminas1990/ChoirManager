@@ -1,32 +1,27 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { Proceedable } from './abstracts.js';
+import { Logic } from './abstracts.js';
 import { Dialog } from './dialog.js';
+import { Role, User } from '../database.js';
+import { Status } from '../../status.js';
 
-export class User extends Proceedable {
+export class UserLogic extends Logic {
     private dialogs: Map<number, Dialog> = new Map();
 
-    constructor(
-        public readonly id: number,
-        public readonly name: string,
-        public readonly surname: string,
-        public readonly roles: string[],
-        public readonly tgig: string,
-        public readonly lang: "ru" | "en" = "ru"
-    ) {
+    constructor(public readonly user: User) {
         super();
     }
 
     is_guest(): boolean {
-        return this.id == 0;
+        return this.user.is(Role.Guest);
     }
 
     all_dialogs(): Dialog[] {
         return Array.from(this.dialogs.values());
     }
 
-    on_message(msg: TelegramBot.Message): void {
+    on_message(msg: TelegramBot.Message): Status {
         if (msg.chat.type !== "private") {
-            return;
+            return Status.fail("Message is not from a private chat");
         }
 
         const chat_id = msg.chat.id;
@@ -48,6 +43,7 @@ export class User extends Proceedable {
         if (!is_start) {
             dialog.on_message(msg);
         }
+        return Status.ok();
     }
 
     on_callback(query: TelegramBot.CallbackQuery): void {
@@ -67,11 +63,11 @@ export class User extends Proceedable {
         }
     }
 
-    static pack(user: User) {
-        return [user.id, user.name, user.surname, user.roles, user.tgig] as const;
+    static pack(user: UserLogic) {
+        return [User.pack(user.user)] as const;
     }
 
-    static unpack(packed: ReturnType<typeof User.pack>): User {
-        return new User(packed[0], packed[1], packed[2], packed[3], packed[4]);
+    static unpack(packed: ReturnType<typeof UserLogic.pack>): UserLogic {
+        return new UserLogic(User.unpack(packed[0]));
     }
 }

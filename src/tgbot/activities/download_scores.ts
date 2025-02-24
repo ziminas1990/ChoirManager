@@ -1,10 +1,10 @@
 import TelegramBot from "node-telegram-bot-api";
-import { Dialog } from "../items/dialog.js";
+import { Dialog } from "../logic/dialog.js";
 import { BaseActivity } from "./base_activity.js";
-import { BotAPI } from "../globals.js";
+import { BotAPI } from "../api/telegram.js";
 import fs from "fs";
 import path from "path";
-import { StatusWith } from "../../status.js";
+import { StatusWith, Status } from "../../status.js";
 
 const SCORES_DIR = path.join(process.cwd(), 'files/scores');
 
@@ -35,12 +35,14 @@ export class DownloadScoresActivity extends BaseActivity {
         this.send_scores_list();
     }
 
-    on_message(_: TelegramBot.Message): void {}
+    on_message(_: TelegramBot.Message): Status {
+        return Status.ok();
+    }
 
-    on_callback(query: TelegramBot.CallbackQuery): void {
+    on_callback(query: TelegramBot.CallbackQuery): Status {
         const file_name = query.data?.replace("get_", "") + ".pdf";
         if (file_name == undefined) {
-            return;
+            return Status.fail(`unexpected callback: ${query.data}`);
         }
 
         const filePath = path.join(SCORES_DIR, file_name);
@@ -52,10 +54,11 @@ export class DownloadScoresActivity extends BaseActivity {
             {
                 contentType: "application/pdf",
             }
-        ).catch((err) => {
-            console.error("Ошибка отправки файла:", err);
+        ).catch((err: Error) => {
             BotAPI.instance().sendMessage(this.dialog.chat_id, "Сори, что-то пошло не так...");
+            return Status.fail(`failed to send file: ${err.message}`);
         });
+        return Status.ok();
     }
 
     private send_scores_list(): void {

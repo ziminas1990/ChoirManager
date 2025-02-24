@@ -1,5 +1,5 @@
 
-export abstract class Proceedable {
+export abstract class Logic {
     abstract proceed(now: Date): void;
 }
 

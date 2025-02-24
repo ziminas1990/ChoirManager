@@ -2,7 +2,7 @@
     {
         "name": "Александр",
         "surname": "Зимин",
-        "roles": ["chorister", "manager"],
+        "roles": ["chorister", "manager", "admin"],
         "tgig": "@alexander_in_tg",
         "lang": "en"
     },

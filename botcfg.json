@@ -1,5 +1,6 @@
 {
     "token": "",
     "choir_group": "-1002084829853",
-    "announces_thread": "319"
+    "announces_thread": "319",
+    "google_cloud_key_file": "./google_cloud_key.json"
 }

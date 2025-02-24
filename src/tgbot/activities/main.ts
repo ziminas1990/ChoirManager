@@ -1,8 +1,9 @@
 import TelegramBot from "node-telegram-bot-api";
-import { Dialog } from "../items/dialog.js";
+import { Dialog } from "../logic/dialog.js";
 import { BaseActivity } from "./base_activity.js";
-import { BotAPI } from "../globals.js";
+import { BotAPI } from "../api/telegram.js";
 import { DownloadScoresActivity } from "./download_scores.js";
+import { Status } from "../../status.js";
 
 function seconds_since(date: Date): number {
     return (new Date().getTime() - date.getTime()) / 1000;
@@ -27,26 +28,30 @@ export class MainActivity extends BaseActivity {
         }
     }
 
-    on_message(msg: TelegramBot.Message): void {
+    on_message(msg: TelegramBot.Message): Status {
         // First of all check if user hit any of the buttons
         if (msg.text?.toLocaleLowerCase() === "заново") {
             this.start();
-            return;
+            return Status.ok();
         } else if (msg.text?.toLocaleLowerCase() === "скачать ноты") {
             this.on_download_scores();
-            return;
+            return Status.ok();
         }
 
         if (this.child_activity && !this.child_activity.done()) {
             this.child_activity.on_message(msg);
-            return;
+            return Status.ok();
         }
+
+        return Status.fail(`unexpected message: "${msg.text}"`);
     }
 
-    on_callback(query: TelegramBot.CallbackQuery): void {
+    on_callback(query: TelegramBot.CallbackQuery): Status {
         if (this.child_activity) {
             this.child_activity.on_callback(query);
+            return Status.ok();
         }
+        return Status.fail(`no child activity for callback: ${query.data}`);
     }
 
     private send_welcome_to_guest(): void {
@@ -78,7 +83,7 @@ export class MainActivity extends BaseActivity {
     }
 
     private send_welcome(): void {
-        const user_name = this.dialog.user!.name;
+        const user_name = this.dialog.user!.user.name;
 
         if (seconds_since(this.last_welcome) < 5) {
             return;

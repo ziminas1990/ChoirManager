@@ -28,6 +28,7 @@
   "author": "ziminas1990@gmail.com",
   "license": "ISC",
   "dependencies": {
+    "@google-cloud/translate": "^8.5.0",
     "googleapis": "^144.0.0",
     "mustache": "^4.2.0",
     "node-telegram-bot-api": "^0.66.0",

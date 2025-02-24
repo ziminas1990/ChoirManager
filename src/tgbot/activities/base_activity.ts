@@ -1,5 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
-import { Dialog } from "../items/dialog";
+import { Dialog } from "../logic/dialog";
+import { Status } from "../../status";
 
 export class BaseActivity {
 
@@ -14,11 +15,11 @@ export class BaseActivity {
         throw new Error("Not implemented");
     }
 
-    on_message(_: TelegramBot.Message): void {
+    on_message(_: TelegramBot.Message): Status {
         throw new Error("Not implemented");
     }
 
-    on_callback(_: TelegramBot.CallbackQuery): void {
+    on_callback(_: TelegramBot.CallbackQuery): Status {
         throw new Error("Not implemented");
     }
 

@@ -1,9 +1,10 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { Proceedable } from './abstracts.js';
-import { User } from './user.js';
+import { Logic } from './abstracts.js';
+import { UserLogic } from './user.js';
 import { BaseActivity } from '../activities/base_activity.js';
 import { MainActivity } from '../activities/main.js';
-import { BotAPI } from '../globals.js';
+import { BotAPI } from '../api/telegram.js';
+import { Status } from '../../status.js';
 
 type Input = {
     what: "message",
@@ -13,7 +14,7 @@ type Input = {
     callback: TelegramBot.CallbackQuery;
 }
 
-export class Dialog extends Proceedable {
+export class Dialog extends Logic {
 
     private input_queue: Input[] = [];
 
@@ -22,7 +23,7 @@ export class Dialog extends Proceedable {
 
     constructor(
         public readonly chat_id: number,
-        public readonly user: User)
+        public readonly user: UserLogic)
     {
         super();
     }
@@ -33,21 +34,30 @@ export class Dialog extends Proceedable {
     }
 
     proceed(now: Date): void {
+        const error_prefix = `${this.user.user.tgig} in dialog ${this.chat_id}:`;
+
         if (this.activity != undefined) {
             this.activity.proceed(now);
             for (const input of this.input_queue) {
                 if (input.what == "message") {
-                    this.activity.on_message(input.message);
+                    const status = this.activity.on_message(input.message);
+                    if (!status.is_ok()) {
+                        console.error(`${error_prefix} ${status.what()}`);
+                    }
                 } else if (input.what == "callback") {
-                    this.activity.on_callback(input.callback);
+                    const status = this.activity.on_callback(input.callback);
+                    if (!status.is_ok()) {
+                        console.error(`${error_prefix} ${status.what()}`);
+                    }
                 }
             }
         }
         this.input_queue = [];
     }
 
-    on_message(msg: TelegramBot.Message): void {
+    on_message(msg: TelegramBot.Message): Status {
         this.input_queue.push({ what: "message", message: msg });
+        return Status.ok();
     }
 
     on_callback(query: TelegramBot.CallbackQuery): void {
@@ -62,7 +72,7 @@ export class Dialog extends Proceedable {
         return [dialog.chat_id] as const;
     }
 
-    static unpack(user: User, packed: ReturnType<typeof Dialog.pack>): Dialog {
+    static unpack(user: UserLogic, packed: ReturnType<typeof Dialog.pack>): Dialog {
         return new Dialog(packed[0], user);
     }
 }
