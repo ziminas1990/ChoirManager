@@ -7,6 +7,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { AnnounceTranslator } from './activities/translator.js';
 import { load_database_from_file } from './database_loader.js';
 import { Runtime } from './runtime.js';
+import { Role } from './database.js';
 
 type Config = {
     token: string;
@@ -70,8 +71,9 @@ bot.on("message", async (msg) => {
 });
 
 function handle_private_message(msg: TelegramBot.Message) {
+    log_message(msg);
+
     const username = msg.from?.username;
-    console.log(`Message from ${username} in ${msg.chat.id}: ${msg.text}`);
     if (username == undefined) {
         return;
     }
@@ -89,10 +91,10 @@ function log_message(msg: TelegramBot.Message) {
             console.log(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
         } else {
             console.log([
-                "=".repeat(80),
+                "-".repeat(40),
                 `Message from ${msg.from?.username} in ${msg.chat.id}:`,
                 msg.text,
-                "=".repeat(80),
+                "=".repeat(40),
             ].join("\n"));
         }
     } else {
@@ -103,12 +105,17 @@ function log_message(msg: TelegramBot.Message) {
 function handle_group_message(msg: TelegramBot.Message) {
     log_message(msg);
 
+    const username = msg.from?.username;
+    if (username == undefined) {
+        return;
+    }
+    const user = runtime.get_user(username);
+
     const is_announce = msg.chat.id == config.choir_group &&
                         msg.message_thread_id == config.announces_thread;
+    const is_sent_by_manager = user.user.roles.includes(Role.Manager);
 
-    const is_sent_by_admin = false;
-
-    if (is_announce && !is_sent_by_admin) {
+    if (is_announce && is_sent_by_manager) {
         translator.on_announce(msg);
     }
 }
