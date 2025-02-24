@@ -3,6 +3,7 @@ import { Proceedable } from './abstracts.js';
 import { User } from './user.js';
 import { BaseActivity } from '../activities/base_activity.js';
 import { MainActivity } from '../activities/main.js';
+import { BotAPI } from '../globals.js';
 
 type Input = {
     what: "message",
@@ -51,6 +52,10 @@ export class Dialog extends Proceedable {
 
     on_callback(query: TelegramBot.CallbackQuery): void {
         this.input_queue.push({ what: "callback", callback: query });
+    }
+
+    send_message(msg: string): void {
+        BotAPI.instance().sendMessage(this.chat_id, msg);
     }
 
     static pack(dialog: Dialog) {

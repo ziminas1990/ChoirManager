@@ -3,9 +3,13 @@ import * as path from 'path';
 import { Status, StatusWith } from '../status.js';
 import { User } from './items/user.js';
 import { BotAPI } from './globals.js';
+import TelegramBot from 'node-telegram-bot-api';
+import { TranslatorActivity } from './activities/translator.js';
 
 type Config = {
     token: string;
+    choir_group: number;
+    announces_thread: number;
 }
 
 function load_configuration(): StatusWith<Config> {
@@ -49,6 +53,9 @@ function check_user_json(user_json: any): Status {
         if (typeof user_json[key] !== type) {
             return Status.fail(`${key} is not a ${type} or is missing`);
         }
+        if (user_json.lang && user_json.lang !== "ru" && user_json.lang !== "en") {
+            return Status.fail(`lang is not a "ru" or "en"`);
+        }
     }
 
     return Status.ok();
@@ -68,6 +75,7 @@ function load_users(): StatusWith<User[]> {
         surname: string;
         roles: string[];
         tgig: string;
+        lang: string | undefined;
     }[];
 
     const users = users_json.map((user_json) => {
@@ -82,7 +90,8 @@ function load_users(): StatusWith<User[]> {
             user_json.name,
             user_json.surname,
             user_json.roles,
-            user_json.tgig
+            user_json.tgig,
+            user_json.lang ? user_json.lang as "ru" | "en" : "ru"
         );
     }).filter((user) => user !== undefined) as User[];
 
@@ -99,13 +108,20 @@ if (!users_status.is_ok()) {
 const users: Map<string, User> = new Map(users_status.value!.map(user => [user.tgig.slice(1), user]));
 const guest = new User(0, "Guest", "", [], "");
 
-// Обработка кнопки "Скачать ноты"
+const translator = new TranslatorActivity(users);
+translator.start();
+
 bot.on("message", async (msg) => {
+    if (msg.chat.type == "private") {
+        handle_private_message(msg);
+    } else {
+        handle_group_message(msg);
+    }
+});
 
-    const username = msg.from?.username
-
+function handle_private_message(msg: TelegramBot.Message) {
+    const username = msg.from?.username;
     console.log(`Message from ${username} in ${msg.chat.id}: ${msg.text}`);
-
     if (username == undefined) {
         return;
     }
@@ -116,8 +132,17 @@ bot.on("message", async (msg) => {
     }
 
     user.on_message(msg);
-    return;
-});
+}
+
+function handle_group_message(msg: TelegramBot.Message) {
+    console.log(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
+
+    const is_announce = msg.chat.id == config.choir_group &&
+                        msg.message_thread_id == config.announces_thread;
+    if (is_announce) {
+        translator.on_announce(msg);
+    }
+}
 
 // Обработка выбора файла
 bot.on("callback_query", (query) => {

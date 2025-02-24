@@ -10,17 +10,25 @@ export class User extends Proceedable {
         public readonly name: string,
         public readonly surname: string,
         public readonly roles: string[],
-        public readonly tgig: string)
-    {
+        public readonly tgig: string,
+        public readonly lang: "ru" | "en" = "ru"
+    ) {
         super();
     }
-
 
     is_guest(): boolean {
         return this.id == 0;
     }
 
+    all_dialogs(): Dialog[] {
+        return Array.from(this.dialogs.values());
+    }
+
     on_message(msg: TelegramBot.Message): void {
+        if (msg.chat.type !== "private") {
+            return;
+        }
+
         const chat_id = msg.chat.id;
         let dialog = this.dialogs.get(chat_id);
 
