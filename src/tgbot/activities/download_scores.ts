@@ -5,6 +5,7 @@ import { BotAPI } from "../api/telegram.js";
 import fs from "fs";
 import path from "path";
 import { StatusWith, Status } from "../../status.js";
+import { Language } from "../database.js";
 
 const SCORES_DIR = path.join(process.cwd(), 'files/scores');
 
@@ -26,9 +27,12 @@ function split_to_columns(list: string[], columns: number): string[][] {
 }
 
 export class DownloadScoresActivity extends BaseActivity {
+    private messages: Messages;
+
     constructor(dialog: Dialog)
     {
         super(dialog);
+        this.messages = new Messages(dialog.user.user.lang);
     }
 
     start(): void {
@@ -55,7 +59,8 @@ export class DownloadScoresActivity extends BaseActivity {
                 contentType: "application/pdf",
             }
         ).catch((err: Error) => {
-            BotAPI.instance().sendMessage(this.dialog.chat_id, "Сори, что-то пошло не так...");
+            BotAPI.instance().sendMessage(
+                this.dialog.chat_id, this.messages.fail_to_send_file());
             return Status.fail(`failed to send file: ${err.message}`);
         });
         return Status.ok();
@@ -71,7 +76,8 @@ export class DownloadScoresActivity extends BaseActivity {
         }
 
         if (files.value!.length == 0) {
-            BotAPI.instance().sendMessage(this.dialog.chat_id, "Нет доступных файлов.");
+            BotAPI.instance().sendMessage(
+                this.dialog.chat_id, this.messages.no_scores_available());
             this.set_done();
             return;
         }
@@ -89,14 +95,59 @@ export class DownloadScoresActivity extends BaseActivity {
             })));
         });
 
-        BotAPI.instance().sendMessage(this.dialog.chat_id, "Какие ноты тебе нужны?", {
-            reply_markup: keyboard,
-        });
+        BotAPI.instance().sendMessage(
+            this.dialog.chat_id,
+            this.messages.get_scores_list(),
+            {
+                reply_markup: keyboard,
+            });
     }
 
     private send_fail_to_get_scores(): void {
         BotAPI.instance().sendMessage(
-            this.dialog.chat_id, "Почему-то не могу получить список доступных нот");
+            this.dialog.chat_id,
+            this.messages.fail_to_get_scores());
     }
 
+}
+
+class Messages {
+    constructor(private lang: Language)
+    {}
+
+    get_scores_list(): string {
+        switch (this.lang) {
+            case "ru": return "Какие ноты тебе нужны?";
+            case "en":
+            default:
+                return "Which scores do you need?";
+        }
+    }
+
+    fail_to_get_scores(): string {
+        switch (this.lang) {
+            case "ru": return "Почему-то не могу получить список доступных нот";
+            case "en":
+            default:
+                return "Can't get the list of available scores for some reason";
+        }
+    }
+
+    no_scores_available(): string {
+        switch (this.lang) {
+            case "ru": return "Нет доступных файлов";
+            case "en":
+            default:
+                return "No available scores";
+        }
+    }
+
+    fail_to_send_file(): string {
+        switch (this.lang) {
+            case "ru": return "Сори, что-то пошло не так...";
+            case "en":
+            default:
+                return "Sorry, something went wrong...";
+        }
+    }
 }

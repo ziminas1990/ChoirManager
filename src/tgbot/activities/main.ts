@@ -4,20 +4,21 @@ import { BaseActivity } from "./base_activity.js";
 import { BotAPI } from "../api/telegram.js";
 import { DownloadScoresActivity } from "./download_scores.js";
 import { Status } from "../../status.js";
+import { Language } from "../database.js";
 
 function seconds_since(date: Date): number {
     return (new Date().getTime() - date.getTime()) / 1000;
 }
 
 export class MainActivity extends BaseActivity {
-
+    private messages: Messages;
     private last_welcome: Date = new Date(0);
-
     private child_activity?: BaseActivity;
 
     constructor(dialog: Dialog)
     {
         super(dialog);
+        this.messages = new Messages(dialog.user.user.lang);
     }
 
     start(): void {
@@ -30,10 +31,10 @@ export class MainActivity extends BaseActivity {
 
     on_message(msg: TelegramBot.Message): Status {
         // First of all check if user hit any of the buttons
-        if (msg.text?.toLocaleLowerCase() === "заново") {
+        if (msg.text?.toLocaleLowerCase() === this.messages.again().toLocaleLowerCase()) {
             this.start();
             return Status.ok();
-        } else if (msg.text?.toLocaleLowerCase() === "скачать ноты") {
+        } else if (msg.text?.toLocaleLowerCase() === this.messages.download_scores().toLocaleLowerCase()) {
             this.on_download_scores();
             return Status.ok();
         }
@@ -90,14 +91,9 @@ export class MainActivity extends BaseActivity {
         }
         this.last_welcome = new Date();
 
-        const text = [
-            `Рад видеть тебя, ${user_name}!`,
-            "Как я могу помочь?"
-        ];
-
         BotAPI.instance().sendMessage(
             this.dialog.chat_id,
-            text.join("\n"),
+            this.messages.greet(user_name),
             {
                 reply_markup: this.get_keyboard(),
             }
@@ -116,10 +112,48 @@ export class MainActivity extends BaseActivity {
     private get_keyboard(): TelegramBot.ReplyKeyboardMarkup {
         return {
             keyboard: [
-                [{ text: 'Заново' }, { text: 'Скачать ноты' }]
+                [{ text: this.messages.again() }, { text: this.messages.download_scores() }]
             ],
             is_persistent: true,
             resize_keyboard: true,
+        }
+    }
+}
+
+class Messages {
+    constructor(private lang: Language)
+    {}
+
+    again(): string {
+        switch (this.lang) {
+            case "ru": return "Заново";
+            case "en":
+            default:
+                return "Restart";
+        }
+    }
+
+    download_scores(): string {
+        switch (this.lang) {
+            case "ru": return "Скачать ноты";
+            case "en":
+            default:
+                return "Download scores";
+        }
+    }
+
+    greet(username: string): string {
+        switch (this.lang) {
+            case "ru": return [
+                `Привет, ${username}!`,
+                "Как я могу помочь?"
+            ].join("\n");
+            case "en":
+            default:
+                return [
+                    `Hello, ${username}!`,
+                    "How can I help you?"
+                ].join("\n");
         }
     }
 }
