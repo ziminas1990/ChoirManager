@@ -19,7 +19,7 @@ async function load_data(source: "csv" | "google spreadsheet"): Promise<StatusWi
 
 const status_and_data = await load_data("csv");
 
-if (!status_and_data.is_ok()) {
+if (!status_and_data.done()) {
     console.error("Failed to read data:", status_and_data.what());
     process.exit(1);
 }

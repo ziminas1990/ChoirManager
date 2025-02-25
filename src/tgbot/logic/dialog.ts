@@ -4,7 +4,7 @@ import { UserLogic } from './user.js';
 import { BaseActivity } from '../activities/base_activity.js';
 import { MainActivity } from '../activities/main.js';
 import { BotAPI } from '../api/telegram.js';
-import { Status } from '../../status.js';
+import { Status, StatusWith } from '../../status.js';
 
 type Input = {
     what: "message",
@@ -22,9 +22,9 @@ export class Dialog extends Logic {
     private activity: BaseActivity | undefined;
 
     constructor(
-        public readonly chat_id: number,
-        public readonly user: UserLogic)
-    {
+        public readonly user: UserLogic,
+        public readonly chat_id: number
+    ) {
         super();
     }
 
@@ -41,12 +41,12 @@ export class Dialog extends Logic {
             for (const input of this.input_queue) {
                 if (input.what == "message") {
                     const status = this.activity.on_message(input.message);
-                    if (!status.is_ok()) {
+                    if (!status.done()) {
                         console.error(`${error_prefix} ${status.what()}`);
                     }
                 } else if (input.what == "callback") {
                     const status = this.activity.on_callback(input.callback);
-                    if (!status.is_ok()) {
+                    if (!status.done()) {
                         console.error(`${error_prefix} ${status.what()}`);
                     }
                 }
@@ -72,7 +72,7 @@ export class Dialog extends Logic {
         return [dialog.chat_id] as const;
     }
 
-    static unpack(user: UserLogic, packed: ReturnType<typeof Dialog.pack>): Dialog {
-        return new Dialog(packed[0], user);
+    static unpack(user: UserLogic, packed: ReturnType<typeof Dialog.pack>): StatusWith<Dialog> {
+        return StatusWith.ok().with(new Dialog(user, packed[0]));
     }
 }

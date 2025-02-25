@@ -32,7 +32,7 @@ function check_header(header: Row): Status {
 function read_song_data(row: Row, song_id: number, database: db.Database): Status {
     const [,, name, ...minutes] = row;
     const song_status = database.create_piece(song_id, "Unknown", name);
-    if (!song_status.is_ok() || !song_status.value) {
+    if (!song_status.done() || !song_status.value) {
         return song_status.wrap("Can't create song");
     }
 
@@ -42,7 +42,7 @@ function read_song_data(row: Row, song_id: number, database: db.Database): Statu
             database.rehersal_song(rehersal_id, song_id, minutes);
         }
     });
-    
+
     return Status.ok();
 }
 
@@ -65,7 +65,7 @@ function read_chorister_data(row: Row, chorister_id: number, database: db.Databa
     const joined_date = parse_date(joined);
 
     const chorister_status = database.create_chorister(chorister_id, name, surname, vocal, joined_date);
-    if (!chorister_status.is_ok() || !chorister_status.value) {
+    if (!chorister_status.done() || !chorister_status.value) {
         return chorister_status.wrap("Can't create chorister");
     }
 
@@ -83,7 +83,7 @@ export function build_data_model(data: Table): StatusWith<db.Database> {
 
     {
         const status = check_header(header);
-        if (!status.is_ok()) {
+        if (!status.done()) {
             return status.wrap("Table has invalid header");
         }
     }
@@ -104,12 +104,12 @@ export function build_data_model(data: Table): StatusWith<db.Database> {
         const tag = row[0];
         if (tag.toLowerCase() === "song") {
             const status = read_song_data(row, next_piece_id++, data_model);
-            if (!status.is_ok()) {
+            if (!status.done()) {
                 console.warn(`Error in row ${i}: ${status.what()}`);
             }
         } else {
             const status = read_chorister_data(row, next_chorister_id++, data_model);
-            if (!status.is_ok()) {
+            if (!status.done()) {
                 console.warn(`Error in row ${i}: ${status.what()}`);
             }
         }

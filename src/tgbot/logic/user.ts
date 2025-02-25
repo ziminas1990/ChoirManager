@@ -1,8 +1,9 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { Logic } from './abstracts.js';
 import { Dialog } from './dialog.js';
-import { Role, User } from '../database.js';
-import { Status } from '../../status.js';
+import { Database, Role, User } from '../database.js';
+import { Status, StatusWith } from '../../status.js';
+import { pack_map, unpack_map } from '../utils.js';
 
 export class UserLogic extends Logic {
     private dialogs: Map<number, Dialog> = new Map();
@@ -35,7 +36,7 @@ export class UserLogic extends Logic {
         }
 
         if (dialog == undefined) {
-            dialog = new Dialog(chat_id, this);
+            dialog = new Dialog(this, chat_id);
             this.dialogs.set(chat_id, dialog);
             dialog.start();
         }
@@ -64,10 +65,34 @@ export class UserLogic extends Logic {
     }
 
     static pack(user: UserLogic) {
-        return [User.pack(user.user)] as const;
+        return [user.user.tgig, pack_map(user.dialogs, Dialog.pack)] as const;
     }
 
-    static unpack(packed: ReturnType<typeof UserLogic.pack>): UserLogic {
-        return new UserLogic(User.unpack(packed[0]));
+    static unpack(database: Database, packed: ReturnType<typeof UserLogic.pack>)
+    : StatusWith<UserLogic> {
+        const [tgig, dialogs] = packed;
+
+        const user = database.get_user_by_tg_id(tgig);
+        if (!user) {
+            return StatusWith.fail(`User @${tgig} not found`);
+        }
+        const logic = new UserLogic(user);
+
+        // Load dialogs
+        const load_dialogs_problems: Status[] = [];
+        logic.dialogs = unpack_map(dialogs, (packed) => {
+            const status = Dialog.unpack(logic, packed);
+            if (!status.ok()) {
+                load_dialogs_problems.push(status);
+            }
+            return status.value!;
+        });
+
+        const status =
+            load_dialogs_problems.length > 0 ?
+            Status.warning("loading dialogs", load_dialogs_problems) :
+            Status.ok();
+
+        return status.with(logic);
     }
 }

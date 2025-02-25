@@ -39,14 +39,14 @@ function load_user(user_json: UserJson): StatusWith<User> {
     const roles: Role[] = [];
     for (const role of user_json.roles) {
         const role_status = read_role(role);
-        if (!role_status.is_ok() || role_status.value == undefined) {
+        if (!role_status.done() || role_status.value == undefined) {
             return role_status.wrap(error_prefix);
         }
         roles.push(role_status.value);
     }
 
     const lang_status = read_lang(user_json.lang ?? "ru");
-    if (!lang_status.is_ok() || lang_status.value == undefined) {
+    if (!lang_status.done() || lang_status.value == undefined) {
         console.log("lang", lang_status.what());
         return lang_status.wrap(error_prefix);
     }
@@ -64,7 +64,7 @@ function load_users(users_json: UserJson[]): StatusWith<User[]> {
     const users: User[] = [];
     for (const user_json of users_json) {
         const user_status = load_user(user_json);
-        if (!user_status.is_ok() || user_status.value == undefined) {
+        if (!user_status.done() || user_status.value == undefined) {
             return user_status.with(users);
         }
         users.push(user_status.value);
@@ -74,7 +74,7 @@ function load_users(users_json: UserJson[]): StatusWith<User[]> {
 
 export function load_database(users_json: UserJson[]): StatusWith<Database> {
     const users_status = load_users(users_json);
-    if (!users_status.is_ok() || users_status.value == undefined) {
+    if (!users_status.done() || users_status.value == undefined) {
         return users_status.with<Database>(undefined);
     }
     return StatusWith.ok().with(new Database(users_status.value));

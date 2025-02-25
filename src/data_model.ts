@@ -234,7 +234,7 @@ export class Database {
     join_rehersal(chorister_id: ChoristerId, rehersal_id: RehersalId, time_minutes: number): Status
     {
         const rehersal_status = this.get_rehersal(rehersal_id);
-        if (!rehersal_status.is_ok() || !rehersal_status.value) {
+        if (!rehersal_status.done() || !rehersal_status.value) {
             return rehersal_status.wrap("Rehersal not found");
         }
         const rehersal = rehersal_status.value;
@@ -248,12 +248,12 @@ export class Database {
     rehersal_song(rehersal_id: RehersalId, song_id: PieceId, time_minutes: number): Status
     {
         const rehersal_status = this.get_rehersal(rehersal_id);
-        if (!rehersal_status.is_ok() || !rehersal_status.value) {
+        if (!rehersal_status.done() || !rehersal_status.value) {
             return rehersal_status.wrap("Rehersal not found");
         }
 
         const piece_status = this.get_piece(song_id);
-        if (!piece_status.is_ok() || !piece_status.value) {
+        if (!piece_status.done() || !piece_status.value) {
             return piece_status.wrap("Piece not found");
         }
 

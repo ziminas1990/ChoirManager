@@ -31,7 +31,7 @@ function load_configuration(): StatusWith<Config> {
 }
 
 const config_status = load_configuration();
-if (!config_status.is_ok()) {
+if (!config_status.done()) {
     console.error('Failed to load configuration:', config_status.what());
     process.exit(1);
 }
@@ -44,7 +44,7 @@ if (!config.token) {
 
 // Load database
 const database_status = load_database_from_file(path.join(process.cwd(), 'data', 'users.json'));
-if (!database_status.is_ok() || database_status.value == undefined) {
+if (!database_status.done() || database_status.value == undefined) {
     console.error('Failed to load database:', database_status.what());
     process.exit(1);
 }
@@ -80,7 +80,7 @@ function handle_private_message(msg: TelegramBot.Message) {
 
     const user = runtime.get_user(username);
     const status = user.on_message(msg);
-    if (!status.is_ok()) {
+    if (!status.done()) {
         console.error(`${user.user.tgig}: ${status.what()}`);
     }
 }

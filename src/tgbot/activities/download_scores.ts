@@ -69,7 +69,7 @@ export class DownloadScoresActivity extends BaseActivity {
     private send_scores_list(): void {
         const files = get_scores_list();
 
-        if (!files.is_ok() || files.value == undefined) {
+        if (!files.done() || files.value == undefined) {
             this.send_fail_to_get_scores();
             this.set_done();
             return;
