@@ -18,7 +18,7 @@ export class MainActivity extends BaseActivity {
     constructor(dialog: Dialog)
     {
         super(dialog);
-        this.messages = new Messages(dialog.user.user.lang);
+        this.messages = new Messages(dialog.user.data.lang);
     }
 
     start(): void {
@@ -84,7 +84,7 @@ export class MainActivity extends BaseActivity {
     }
 
     private send_welcome(): void {
-        const user_name = this.dialog.user!.user.name;
+        const user_name = this.dialog.user!.data.name;
 
         if (seconds_since(this.last_welcome) < 5) {
             return;

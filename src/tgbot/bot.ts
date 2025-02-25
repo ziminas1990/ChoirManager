@@ -8,6 +8,7 @@ import { AnnounceTranslator } from './activities/translator.js';
 import { load_database_from_file } from './database_loader.js';
 import { Runtime } from './runtime.js';
 import { Role } from './database.js';
+import { AdminNotifier } from './activities/admin_notifier.js';
 
 type Config = {
     token: string;
@@ -66,6 +67,9 @@ const runtime = runtime_status.value;
 const translator = new AnnounceTranslator(runtime);
 translator.start();
 
+// Create admin notifier (will be started later)
+const admin_notifier = new AdminNotifier(runtime);
+
 // Initialize APIs
 BotAPI.init(config.token);
 GoogleTranslate.init(config.google_cloud_key_file);
@@ -92,7 +96,7 @@ function handle_private_message(msg: TelegramBot.Message) {
     const user = runtime.get_user(username);
     const status = user.on_message(msg);
     if (!status.done()) {
-        console.error(`${user.user.tgig}: ${status.what()}`);
+        console.error(`${user.data.tgig}: ${status.what()}`);
     }
 }
 
@@ -124,7 +128,7 @@ function handle_group_message(msg: TelegramBot.Message) {
 
     const is_announce = msg.chat.id == config.choir_group &&
                         msg.message_thread_id == config.announces_thread;
-    const is_sent_by_manager = user.user.roles.includes(Role.Manager);
+    const is_sent_by_manager = user.data.roles.includes(Role.Manager);
 
     if (is_announce && is_sent_by_manager) {
         translator.on_announce(msg);
@@ -146,6 +150,8 @@ bot.on("callback_query", (query) => {
 });
 
 async function main() {
+    admin_notifier.start();
+
     console.log("Runnning...");
     while (true) {
         runtime.proceed(new Date());

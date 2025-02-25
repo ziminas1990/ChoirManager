@@ -18,7 +18,7 @@ export class AnnounceTranslator {
             return Status.ok();
         }
 
-        const users = [...this.runtime.all_users()].filter(logic => logic.user.lang !== "ru");
+        const users = [...this.runtime.all_users()].filter(logic => logic.data.lang !== "ru");
         if (users.length == 0) {
             return Status.ok();
         }

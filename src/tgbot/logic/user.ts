@@ -8,12 +8,16 @@ import { pack_map, unpack_map } from '../utils.js';
 export class UserLogic extends Logic {
     private dialogs: Map<number, Dialog> = new Map();
 
-    constructor(public readonly user: User) {
+    constructor(public readonly data: User) {
         super();
     }
 
     is_guest(): boolean {
-        return this.user.is(Role.Guest);
+        return this.data.is(Role.Guest);
+    }
+
+    is_admin(): boolean {
+        return this.data.is(Role.Admin);
     }
 
     all_dialogs(): Dialog[] {
@@ -68,7 +72,7 @@ export class UserLogic extends Logic {
     }
 
     static pack(user: UserLogic) {
-        return [user.user.tgig, pack_map(user.dialogs, Dialog.pack)] as const;
+        return [user.data.tgig, pack_map(user.dialogs, Dialog.pack)] as const;
     }
 
     static unpack(database: Database, packed: ReturnType<typeof UserLogic.pack>)

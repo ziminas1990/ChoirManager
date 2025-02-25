@@ -40,7 +40,7 @@ export class Dialog extends Logic {
     }
 
     proceed(now: Date): void {
-        const error_prefix = `${this.user.user.tgig} in dialog ${this.chat_id}:`;
+        const error_prefix = `${this.user.data.tgig} in dialog ${this.chat_id}:`;
 
         if (this.activity != undefined) {
             this.activity.proceed(now);

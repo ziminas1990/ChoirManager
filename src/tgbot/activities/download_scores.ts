@@ -32,7 +32,7 @@ export class DownloadScoresActivity extends BaseActivity {
     constructor(dialog: Dialog)
     {
         super(dialog);
-        this.messages = new Messages(dialog.user.user.lang);
+        this.messages = new Messages(dialog.user.data.lang);
     }
 
     start(): void {
