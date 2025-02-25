@@ -36,9 +36,12 @@ export class UserLogic extends Logic {
         }
 
         if (dialog == undefined) {
-            dialog = new Dialog(this, chat_id);
+            const status = Dialog.Start(this, chat_id);
+            if (!status.ok()) {
+                return status.wrap("can't start dialog");
+            }
+            dialog = status.value!;
             this.dialogs.set(chat_id, dialog);
-            dialog.start();
         }
 
         if (!is_start) {
@@ -72,7 +75,7 @@ export class UserLogic extends Logic {
     : StatusWith<UserLogic> {
         const [tgig, dialogs] = packed;
 
-        const user = database.get_user_by_tg_id(tgig);
+        const user = tgig ? database.get_user_by_tg_id(tgig) : database.get_guest_user();
         if (!user) {
             return StatusWith.fail(`User @${tgig} not found`);
         }

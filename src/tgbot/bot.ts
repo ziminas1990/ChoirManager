@@ -12,6 +12,7 @@ import { Role } from './database.js';
 type Config = {
     token: string;
     choir_group: number;
+    runtime_cache_filename: string;
     announces_thread: number;
     google_cloud_key_file: string;
 }
@@ -50,8 +51,18 @@ if (!database_status.done() || database_status.value == undefined) {
 }
 const database = database_status.value;
 
-const runtime = new Runtime(database);
+// Loading runtime data
+const runtime_status = Runtime.Load(config.runtime_cache_filename, database);
+if (!runtime_status.done() || runtime_status.value == undefined) {
+    console.error('Failed to load runtime:', runtime_status.what());
+    process.exit(1);
+}
+if (!runtime_status.ok()) {
+    console.warn(`Problem occurred while loading runtime:\n${runtime_status.what()}`);
+}
+const runtime = runtime_status.value;
 
+// Initialize translator
 const translator = new AnnounceTranslator(runtime);
 translator.start();
 
@@ -137,10 +148,7 @@ bot.on("callback_query", (query) => {
 async function main() {
     console.log("Runnning...");
     while (true) {
-        const now = new Date();
-        for (const user of runtime.all_users()) {
-            user.proceed(now);
-        }
+        runtime.proceed(new Date());
         await new Promise(resolve => setTimeout(resolve, 100));
     }
 }

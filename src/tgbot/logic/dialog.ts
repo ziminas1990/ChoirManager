@@ -19,17 +19,23 @@ export class Dialog extends Logic {
     private input_queue: Input[] = [];
 
     // activities stack
-    private activity: BaseActivity | undefined;
+    private activity: BaseActivity;
 
-    constructor(
-        public readonly user: UserLogic,
-        public readonly chat_id: number
-    ) {
-        super();
+    static Start(user: UserLogic, chat_id: number): StatusWith<Dialog> {
+        const dialog = new Dialog(user, chat_id);
+        dialog.start();
+        return StatusWith.ok().with(dialog);
     }
 
-    start(): void {
+    private constructor(
+        public readonly user: UserLogic,
+        public readonly chat_id: number,
+    ) {
+        super();
         this.activity = new MainActivity(this);
+    }
+
+    private start(): void {
         this.activity.start();
     }
 
