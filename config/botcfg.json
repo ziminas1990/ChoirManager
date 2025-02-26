@@ -1,0 +1,8 @@
+{
+    "choir_group": "-1002084829853",
+    "announces_thread": "319",
+    "database_filename": "./config/users.json",
+    "runtime_cache_filename": "./config/runtime.json",
+    "google_cloud_key_file": "./config/google_cloud_key.json",
+    "tgbot_token_file": "./config/tgbot_token"
+}

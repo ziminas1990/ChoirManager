@@ -11,15 +11,16 @@ import { Role } from './database.js';
 import { AdminNotifier } from './activities/admin_notifier.js';
 
 type Config = {
-    token: string;
     choir_group: number;
+    database_filename: string;
     runtime_cache_filename: string;
     announces_thread: number;
     google_cloud_key_file: string;
+    tgbot_token_file: string;
 }
 
 function load_configuration(): StatusWith<Config> {
-    const config_path = path.join(process.cwd(), 'botcfg.json');
+    const config_path = path.join(process.cwd(), 'config', 'botcfg.json');
     try {
         const raw = fs.readFileSync(config_path, 'utf-8');
         const config = JSON.parse(raw) as Config;
@@ -33,19 +34,15 @@ function load_configuration(): StatusWith<Config> {
 }
 
 const config_status = load_configuration();
-if (!config_status.done()) {
+if (!config_status.done() || config_status.value == undefined) {
     console.error('Failed to load configuration:', config_status.what());
     process.exit(1);
 }
 
 const config = config_status.value!;
-if (!config.token) {
-    console.error('Token not found in botcfg.json');
-    process.exit(1);
-}
 
 // Load database
-const database_status = load_database_from_file(path.join(process.cwd(), 'data', 'users.json'));
+const database_status = load_database_from_file(config.database_filename);
 if (!database_status.done() || database_status.value == undefined) {
     console.error('Failed to load database:', database_status.what());
     process.exit(1);
@@ -71,7 +68,17 @@ translator.start();
 const admin_notifier = new AdminNotifier(runtime);
 
 // Initialize APIs
-BotAPI.init(config.token);
+const tg_token = fs.readFileSync(config.tgbot_token_file, 'utf-8');
+if (!tg_token) {
+    console.error('Error: Token not found in tgbot_token');
+    process.exit(1);
+}
+if (tg_token.includes('\n')) {
+    console.error('Error: Token contains multiple lines');
+    process.exit(1);
+}
+
+BotAPI.init(tg_token.trim());
 GoogleTranslate.init(config.google_cloud_key_file);
 
 // Configure bot

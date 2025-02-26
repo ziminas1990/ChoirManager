@@ -1,5 +1,4 @@
 
-
 export type PackedMap<K, P> = [K, P][];
 
 export function pack_map<K, V, P>(map: Map<K, V>, packer: (value: V) => P): PackedMap<K, P> {
