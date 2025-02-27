@@ -54,15 +54,17 @@ export class UserLogic extends Logic {
         return Status.ok();
     }
 
-    on_callback(query: TelegramBot.CallbackQuery): void {
+    on_callback(query: TelegramBot.CallbackQuery): Status {
         const chat_id = query.message?.chat.id;
-        if (!chat_id) return;
+        if (!chat_id) {
+            return Status.fail("chat_id is undefined");
+        }
 
         const dialog = this.dialogs.get(chat_id);
         if (dialog == undefined) {
-            return;
+            return Status.fail("dialog is undefined");
         }
-        dialog.on_callback(query);
+        return dialog.on_callback(query);
     }
 
     proceed(now: Date): void {

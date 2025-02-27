@@ -66,8 +66,9 @@ export class Dialog extends Logic {
         return Status.ok();
     }
 
-    on_callback(query: TelegramBot.CallbackQuery): void {
+    on_callback(query: TelegramBot.CallbackQuery): Status {
         this.input_queue.push({ what: "callback", callback: query });
+        return Status.ok();
     }
 
     send_message(msg: string): void {

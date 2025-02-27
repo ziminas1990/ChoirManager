@@ -1,22 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { StatusWith } from '../status.js';
+import { Status, StatusWith } from '../status.js';
 import { BotAPI } from './api/telegram.js';
 import { GoogleTranslate } from './api/google_translate.js';
-import TelegramBot from 'node-telegram-bot-api';
-import { AnnounceTranslator } from './activities/translator.js';
 import { load_database_from_file } from './database_loader.js';
 import { Runtime } from './runtime.js';
-import { Role } from './database.js';
-import { AdminNotifier } from './activities/admin_notifier.js';
 
 type Config = {
-    choir_group: number;
     database_filename: string;
     runtime_cache_filename: string;
-    announces_thread: number;
     google_cloud_key_file: string;
     tgbot_token_file: string;
+    runtime_dump_interval_sec: number;
 }
 
 function load_configuration(): StatusWith<Config> {
@@ -60,106 +55,40 @@ if (!runtime_status.ok()) {
 }
 const runtime = runtime_status.value;
 
-// Initialize translator
-const translator = new AnnounceTranslator(runtime);
-translator.start();
-
-// Create admin notifier (will be started later)
-const admin_notifier = new AdminNotifier(runtime);
-
 // Initialize APIs
 const tg_token = fs.readFileSync(config.tgbot_token_file, 'utf-8');
 if (!tg_token) {
     console.error('Error: Token not found in tgbot_token');
     process.exit(1);
 }
-if (tg_token.includes('\n')) {
-    console.error('Error: Token contains multiple lines');
-    process.exit(1);
-}
 
-BotAPI.init(tg_token.trim());
+BotAPI.init(tg_token.split('\n')[0].trim());
 GoogleTranslate.init(config.google_cloud_key_file);
 
 // Configure bot
 const bot = BotAPI.instance();
 
 bot.on("message", async (msg) => {
-    if (msg.chat.type == "private") {
-        handle_private_message(msg);
-    } else {
-        handle_group_message(msg);
+    const status: Status = msg.chat.type == "private" ?
+        runtime.handle_private_message(msg) :
+        runtime.handle_group_message(msg);
+
+    if (!status.ok()) {
+        console.error(`${status.what()}`);
     }
 });
-
-function handle_private_message(msg: TelegramBot.Message) {
-    log_message(msg);
-
-    const username = msg.from?.username;
-    if (username == undefined) {
-        return;
-    }
-
-    const user = runtime.get_user(username);
-    const status = user.on_message(msg);
-    if (!status.done()) {
-        console.error(`${user.data.tgig}: ${status.what()}`);
-    }
-}
-
-function log_message(msg: TelegramBot.Message) {
-    if (msg.text) {
-        if (!msg.text.includes("\n")) {
-            console.log(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
-        } else {
-            console.log([
-                "-".repeat(40),
-                `Message from ${msg.from?.username} in ${msg.chat.id}:`,
-                msg.text,
-                "=".repeat(40),
-            ].join("\n"));
-        }
-    } else {
-        console.log(`Empty message from ${msg.from?.username} in ${msg.chat.id}`);
-    }
-}
-
-function handle_group_message(msg: TelegramBot.Message) {
-    log_message(msg);
-
-    const username = msg.from?.username;
-    if (username == undefined) {
-        return;
-    }
-    const user = runtime.get_user(username);
-
-    const is_announce = msg.chat.id == config.choir_group &&
-                        msg.message_thread_id == config.announces_thread;
-    const is_sent_by_manager = user.data.roles.includes(Role.Manager);
-
-    if (is_announce && is_sent_by_manager) {
-        translator.on_announce(msg);
-    }
-}
 
 // Обработка выбора файла
 bot.on("callback_query", (query) => {
-    const username = query.from?.username
-
-    console.log(`Callback query from ${username} in ${query.message?.chat.id}: ${query.data}`);
-
-    if (username == undefined) {
-        return;
+    const status = runtime.handle_callback(query);
+    if (!status.ok()) {
+        console.error(`${status.what()}`);
     }
-
-    let user = runtime.get_user(username);
-    user.on_callback(query);
 });
 
 async function main() {
-    admin_notifier.start();
-
     console.log("Runnning...");
+    runtime.start(config.runtime_dump_interval_sec);
     while (true) {
         runtime.proceed(new Date());
         await new Promise(resolve => setTimeout(resolve, 100));

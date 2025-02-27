@@ -15,9 +15,9 @@ export class MainActivity extends BaseActivity {
     private last_welcome: Date = new Date(0);
     private child_activity?: BaseActivity;
 
-    constructor(dialog: Dialog)
+    constructor(private dialog: Dialog)
     {
-        super(dialog);
+        super();
         this.messages = new Messages(dialog.user.data.lang);
     }
 

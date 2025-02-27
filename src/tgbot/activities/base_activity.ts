@@ -1,12 +1,11 @@
 import TelegramBot from "node-telegram-bot-api";
-import { Dialog } from "../logic/dialog";
 import { Status } from "../../status";
 
 export class BaseActivity {
 
     private is_done: boolean = false;
 
-    constructor(protected readonly dialog: Dialog)
+    constructor()
     {}
 
     proceed(_: Date): void {}

@@ -63,6 +63,13 @@ export class Status {
         (this as any).value = value;
         return this as StatusWith<T>;
     }
+
+    static fold_as_warnings(action: string, statuses: Status[]): Status {
+        if (statuses.length == 0) {
+            return Status.ok();
+        }
+        return Status.warning(action, statuses);
+    }
 }
 
 export class StatusWith<T> extends Status {

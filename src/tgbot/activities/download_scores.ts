@@ -29,9 +29,9 @@ function split_to_columns(list: string[], columns: number): string[][] {
 export class DownloadScoresActivity extends BaseActivity {
     private messages: Messages;
 
-    constructor(dialog: Dialog)
+    constructor(private dialog: Dialog)
     {
-        super(dialog);
+        super();
         this.messages = new Messages(dialog.user.data.lang);
     }
 
