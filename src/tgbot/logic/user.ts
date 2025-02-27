@@ -67,10 +67,11 @@ export class UserLogic extends Logic {
         return dialog.on_callback(query);
     }
 
-    proceed(now: Date): void {
+    async proceed(now: Date): Promise<Status> {
         for (const dialog of this.dialogs.values()) {
-            dialog.proceed(now);
+            await dialog.proceed(now);
         }
+        return Status.ok();
     }
 
     static pack(user: UserLogic) {

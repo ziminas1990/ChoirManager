@@ -9,7 +9,7 @@ export class AnnounceTranslator {
     constructor(private runtime: Runtime)
     {}
 
-    start(): Status {
+    async start(): Promise<Status> {
         return Status.ok();
     }
 

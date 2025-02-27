@@ -35,15 +35,20 @@ export class DownloadScoresActivity extends BaseActivity {
         this.messages = new Messages(dialog.user.data.lang);
     }
 
-    start(): void {
+    async start(): Promise<Status> {
         this.send_scores_list();
-    }
-
-    on_message(_: TelegramBot.Message): Status {
         return Status.ok();
     }
 
-    on_callback(query: TelegramBot.CallbackQuery): Status {
+    async proceed(_: Date): Promise<Status> {
+        return Status.ok();
+    }
+
+    async on_message(_: TelegramBot.Message): Promise<Status> {
+        return Status.ok();
+    }
+
+    async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
         const file_name = query.data?.replace("get_", "") + ".pdf";
         if (file_name == undefined) {
             return Status.fail(`unexpected callback: ${query.data}`);
@@ -51,7 +56,7 @@ export class DownloadScoresActivity extends BaseActivity {
 
         const filePath = path.join(SCORES_DIR, file_name);
 
-        BotAPI.instance().sendDocument(
+        await BotAPI.instance().sendDocument(
             this.dialog.chat_id,
             fs.createReadStream(filePath),
             undefined,
@@ -66,20 +71,20 @@ export class DownloadScoresActivity extends BaseActivity {
         return Status.ok();
     }
 
-    private send_scores_list(): void {
+    private async send_scores_list(): Promise<Status> {
         const files = get_scores_list();
 
         if (!files.done() || files.value == undefined) {
             this.send_fail_to_get_scores();
             this.set_done();
-            return;
+            return Status.fail("failed to get scores list");
         }
 
         if (files.value!.length == 0) {
             BotAPI.instance().sendMessage(
                 this.dialog.chat_id, this.messages.no_scores_available());
             this.set_done();
-            return;
+            return Status.ok();
         }
 
         files.value = files.value.map(file => file.replace(".pdf", "")).sort();
@@ -101,6 +106,7 @@ export class DownloadScoresActivity extends BaseActivity {
             {
                 reply_markup: keyboard,
             });
+        return Status.ok();
     }
 
     private send_fail_to_get_scores(): void {

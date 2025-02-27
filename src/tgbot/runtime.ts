@@ -62,7 +62,7 @@ export class Runtime {
     }
 
 
-    start(update_interval_sec: number = 60): void {
+    async start(update_interval_sec: number = 60): Promise<Status> {
         this.admin_panel.start();
         this.translator.start();
 
@@ -70,6 +70,7 @@ export class Runtime {
         if (this.update_interval_sec > 0) {
             this.next_dump = new Date(Date.now() + this.update_interval_sec * 1000);
         }
+        return Status.ok();
     }
 
     handle_private_message(msg: TelegramBot.Message): Status {
@@ -153,14 +154,18 @@ export class Runtime {
         this.cfg.manager_chat_id = chat_id;
     }
 
-    proceed(now: Date): void {
+    async proceed(now: Date): Promise<Status> {
+        const user_proceeds: Promise<Status>[] = [];
         for (const user of this.users.values()) {
-            user.proceed(now);
+            user_proceeds.push(user.proceed(now));
         }
+        await Promise.all(user_proceeds);
+
         if (now >= this.next_dump && this.update_interval_sec > 0) {
             this.dump();
             this.next_dump = new Date(Date.now() + this.update_interval_sec * 1000);
         }
+        return Status.ok();
     }
 
     dump(): void {

@@ -21,15 +21,23 @@ export class MainActivity extends BaseActivity {
         this.messages = new Messages(dialog.user.data.lang);
     }
 
-    start(): void {
+    async start(): Promise<Status> {
         if (!this.dialog.user.is_guest()) {
             this.send_welcome();
         } else {
             this.send_welcome_to_guest();
         }
+        return Status.ok();
     }
 
-    on_message(msg: TelegramBot.Message): Status {
+    async proceed(now: Date): Promise<Status> {
+        if (this.child_activity) {
+            await this.child_activity.proceed(now);
+        }
+        return Status.ok();
+    }
+
+    async on_message(msg: TelegramBot.Message): Promise<Status> {
         // First of all check if user hit any of the buttons
         if (msg.text?.toLocaleLowerCase() === this.messages.again().toLocaleLowerCase()) {
             this.start();
@@ -47,7 +55,7 @@ export class MainActivity extends BaseActivity {
         return Status.fail(`unexpected message: "${msg.text}"`);
     }
 
-    on_callback(query: TelegramBot.CallbackQuery): Status {
+    async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
         if (this.child_activity) {
             this.child_activity.on_callback(query);
             return Status.ok();

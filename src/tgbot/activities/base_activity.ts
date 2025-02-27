@@ -8,17 +8,19 @@ export class BaseActivity {
     constructor()
     {}
 
-    proceed(_: Date): void {}
-
-    start(): void {
+    async proceed(_: Date): Promise<Status> {
         throw new Error("Not implemented");
     }
 
-    on_message(_: TelegramBot.Message): Status {
+    async start(): Promise<Status> {
         throw new Error("Not implemented");
     }
 
-    on_callback(_: TelegramBot.CallbackQuery): Status {
+    async on_message(_: TelegramBot.Message): Promise<Status> {
+        throw new Error("Not implemented");
+    }
+
+    async on_callback(_: TelegramBot.CallbackQuery): Promise<Status> {
         throw new Error("Not implemented");
     }
 

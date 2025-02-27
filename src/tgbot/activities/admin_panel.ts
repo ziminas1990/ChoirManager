@@ -3,16 +3,13 @@ import fs from "fs";
 import { Status } from "../../status.js";
 import { Runtime } from "../runtime.js";
 import TelegramBot from "node-telegram-bot-api";
-import { BaseActivity } from "./base_activity.js";
 import { BotAPI } from "../api/telegram.js";
 
-export class AdminPanel extends BaseActivity {
+export class AdminPanel {
     constructor(private runtime: Runtime)
-    {
-        super();
-    }
+    {}
 
-    start(): Status {
+    async start(): Promise<Status> {
         // Notify all admins that bot is started
         this.send_all_admins(Messages.not_started());
         return Status.ok();
@@ -83,14 +80,17 @@ export class AdminPanel extends BaseActivity {
         return Status.ok();
     }
 
-    private send_all_admins(message: string): void {
+    private async send_all_admins(message: string): Promise<Status> {
         // TODO: add admins cache
         const admins = [...this.runtime.all_users()].filter(logic => logic.is_admin());
+        const promises: Promise<any>[] = [];
         for (const admin of admins) {
             for (const dialog of admin.all_dialogs()) {
-                dialog.send_message(message);
+                promises.push(dialog.send_message(message));
             }
         }
+        await Promise.all(promises);
+        return Status.ok();
     }
 }
 

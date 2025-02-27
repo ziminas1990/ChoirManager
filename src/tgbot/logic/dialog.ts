@@ -39,19 +39,19 @@ export class Dialog extends Logic {
         this.activity.start();
     }
 
-    proceed(now: Date): void {
+    async proceed(now: Date): Promise<Status> {
         const error_prefix = `${this.user.data.tgig} in dialog ${this.chat_id}:`;
 
         if (this.activity != undefined) {
             this.activity.proceed(now);
             for (const input of this.input_queue) {
                 if (input.what == "message") {
-                    const status = this.activity.on_message(input.message);
+                    const status = await this.activity.on_message(input.message);
                     if (!status.done()) {
                         console.error(`${error_prefix} ${status.what()}`);
                     }
                 } else if (input.what == "callback") {
-                    const status = this.activity.on_callback(input.callback);
+                    const status = await this.activity.on_callback(input.callback);
                     if (!status.done()) {
                         console.error(`${error_prefix} ${status.what()}`);
                     }
@@ -59,6 +59,7 @@ export class Dialog extends Logic {
             }
         }
         this.input_queue = [];
+        return Status.ok();
     }
 
     on_message(msg: TelegramBot.Message): Status {
@@ -71,8 +72,9 @@ export class Dialog extends Logic {
         return Status.ok();
     }
 
-    send_message(msg: string): void {
-        BotAPI.instance().sendMessage(this.chat_id, msg);
+    async send_message(msg: string): Promise<Status> {
+        await BotAPI.instance().sendMessage(this.chat_id, msg);
+        return Status.ok();
     }
 
     static pack(dialog: Dialog) {
