@@ -21,9 +21,12 @@ export class Dialog extends Logic {
     // activities stack
     private activity: BaseActivity;
 
-    static Start(user: UserLogic, chat_id: number): StatusWith<Dialog> {
+    static async Start(user: UserLogic, chat_id: number): Promise<StatusWith<Dialog>> {
         const dialog = new Dialog(user, chat_id);
-        dialog.start();
+        const status = await dialog.start();
+        if (!status.done()) {
+            return status.wrap("failed to start dialog");
+        }
         return StatusWith.ok().with(dialog);
     }
 
@@ -35,8 +38,8 @@ export class Dialog extends Logic {
         this.activity = new MainActivity(this);
     }
 
-    private start(): void {
-        this.activity.start();
+    private async start(): Promise<Status> {
+        return await this.activity.start();
     }
 
     async proceed(now: Date): Promise<Status> {

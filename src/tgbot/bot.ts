@@ -5,7 +5,6 @@ import { BotAPI } from './api/telegram.js';
 import { GoogleTranslate } from './api/google_translate.js';
 import { load_database_from_file } from './database_loader.js';
 import { Runtime } from './runtime.js';
-import { DepositsData } from './fetchers/deposits.js';
 
 type Config = {
     database_filename: string;
@@ -88,13 +87,6 @@ bot.on("callback_query", (query) => {
 });
 
 async function main() {
-
-    const deposits_status = new DepositsData()
-    const status = await deposits_status.run(config.google_cloud_key_file);
-    if (!status.ok()) {
-        console.error(`${status.what()}`);
-        process.exit(1);
-    }
 
     console.log("Runnning...");
     runtime.start(config.runtime_dump_interval_sec);

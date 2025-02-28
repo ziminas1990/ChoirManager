@@ -62,13 +62,13 @@ export class Runtime {
     }
 
 
-    async start(update_interval_sec: number = 60): Promise<Status> {
+    async start(update_interval_sec: number): Promise<Status> {
         this.admin_panel.start();
         this.translator.start();
 
         this.update_interval_sec = update_interval_sec;
         if (this.update_interval_sec > 0) {
-            this.next_dump = new Date(Date.now() + this.update_interval_sec * 1000);
+            this.next_dump = new Date();
         }
         return Status.ok();
     }
@@ -222,12 +222,8 @@ export class Runtime {
             return status.value;
         });
 
-        const status =
-            load_users_problems.length > 0 ?
-            Status.warning("loading users", load_users_problems) :
-            Status.ok();
-
-        return status.with(runtime);
+        return Status.ok_and_warnings("loading users", load_users_problems)
+                     .with(runtime);
     }
 }
 

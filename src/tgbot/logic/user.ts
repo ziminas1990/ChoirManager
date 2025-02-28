@@ -3,10 +3,12 @@ import { Logic } from './abstracts.js';
 import { Dialog } from './dialog.js';
 import { Database, Role, User } from '../database.js';
 import { Status, StatusWith } from '../../status.js';
-import { pack_map, unpack_map } from '../utils.js';
+
 
 export class UserLogic extends Logic {
-    private dialogs: Map<number, Dialog> = new Map();
+    private dialog?: Dialog;
+
+    private messages_queue: TelegramBot.Message[] = [];
 
     constructor(public readonly data: User) {
         super();
@@ -20,37 +22,15 @@ export class UserLogic extends Logic {
         return this.data.is(Role.Admin);
     }
 
-    all_dialogs(): Dialog[] {
-        return Array.from(this.dialogs.values());
+    main_dialog(): Dialog | undefined {
+        return this.dialog;
     }
 
     on_message(msg: TelegramBot.Message): Status {
         if (msg.chat.type !== "private") {
             return Status.fail("Message is not from a private chat");
         }
-
-        const chat_id = msg.chat.id;
-        let dialog = this.dialogs.get(chat_id);
-
-        const is_start = msg.text?.toLocaleLowerCase() === "/start";
-
-        if (dialog && is_start) {
-            this.dialogs.delete(chat_id);
-            dialog = undefined;
-        }
-
-        if (dialog == undefined) {
-            const status = Dialog.Start(this, chat_id);
-            if (!status.ok()) {
-                return status.wrap("can't start dialog");
-            }
-            dialog = status.value!;
-            this.dialogs.set(chat_id, dialog);
-        }
-
-        if (!is_start) {
-            dialog.on_message(msg);
-        }
+        this.messages_queue.push(msg);
         return Status.ok();
     }
 
@@ -60,27 +40,28 @@ export class UserLogic extends Logic {
             return Status.fail("chat_id is undefined");
         }
 
-        const dialog = this.dialogs.get(chat_id);
-        if (dialog == undefined) {
+        if (!this.dialog) {
             return Status.fail("dialog is undefined");
         }
-        return dialog.on_callback(query);
+        return this.dialog.on_callback(query);
     }
 
     async proceed(now: Date): Promise<Status> {
-        for (const dialog of this.dialogs.values()) {
-            await dialog.proceed(now);
+        const status = await this.proceed_messages_queue();
+        if (!status.ok()) {
+            return status.wrap("can't proceed messages queue");
         }
-        return Status.ok();
+        const proceed_status = this.dialog ? (await this.dialog.proceed(now)) : Status.ok();
+        return proceed_status.wrap("dialog proceed");
     }
 
     static pack(user: UserLogic) {
-        return [user.data.tgig, pack_map(user.dialogs, Dialog.pack)] as const;
+        return [user.data.tgig, user.dialog ? Dialog.pack(user.dialog) : undefined] as const;
     }
 
     static unpack(database: Database, packed: ReturnType<typeof UserLogic.pack>)
     : StatusWith<UserLogic> {
-        const [tgig, dialogs] = packed;
+        const [tgig, dialog] = packed;
 
         const user = tgig ? database.get_user_by_tg_id(tgig) : database.get_guest_user();
         if (!user) {
@@ -89,20 +70,39 @@ export class UserLogic extends Logic {
         const logic = new UserLogic(user);
 
         // Load dialogs
-        const load_dialogs_problems: Status[] = [];
-        logic.dialogs = unpack_map(dialogs, (packed) => {
-            const status = Dialog.unpack(logic, packed);
+        const unpack_dialog_status: StatusWith<Dialog> =
+            dialog ? Dialog.unpack(logic, dialog) : Status.ok();
+        if (unpack_dialog_status.ok()) {
+            logic.dialog = unpack_dialog_status.value!;
+        }
+
+        return Status.ok_and_warnings("unpacking", [unpack_dialog_status]).with(logic);
+    }
+
+    private async proceed_messages_queue(): Promise<Status> {
+        const warnings: Status[] = [];
+        for (const msg of this.messages_queue) {
+            const status = await this.proceed_message(msg);
             if (!status.ok()) {
-                load_dialogs_problems.push(status);
+                warnings.push(status);
             }
-            return status.value!;
-        });
+        }
+        this.messages_queue = [];
+        return Status.ok_and_warnings("proceed messages", warnings);
+    }
 
-        const status =
-            load_dialogs_problems.length > 0 ?
-            Status.warning("loading dialogs", load_dialogs_problems) :
-            Status.ok();
+    private async proceed_message(msg: TelegramBot.Message): Promise<Status> {
+        const is_start = msg.text?.toLocaleLowerCase() === "/start";
 
-        return status.with(logic);
+        if (!this.dialog || this.dialog.chat_id !== msg.chat.id || is_start) {
+            this.dialog = undefined;
+            const status = await Dialog.Start(this, msg.chat.id);
+            if (!status.ok()) {
+                return status.wrap("can't start dialog");
+            }
+            this.dialog = status.value!;
+        }
+
+        return this.dialog.on_message(msg);
     }
 }

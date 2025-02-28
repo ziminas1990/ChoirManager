@@ -71,6 +71,7 @@ export class Status {
     }
 
     static ok_and_warnings(action: string, statuses: Status[]): Status {
+        statuses = statuses.filter(s => !s.ok());
         if (statuses.length == 0) {
             return Status.ok();
         }

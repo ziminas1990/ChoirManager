@@ -11,7 +11,7 @@ export class AdminPanel {
 
     async start(): Promise<Status> {
         // Notify all admins that bot is started
-        this.send_all_admins(Messages.not_started());
+        this.send_all_admins(Messages.bot_started());
         return Status.ok();
     }
 
@@ -29,19 +29,21 @@ export class AdminPanel {
         const admins = [...this.runtime.all_users()].filter(logic => logic.is_admin());
         const problems: Status[] = [];
         for (const admin of admins) {
-            for (const dialog of admin.all_dialogs()) {
-                try {
-                    BotAPI.instance().sendDocument(
-                        dialog.chat_id,
-                        fs.createReadStream(filename),
-                        undefined,
-                        {
-                        contentType: content_type,
-                        }
-                    );
-                } catch (err) {
-                    problems.push(Status.fail(`failed to send file to admin ${dialog.chat_id}: ${err}`));
-                }
+            const dialog = admin.main_dialog();
+            if (!dialog) {
+                continue;
+            }
+            try {
+                BotAPI.instance().sendDocument(
+                    dialog.chat_id,
+                    fs.createReadStream(filename),
+                    undefined,
+                    {
+                    contentType: content_type,
+                    }
+                );
+            } catch (err) {
+                problems.push(Status.fail(`failed to send file to admin ${dialog.chat_id}: ${err}`));
             }
         }
         return Status.ok_and_warnings("send file to admins", problems);
@@ -82,12 +84,15 @@ export class AdminPanel {
 
     private async send_all_admins(message: string): Promise<Status> {
         // TODO: add admins cache
+
         const admins = [...this.runtime.all_users()].filter(logic => logic.is_admin());
         const promises: Promise<any>[] = [];
         for (const admin of admins) {
-            for (const dialog of admin.all_dialogs()) {
-                promises.push(dialog.send_message(message));
+            const dialog = admin.main_dialog();
+            if (!dialog) {
+                continue;
             }
+            promises.push(dialog.send_message(message));
         }
         await Promise.all(promises);
         return Status.ok();
@@ -95,7 +100,7 @@ export class AdminPanel {
 }
 
 class Messages {
-    static not_started(): string {
+    static bot_started(): string {
         return "Bot has been restarted";
     }
 }

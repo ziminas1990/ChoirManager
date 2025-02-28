@@ -26,14 +26,16 @@ export class AnnounceTranslator {
         const translated_text = await GoogleTranslate.translate(msg.text, "en");
 
         for (const user of users) {
-            for (const dialog of user.all_dialogs()) {
-                dialog.send_message([
-                    `Announce by ${msg.from?.first_name} (@${msg.from?.username}):`,
-                    "",
-                    translated_text,
-                    "",
-                ].join("\n"));
+            const dialog = user.main_dialog();
+            if (!dialog) {
+                continue;
             }
+            dialog.send_message([
+                `Announce by ${msg.from?.first_name} (@${msg.from?.username}):`,
+                "",
+                translated_text,
+                "",
+            ].join("\n"));
         }
         return Status.ok();
     }
