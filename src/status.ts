@@ -43,17 +43,23 @@ export class Status {
         return Status.ok();
     }
 
-    public what(indent: string = "", max_warnings: number = 5): string {
+    public what(indent: string = "", inline: boolean = true, max_warnings: number = 5): string {
+        const next_indent = inline ? indent : indent + "  ";
+        const this_indent = inline ? "" : indent;
         if (this.error) {
             return [
-                `${indent}${this.error.details}`,
-                this.error.nested ? this.error.nested.what(indent + "  ") : undefined
+                `${this_indent}${this.error.details}`,
+                this.error.nested ? this.error.nested.what(next_indent, true, max_warnings) : undefined
             ].filter(e => e).join(": ");
         }
         if (this.warn) {
+            if (this.warn.nested.length == 1) {
+                const warning = this.warn.nested[0];
+                return `${this_indent}${this.warn.details}: ${warning.what(next_indent, true, max_warnings)}`;
+            }
             return [
-                `${indent}${this.warn.details}`,
-                ...this.warn.nested.slice(0, max_warnings).map(w => w.what(indent + "  "))
+                `${this_indent}${this.warn.details}`,
+                ...this.warn.nested.slice(0, max_warnings).map(w => w.what(next_indent, false, max_warnings))
             ].filter(e => e.trim()).join("\n");
         }
         return "ok";
@@ -64,7 +70,7 @@ export class Status {
         return this as StatusWith<T>;
     }
 
-    static fold_as_warnings(action: string, statuses: Status[]): Status {
+    static ok_and_warnings(action: string, statuses: Status[]): Status {
         if (statuses.length == 0) {
             return Status.ok();
         }

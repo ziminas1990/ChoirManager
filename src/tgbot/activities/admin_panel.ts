@@ -44,7 +44,7 @@ export class AdminPanel {
                 }
             }
         }
-        return Status.fold_as_warnings("send file to admins", problems);
+        return Status.ok_and_warnings("send file to admins", problems);
     }
 
     private set_announce_thread(msg: TelegramBot.Message): Status {
