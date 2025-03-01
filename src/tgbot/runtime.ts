@@ -3,9 +3,9 @@ import fs from "fs";
 import crypto from "crypto";
 
 import { Status, StatusWith } from "../status.js";
-import { Database, Role } from "./database.js";
+import { Database, Role, User } from "./database.js";
 import { UserLogic } from "./logic/user.js";
-import { pack_map, unpack_map } from "./utils.js";
+import { apply_interval, pack_map, unpack_map } from "./utils.js";
 import { AnnounceTranslator } from "./activities/translator.js";
 import { AdminPanel } from "./activities/admin_panel.js";
 
@@ -40,10 +40,12 @@ export class Runtime {
     }
 
     private next_dump: Date = new Date();
-    private guest_user: UserLogic | undefined;
     private update_interval_sec: number = 0;
     private translator: AnnounceTranslator;
     private admin_panel: AdminPanel;
+
+    private next_users_proceed: Date;
+    private next_guests_proceed: Date;
 
     private runtime_hash?: string;
 
@@ -55,10 +57,13 @@ export class Runtime {
     private constructor(
         private database: Database,
         private cfg: RuntimeCfg,
-        private users: Map<number, UserLogic> = new Map())
+        private users: Map<number, UserLogic> = new Map(),
+        private guest_users: Map<string, UserLogic> = new Map())
     {
         this.translator = new AnnounceTranslator(this);
         this.admin_panel = new AdminPanel(this);
+        this.next_users_proceed = new Date();
+        this.next_guests_proceed = new Date();
     }
 
 
@@ -81,7 +86,7 @@ export class Runtime {
             return Status.fail("username is undefined");
         }
 
-        const user = this.get_user(username);
+        const user = this.get_user(username) ?? this.get_guest_user(username);
         return user.on_message(msg);
     }
 
@@ -93,6 +98,10 @@ export class Runtime {
             return Status.fail("username is undefined");
         }
         const user = this.get_user(username);
+        if (user == undefined) {
+            // Ignore guest users in group chats
+            return Status.ok();
+        }
 
         const sent_by_admin   = user.is_admin();
         const sent_to_bot     = msg.text?.includes("@ursa_major_choir");
@@ -117,11 +126,11 @@ export class Runtime {
             return Status.fail("username is undefined");
         }
 
-        let user = this.get_user(username);
+        let user = this.get_user(username) ?? this.get_guest_user(username);
         return user.on_callback(query);
     }
 
-    get_user(tg_id: string): UserLogic {
+    get_user(tg_id: string): UserLogic | undefined {
         const user = this.database.get_user_by_tg_id(tg_id);
         if (user) {
             let user_logic = this.users.get(user.id);
@@ -131,14 +140,16 @@ export class Runtime {
             }
             return user_logic;
         }
-        return this.get_guest_user();
+        return this.get_guest_user(tg_id);
     }
 
-    get_guest_user(): UserLogic {
-        if (!this.guest_user) {
-            this.guest_user = new UserLogic(this.database.get_guest_user());
+    get_guest_user(tg_id: string): UserLogic {
+        let user = this.guest_users.get(tg_id);
+        if (user == undefined) {
+            user = new UserLogic(new User(0, "guest", "", [Role.Guest], tg_id, "ru"));
+            this.guest_users.set(tg_id, user);
         }
-        return this.guest_user;
+        return user;
     }
 
     all_users(): IterableIterator<UserLogic> {
@@ -156,10 +167,22 @@ export class Runtime {
 
     async proceed(now: Date): Promise<Status> {
         const user_proceeds: Promise<Status>[] = [];
-        for (const user of this.users.values()) {
-            user_proceeds.push(user.proceed(now));
+        if (this.next_users_proceed < now) {
+            for (const user of this.users.values()) {
+                user_proceeds.push(user.proceed(now));
+            }
+            await Promise.all(user_proceeds);
+            apply_interval(this.next_users_proceed, { milliseconds: 100})
         }
-        await Promise.all(user_proceeds);
+
+        const guests_proceeds: Promise<Status>[] = [];
+        if (this.next_guests_proceed < now) {
+            for (const guest of this.guest_users.values()) {
+                guests_proceeds.push(guest.proceed(now));
+            }
+            await Promise.all(guests_proceeds);
+            apply_interval(this.next_guests_proceed, { milliseconds: 500})
+        }
 
         if (now >= this.next_dump && this.update_interval_sec > 0) {
             this.dump();

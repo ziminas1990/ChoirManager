@@ -5,6 +5,7 @@ import { BaseActivity } from '../activities/base_activity.js';
 import { MainActivity } from '../activities/main.js';
 import { BotAPI } from '../api/telegram.js';
 import { Status, StatusWith } from '../../status.js';
+import { GuestActivity } from '../activities/guest_activity.js';
 
 type Input = {
     what: "message",
@@ -35,7 +36,7 @@ export class Dialog extends Logic {
         public readonly chat_id: number,
     ) {
         super();
-        this.activity = new MainActivity(this);
+        this.activity = user.is_guest() ? new GuestActivity(this) : new MainActivity(this);
     }
 
     private async start(): Promise<Status> {

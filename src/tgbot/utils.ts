@@ -10,3 +10,23 @@ export function unpack_map<K, V, P>(map: PackedMap<K, P>, unpacker: (packed: P) 
         .filter(([_, value]) => value != undefined) as [K, V][];
     return new Map(items);
 }
+
+export function seconds_since(date: Date): number {
+    return (new Date().getTime() - date.getTime()) / 1000;
+}
+
+// Applies the specified 'interval' to the specified 'date' inplace(!). Return 'date'
+// object.
+export function apply_interval(
+    date: Date, interval: { milliseconds?: number; seconds?: number }): Date
+{
+    if (interval.milliseconds) {
+        date.setMilliseconds(date.getMilliseconds() + interval.milliseconds);
+    }
+
+    if (interval.seconds) {
+        date.setSeconds(date.getSeconds() + interval.seconds);
+    }
+
+    return date;
+}

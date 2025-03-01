@@ -9,9 +9,11 @@ export class UserLogic extends Logic {
     private dialog?: Dialog;
 
     private messages_queue: TelegramBot.Message[] = [];
+    private last_activity?: Date;
 
     constructor(public readonly data: User) {
         super();
+        this.last_activity = new Date();
     }
 
     is_guest(): boolean {
@@ -27,6 +29,7 @@ export class UserLogic extends Logic {
     }
 
     on_message(msg: TelegramBot.Message): Status {
+        this.last_activity = new Date();
         if (msg.chat.type !== "private") {
             return Status.fail("Message is not from a private chat");
         }
@@ -35,15 +38,19 @@ export class UserLogic extends Logic {
     }
 
     on_callback(query: TelegramBot.CallbackQuery): Status {
+        this.last_activity = new Date();
         const chat_id = query.message?.chat.id;
         if (!chat_id) {
             return Status.fail("chat_id is undefined");
         }
-
         if (!this.dialog) {
             return Status.fail("dialog is undefined");
         }
         return this.dialog.on_callback(query);
+    }
+
+    get_last_activity() {
+        return this.last_activity;
     }
 
     async proceed(now: Date): Promise<Status> {
