@@ -6,6 +6,7 @@ import { MainActivity } from '../activities/main.js';
 import { BotAPI } from '../api/telegram.js';
 import { Status, StatusWith } from '../../status.js';
 import { GuestActivity } from '../activities/guest_activity.js';
+import assert from 'assert';
 
 type Input = {
     what: "message",
@@ -15,7 +16,7 @@ type Input = {
     callback: TelegramBot.CallbackQuery;
 }
 
-export class Dialog extends Logic {
+export class Dialog extends Logic<void> {
 
     private input_queue: Input[] = [];
 
@@ -35,7 +36,8 @@ export class Dialog extends Logic {
         public readonly user: UserLogic,
         public readonly chat_id: number,
     ) {
-        super();
+        super(100);
+        assert(chat_id);
         this.activity = user.is_guest() ? new GuestActivity(this) : new MainActivity(this);
     }
 
@@ -43,8 +45,8 @@ export class Dialog extends Logic {
         return await this.activity.start();
     }
 
-    async proceed(now: Date): Promise<Status> {
-        const error_prefix = `${this.user.data.tgig} in dialog ${this.chat_id}:`;
+    async proceed_impl(now: Date): Promise<Status> {
+        const error_prefix = `${this.user.data.tgid} in dialog ${this.chat_id}:`;
 
         if (this.activity != undefined) {
             this.activity.proceed(now);
@@ -77,8 +79,15 @@ export class Dialog extends Logic {
     }
 
     async send_message(msg: string): Promise<Status> {
-        await BotAPI.instance().sendMessage(this.chat_id, msg);
-        return Status.ok();
+        if (this.chat_id) {
+            console.log(`Sending to ${this.chat_id}: ${msg}`);
+            await BotAPI.instance().sendMessage(this.chat_id, msg, {
+                parse_mode: "Markdown"
+            });
+            return Status.ok();
+        } else {
+            return Status.fail("Chag id is NOT set")
+        }
     }
 
     static pack(dialog: Dialog) {

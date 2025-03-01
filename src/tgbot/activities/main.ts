@@ -23,11 +23,10 @@ export class MainActivity extends BaseActivity {
 
     async start(): Promise<Status> {
         if (!this.dialog.user.is_guest()) {
-            this.send_welcome();
+            return await this.send_welcome();
         } else {
-            this.send_welcome_to_guest();
+            return await this.send_welcome_to_guest();
         }
-        return Status.ok();
     }
 
     async proceed(now: Date): Promise<Status> {
@@ -63,7 +62,7 @@ export class MainActivity extends BaseActivity {
         return Status.fail(`no child activity for callback: ${query.data}`);
     }
 
-    private send_welcome_to_guest(): void {
+    private async send_welcome_to_guest(): Promise<Status> {
         const keyboard: TelegramBot.InlineKeyboardMarkup = {
             inline_keyboard: [
                 [{ text: "Заполнить анкету", url: "https://forms.gle/zz1hbvCvFypLYupz5" }]
@@ -71,7 +70,7 @@ export class MainActivity extends BaseActivity {
         }
 
         if (seconds_since(this.last_welcome) < 5) {
-            return;
+            return Status.ok();  // not a problem
         }
         this.last_welcome = new Date();
 
@@ -89,13 +88,14 @@ export class MainActivity extends BaseActivity {
                 reply_markup: keyboard,
             }
         );
+        return Status.ok();
     }
 
-    private send_welcome(): void {
+    private async send_welcome(): Promise<Status> {
         const user_name = this.dialog.user!.data.name;
 
         if (seconds_since(this.last_welcome) < 5) {
-            return;
+            return Status.ok();
         }
         this.last_welcome = new Date();
 
@@ -106,6 +106,7 @@ export class MainActivity extends BaseActivity {
                 reply_markup: this.get_keyboard(),
             }
         );
+        return Status.ok();
     }
 
     private on_download_scores(): void {

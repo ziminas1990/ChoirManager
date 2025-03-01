@@ -87,12 +87,16 @@ bot.on("callback_query", (query) => {
 });
 
 async function main() {
-
     console.log("Runnning...");
-    runtime.start(config.runtime_dump_interval_sec);
+    const status = await runtime.start(config.runtime_dump_interval_sec, config.google_cloud_key_file);
+    if (!status.ok()) {
+        console.error(`${status.what()}`);
+        process.exit(1);
+    }
+
     while (true) {
         await runtime.proceed(new Date());
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50));
     }
 }
 

@@ -3,17 +3,26 @@ import { Logic } from './abstracts.js';
 import { Dialog } from './dialog.js';
 import { Database, Role, User } from '../database.js';
 import { Status, StatusWith } from '../../status.js';
+import { DepositsFetcher } from '../fetchers/deposits.js';
+import { DepositsTracker, DepositsTrackerEvent } from './deposits_tracker.js';
+import { DepositActivity } from '../activities/deposit.js';
 
 
-export class UserLogic extends Logic {
+export class UserLogic extends Logic<void> {
     private dialog?: Dialog;
-
     private messages_queue: TelegramBot.Message[] = [];
     private last_activity?: Date;
+    private deposit_tracker?: DepositsTracker;
+    private deposit_activity: DepositActivity
 
-    constructor(public readonly data: User) {
-        super();
+    constructor(public readonly data: User, proceed_interval_ms: number) {
+        super(proceed_interval_ms);
         this.last_activity = new Date();
+        this.deposit_activity = new DepositActivity(this);
+    }
+
+    attach_deposit_fetcher(fetcher: DepositsFetcher): void {
+        this.deposit_tracker = new DepositsTracker(this.data.tgid, fetcher);
     }
 
     is_guest(): boolean {
@@ -53,28 +62,47 @@ export class UserLogic extends Logic {
         return this.last_activity;
     }
 
-    async proceed(now: Date): Promise<Status> {
+    async proceed_impl(now: Date): Promise<Status> {
         const status = await this.proceed_messages_queue();
         if (!status.ok()) {
             return status.wrap("can't proceed messages queue");
         }
-        const proceed_status = this.dialog ? (await this.dialog.proceed(now)) : Status.ok();
-        return proceed_status.wrap("dialog proceed");
+
+        const warnings: Status[] = [];
+
+        if (this.dialog) {
+            const status = await this.dialog.proceed(now);
+            if (!status.ok()) {
+                warnings.push(status.wrap("dialog proceeding"))
+            }
+        }
+
+        if (this.deposit_tracker) {
+            const events = await this.deposit_tracker.proceed(now);
+            if (!events.ok()) {
+                warnings.push(events.wrap("deposit_tracker"));
+            }
+            for (const event of events.value ?? []) {
+                await this.handle_deposit_tracker_event(event);
+            }
+        }
+
+        return Status.ok_and_warnings("dialog proceed", warnings);
     }
 
     static pack(user: UserLogic) {
-        return [user.data.tgig, user.dialog ? Dialog.pack(user.dialog) : undefined] as const;
+        return [user.data.tgid, user.dialog ? Dialog.pack(user.dialog) : undefined] as const;
     }
 
     static unpack(database: Database, packed: ReturnType<typeof UserLogic.pack>)
     : StatusWith<UserLogic> {
-        const [tgig, dialog] = packed;
+        const [tgid, dialog] = packed;
 
-        const user = tgig ? database.get_user_by_tg_id(tgig) : database.get_guest_user();
+        const user = tgid ? database.get_user_by_tg_id(tgid) : database.get_guest_user();
         if (!user) {
-            return StatusWith.fail(`User @${tgig} not found`);
+            return StatusWith.fail(`User @${tgid} not found`);
         }
-        const logic = new UserLogic(user);
+        const logic = new UserLogic(user, 100);
 
         // Load dialogs
         const unpack_dialog_status: StatusWith<Dialog> =
@@ -111,5 +139,9 @@ export class UserLogic extends Logic {
         }
 
         return this.dialog.on_message(msg);
+    }
+
+    private async handle_deposit_tracker_event(event: DepositsTrackerEvent): Promise<Status> {
+        return await this.deposit_activity.on_deposit_event(event)
     }
 }

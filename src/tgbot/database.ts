@@ -16,7 +16,7 @@ export class User {
         public name: string,
         public surname: string,
         public roles: Role[],
-        public tgig: string,
+        public tgid: string,
         public lang: Language
     ) {}
 
@@ -25,7 +25,7 @@ export class User {
     }
 
     static pack(user: User) {
-        return [user.id, user.name, user.surname, user.roles, user.tgig, user.lang] as const;
+        return [user.id, user.name, user.surname, user.roles, user.tgid, user.lang] as const;
     }
 
     static unpack(packed: ReturnType<typeof User.pack>): User {
@@ -43,7 +43,7 @@ export class Database {
 
     public add_user(user: User): void {
         this.users.set(user.id, user);
-        this.tg_users_index.set(user.tgig, user.id);
+        this.tg_users_index.set(user.tgid, user.id);
     }
 
     public get_user_by_tg_id(tg_id: string): User | undefined {
