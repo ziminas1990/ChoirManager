@@ -105,12 +105,15 @@ export class UserLogic extends Logic<void> {
     }
 
     static pack(user: UserLogic) {
-        return [user.data.tgid, user.dialog ? Dialog.pack(user.dialog) : undefined] as const;
+        return {
+            "tgid": user.data.tgid,
+            "dlg": user.dialog ? Dialog.pack(user.dialog) : undefined
+        } as const;
     }
 
     static unpack(database: Database, packed: ReturnType<typeof UserLogic.pack>)
     : StatusWith<UserLogic> {
-        const [tgid, dialog] = packed;
+        const [tgid, dialog] = [packed.tgid, packed.dlg];
 
         const user = tgid ? database.get_user_by_tg_id(tgid) : database.get_guest_user();
         if (!user) {

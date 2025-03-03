@@ -21,12 +21,17 @@ class RuntimeCfg {
     ) {}
 
     static pack(cfg: RuntimeCfg) {
-        return [cfg.filename, cfg.choir_chat_id, cfg.announce_chat_id, cfg.manager_chat_id] as const;
+        return {
+            "cfg": cfg.filename,
+            "chat_id": cfg.choir_chat_id,
+            "announces_chat_id": cfg.announce_chat_id,
+            "managers_chat_id": cfg.manager_chat_id
+         } as const;
     }
 
     static unpack(packed: ReturnType<typeof RuntimeCfg.pack>): RuntimeCfg {
-        const [filename, choir_chat_id, announce_chat_id, manager_chat_id] = packed;
-        return new RuntimeCfg(filename, choir_chat_id, announce_chat_id, manager_chat_id);
+        return new RuntimeCfg(
+            packed.cfg, packed.chat_id, packed.announces_chat_id, packed.managers_chat_id);
     }
 }
 
@@ -259,19 +264,22 @@ export class Runtime {
     }
 
     static pack(runtime: Runtime) {
-        return [RuntimeCfg.pack(runtime.cfg), pack_map(runtime.users, UserLogic.pack)] as const;
+        return {
+            version: "1.0",
+            cfg: RuntimeCfg.pack(runtime.cfg),
+            users: pack_map(runtime.users, UserLogic.pack)
+        } as const;
     }
 
     static unpack(filename: string, database: Database, packed: ReturnType<typeof Runtime.pack>)
     : StatusWith<Runtime>
     {
-        const [cfg, users] = packed;
-        const config = RuntimeCfg.unpack(cfg);
+        const config = RuntimeCfg.unpack(packed.cfg);
         config.filename = filename;
         const runtime = new Runtime(database, config);
 
         const load_users_problems: Status[] = [];
-        runtime.users = unpack_map(users, (packed) => {
+        runtime.users = unpack_map(packed.users, (packed) => {
             const status = UserLogic.unpack(database, packed);
             if (!status.ok()) {
                 load_users_problems.push(status);
