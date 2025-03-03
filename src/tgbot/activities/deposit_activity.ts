@@ -2,16 +2,17 @@ import TelegramBot from "node-telegram-bot-api";
 
 import { Status } from "../../status.js";
 import { Language } from "../database.js";
-import { Deposit, DepositChange } from "../fetchers/deposits.js";
+import { Deposit, DepositChange } from "../fetchers/deposits_fetcher.js";
 import { DepositsTrackerEvent } from "../logic/deposits_tracker.js";
 import { BaseActivity } from "./base_activity.js";
 import { UserLogic } from "../logic/user.js";
+import { Dialog } from "../logic/dialog.js";
 
 
 export class DepositActivity extends BaseActivity {
     private messages: Messages
 
-    constructor(private user: UserLogic)
+    constructor(user: UserLogic)
     {
         super();
         this.messages = new Messages(user.data.lang)
@@ -33,13 +34,14 @@ export class DepositActivity extends BaseActivity {
         throw new Error("Not implemented");
     }
 
-    async on_deposit_event(event: DepositsTrackerEvent): Promise<Status> {
-        console.log(`Deposit event on ${this.user.data.tgid}: ${JSON.stringify(event)}`);
+    async send_deposit_info(info: Deposit, dialog: Dialog): Promise<Status> {
+        return await dialog.send_message(this.messages.deposit_info(info));
+    }
 
-        const dialog = this.user.main_dialog();
-        if (event.what == "deposit_change" && dialog) {
+    async on_deposit_event(event: DepositsTrackerEvent, dialog: Dialog): Promise<Status> {
+        if (event.what == "deposit_change") {
             const message = this.messages.deposit_change(event.deposit, event.changes);
-            await dialog.send_message(message);
+            return await dialog.send_message(message);
         }
         return Status.ok();
     }
@@ -102,12 +104,33 @@ class Messages {
     }
 
     membership_change(date: Date, before: number, after: number): string {
-        const month_idx = date.getMonth();
-        const month = monthes[this.lang][month_idx]
+        const month = monthes[this.lang][date.getMonth()]
 
         return [
-            this.lang == "ru" ? "Членский взнос за " : "Membersheep for " + `${month}:`,
+            this.lang == "ru" ? "Членский взнос за " : "Membership for " + `${month}:`,
             `${before} -> ${after}`
         ].join(" ");
+    }
+
+    deposit_info(deposit: Deposit): string {
+        const lines = [
+            this.lang == "ru" ? "Информация о твоём депозите:" : "You deposit:",
+            "",
+            this.balance(deposit.balance)
+        ];
+
+        const now = new Date();
+        const this_month = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+        const month = monthes[this.lang][this_month.getMonth()];
+        const paid = deposit.membership.get(this_month.getTime()) ?? 0;
+
+        lines.push(this.lang == "ru" ? "Внесено за" : "Paid for" + ` ${month}: ${paid} GEL`)
+
+        if (paid + deposit.balance < 70) {
+            const diff = 70 - (paid + deposit.balance);
+            lines.push("")
+            lines.push(this.lang == "ru" ? "Нужно внести ещё" : "Need to deposit another" + ` ${diff} GEL`)
+        }
+        return lines.join("\n")
     }
 }

@@ -3,5 +3,10 @@
     "runtime_cache_filename": "./config/runtime.json",
     "google_cloud_key_file": "./config/google_cloud_key.json",
     "tgbot_token_file": "./config/tgbot_token",
-    "runtime_dump_interval_sec": 10
+    "runtime_dump_interval_sec": 10,
+    "deposit_tracking": {
+        "google_sheet_id": "1F-ZlOD8ags8A-r40V700qBCbJrXTG07Dbet9wFmWtYc",
+        "fetch_interval_sec": 30,
+        "collect_interval_sec": 60
+    }
 }

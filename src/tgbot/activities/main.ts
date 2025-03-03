@@ -5,10 +5,7 @@ import { BotAPI } from "../api/telegram.js";
 import { DownloadScoresActivity } from "./download_scores.js";
 import { Status } from "../../status.js";
 import { Language } from "../database.js";
-
-function seconds_since(date: Date): number {
-    return (new Date().getTime() - date.getTime()) / 1000;
-}
+import { seconds_since } from "../utils.js";
 
 export class MainActivity extends BaseActivity {
     private messages: Messages;
@@ -22,10 +19,11 @@ export class MainActivity extends BaseActivity {
     }
 
     async start(): Promise<Status> {
-        if (!this.dialog.user.is_guest()) {
+        const user = this.dialog.user;
+        if (!user.is_guest()) {
             return await this.send_welcome();
         } else {
-            return await this.send_welcome_to_guest();
+            return Status.fail(`User ${this.dialog.user.data.tgid} is a guest`);
         }
     }
 
@@ -37,13 +35,20 @@ export class MainActivity extends BaseActivity {
     }
 
     async on_message(msg: TelegramBot.Message): Promise<Status> {
+        const text = msg.text;
+        if (!text) {
+            return Status.ok();
+        }
+
         // First of all check if user hit any of the buttons
-        if (msg.text?.toLocaleLowerCase() === this.messages.again().toLocaleLowerCase()) {
+        if (text === this.messages.again()) {
             this.start();
             return Status.ok();
-        } else if (msg.text?.toLocaleLowerCase() === this.messages.download_scores().toLocaleLowerCase()) {
+        } else if (text === this.messages.download_scores()) {
             this.on_download_scores();
             return Status.ok();
+        } else if (text == this.messages.get_deposit_info()) {
+            return await this.on_deposit_request();
         }
 
         if (this.child_activity && !this.child_activity.done()) {
@@ -60,35 +65,6 @@ export class MainActivity extends BaseActivity {
             return Status.ok();
         }
         return Status.fail(`no child activity for callback: ${query.data}`);
-    }
-
-    private async send_welcome_to_guest(): Promise<Status> {
-        const keyboard: TelegramBot.InlineKeyboardMarkup = {
-            inline_keyboard: [
-                [{ text: "Заполнить анкету", url: "https://forms.gle/zz1hbvCvFypLYupz5" }]
-            ]
-        }
-
-        if (seconds_since(this.last_welcome) < 5) {
-            return Status.ok();  // not a problem
-        }
-        this.last_welcome = new Date();
-
-        const text = [
-            "Привет!",
-            "Рады твоей заинтересованности нашим проектом!",
-            "Если тебе хотелось бы присоединиться к нашему коллективу, заполни анкету" +
-            " нового участника и мы тебе ответим в ближайшее время!"
-        ];
-
-        BotAPI.instance().sendMessage(
-            this.dialog.chat_id,
-            text.join("\n"),
-            {
-                reply_markup: keyboard,
-            }
-        );
-        return Status.ok();
     }
 
     private async send_welcome(): Promise<Status> {
@@ -118,10 +94,15 @@ export class MainActivity extends BaseActivity {
         this.child_activity.start();
     }
 
+    private async on_deposit_request(): Promise<Status> {
+        return this.dialog.user.send_deposit_info()
+    }
+
     private get_keyboard(): TelegramBot.ReplyKeyboardMarkup {
+        const msg = this.messages;
         return {
             keyboard: [
-                [{ text: this.messages.again() }, { text: this.messages.download_scores() }]
+                [{ text: msg.again() }, { text: msg.download_scores() }, { text: msg.get_deposit_info()}]
             ],
             is_persistent: true,
             resize_keyboard: true,
@@ -135,10 +116,10 @@ class Messages {
 
     again(): string {
         switch (this.lang) {
-            case "ru": return "Заново";
+            case "ru": return "🔄";
             case "en":
             default:
-                return "Restart";
+                return "🔄";
         }
     }
 
@@ -148,6 +129,15 @@ class Messages {
             case "en":
             default:
                 return "Download scores";
+        }
+    }
+
+    get_deposit_info(): string {
+        switch (this.lang) {
+            case "ru": return "Мой депозит";
+            case "en":
+            default:
+                return "My deposit";
         }
     }
 

@@ -1,5 +1,6 @@
 import { Status, StatusWith } from "../../status.js";
-import { Deposit, DepositChange, DepositsFetcher } from "../fetchers/deposits.js";
+import { Config } from "../config.js";
+import { Deposit, DepositChange, DepositsFetcher } from "../fetchers/deposits_fetcher.js";
 import { Logic } from "./abstracts.js";
 
 export type DepositsTrackerEvent = {
@@ -15,11 +16,17 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
     private last_change_date: Date | undefined;
     private stashed_deposit: Deposit | undefined;
 
+    private collect_interval_ms = Config.DepositTracker().collect_interval_sec * 1000;
+
     constructor(
         private readonly tgid: string,
         private readonly deposit_fetcher: DepositsFetcher)
     {
         super(1000);
+    }
+
+    get_deposit(): Deposit | undefined {
+        return this.last_deposit;
     }
 
     async proceed_impl(now: Date): Promise<StatusWith<DepositsTrackerEvent[]>> {
@@ -36,7 +43,7 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         if (!changes) {
             // No changes since last fetch but probably we are waiting to send
             // notification about changes made during the last minute.
-            return this.maybe_send_notification(now);
+            return this.maybe_produce_change_event(now);
         }
 
         // Changes are detected but we shouldn't notify user immediatelly. We need to
@@ -49,13 +56,14 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         return Status.ok().with([]);
     }
 
-    private maybe_send_notification(now: Date): StatusWith<DepositsTrackerEvent[]> {
+    private maybe_produce_change_event(now: Date): StatusWith<DepositsTrackerEvent[]> {
+
         if (!this.stashed_deposit || !this.last_change_date || !this.last_deposit) {
             return Status.ok().with([]);
         }
 
         const time_since_last_change = now.getTime() - this.last_change_date.getTime();
-        if (time_since_last_change < 10 * 1000) {
+        if (time_since_last_change < this.collect_interval_ms) {
             return Status.ok().with([]);
         }
 

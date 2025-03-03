@@ -8,7 +8,8 @@ import { UserLogic } from "./logic/user.js";
 import { apply_interval, pack_map, unpack_map } from "./utils.js";
 import { AnnounceTranslator } from "./activities/translator.js";
 import { AdminPanel } from "./activities/admin_panel.js";
-import { DepositsFetcher } from "./fetchers/deposits.js";
+import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
+import { Config } from "./config.js";
 
 
 class RuntimeCfg {
@@ -44,7 +45,7 @@ export class Runtime {
     private update_interval_sec: number = 0;
     private translator: AnnounceTranslator;
     private admin_panel: AdminPanel;
-    private deposits_fetcher: DepositsFetcher;
+    private deposits_fetcher?: DepositsFetcher;
 
     private next_users_proceed: Date;
     private next_guests_proceed: Date;
@@ -64,15 +65,11 @@ export class Runtime {
     {
         this.translator = new AnnounceTranslator(this);
         this.admin_panel = new AdminPanel(this);
-        this.deposits_fetcher = new DepositsFetcher();
         this.next_users_proceed = new Date();
         this.next_guests_proceed = new Date();
     }
 
-    async start(
-        update_interval_sec: number = 60,
-        google_cloud_key_file: string
-    ): Promise<Status> {
+    async start(): Promise<Status> {
         const admin_panel_status = await this.admin_panel.start();
         if (!admin_panel_status.ok()) {
             return admin_panel_status.wrap("Failed to start admin panel");
@@ -83,18 +80,24 @@ export class Runtime {
             return translator_status.wrap("Failed to start translator");
         }
 
-        const deposits_status = await this.deposits_fetcher.start(google_cloud_key_file);
-        if (!deposits_status.ok()) {
-            return deposits_status.wrap("Failed to start deposits fetcher");
+        if (Config.HasDepoditTracker()) {
+            this.deposits_fetcher = new DepositsFetcher();
+            const deposits_status = await this.deposits_fetcher.start(
+                Config.data.google_cloud_key_file);
+            if (!deposits_status.ok()) {
+                return deposits_status.wrap("Failed to start deposits fetcher");
+            }
         }
 
-        this.update_interval_sec = update_interval_sec;
+        this.update_interval_sec = Config.data.runtime_dump_interval_sec;
         if (this.update_interval_sec > 0) {
             this.next_dump = new Date();
         }
 
-        for (const user of this.users.values()) {
-            user.attach_deposit_fetcher(this.deposits_fetcher);
+        if (this.deposits_fetcher) {
+            for (const user of this.users.values()) {
+                user.attach_deposit_fetcher(this.deposits_fetcher);
+            }
         }
 
         return Status.ok();
@@ -190,9 +193,11 @@ export class Runtime {
     }
 
     async proceed(now: Date): Promise<Status> {
-        const deposits_status = await this.deposits_fetcher.proceed();
-        if (!deposits_status.ok()) {
-            console.error(deposits_status.what());
+        if (this.deposits_fetcher) {
+            const deposits_status = await this.deposits_fetcher.proceed();
+            if (!deposits_status.ok()) {
+                console.error(deposits_status.what());
+            }
         }
 
         const user_proceeds: Promise<Status>[] = [];

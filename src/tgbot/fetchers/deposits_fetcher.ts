@@ -1,14 +1,37 @@
 import * as fs from 'fs';
 import { Auth, google, sheets_v4 } from 'googleapis';
 import { Status, StatusWith } from '../../status.js';
+import { Config } from '../config.js';
 
 // Assuming the date format is DD.MM.YY
-function parse_date(date: string): Date {
+function try_parse_date(date: string): Date | undefined {
     const parts = date.split('.');
+    if (parts.length < 3) {
+        return undefined;
+    }
+
     const day = parseInt(parts[0], 10);
     const month = parseInt(parts[1], 10) - 1; // Months are zero-indexed in JS
-    const year = parseInt(parts[2], 10); // Assuming the year is in the 2000s
-    const date_js = new Date(year, month, day);
+    let   year = parseInt(parts[2], 10); // Assuming the year is in the 2000s
+
+    // Check if parts are valid numbers
+    if (isNaN(day) || isNaN(month) || isNaN(year)) {
+        return undefined;
+    }
+
+    // Check if date is valid
+    if (day < 1 || day > 31 || month < 0 || month > 11 || year < 0) {
+        return undefined;
+    }
+    if (year < 100) {
+        year += 2000;
+    }
+
+    const date_js = new Date(Date.UTC(year, month, day));
+    // Check if date is valid (handles cases like 31.04.YY)
+    if (isNaN(date_js.getTime())) {
+        return undefined;
+    }
     return date_js;
 }
 
@@ -35,9 +58,9 @@ export class Deposit {
             changes.balance = [prev.balance, next.balance];
         }
 
-        const dates: Set<number> = new Set();
-        [...prev.membership.keys(), ...next.membership.keys()].forEach((date) => dates.add(date));
-        for (const date of dates) {
+        const last_three_month = [...next.membership.keys()].sort((a, b) => b - a).slice(0, 3);
+
+        for (const date of last_three_month) {
             const prev_amount = prev.membership.get(date) ?? 0;
             const next_amount = next.membership.get(date) ?? 0;
             if (prev_amount !== next_amount) {
@@ -51,26 +74,94 @@ export class Deposit {
     }
 }
 
-function try_parse_row(row: string[], months: Date[]): Deposit | undefined {
-    const [tgid, chorister, credit_str, debit_str, ...membership] = row;
+type TableColumns = {
+    tgid: number,
+    chorister: number,
+    credit: number,
+    debit: number,
+    months: Map<number, number> // timestamp -> column index
+}
+
+function try_parse_header(header: string[]): StatusWith<TableColumns> {
+    const columns = header.map(h => h.toLowerCase().trim());
+
+    if (columns.length < 5) { // minimum: tgid, chorister, credit, debit, and at least 1 month
+        return StatusWith.fail("Header must contain at least 5 columns");
+    }
+
+    const info: Partial<TableColumns> = {}
+    const months = new Map<number, number>();
+
+    columns.forEach((name, idx) => {
+        switch(name) {
+            case "tgid":
+                info.tgid = idx;
+                break;
+            case "chorister":
+                info.chorister = idx;
+                break;
+            case "credit":
+                info.credit = idx;
+                break;
+            case "debit":
+                info.debit = idx;
+                break;
+            case "":
+                break;  // ignoring the column
+            default: {
+                const month = try_parse_date(name);
+                if (month) {
+                    months.set(month.getTime(), idx);
+                }
+            }
+        }
+    })
+
+    if (info.tgid === undefined) {
+        return StatusWith.fail("No 'tgid' column found");
+    }
+    if (info.chorister === undefined) {
+        return StatusWith.fail("No 'chorister' column found");
+    }
+    if (info.credit === undefined) {
+        return StatusWith.fail("No 'credit' column found");
+    }
+    if (info.debit === undefined) {
+        return StatusWith.fail("No 'debit' column found");
+    }
+    if (months.size === 0) {
+        return StatusWith.fail("No valid month columns found");
+    }
+
+    return StatusWith.ok().with({
+        tgid: info.tgid,
+        chorister: info.chorister,
+        credit: info.credit,
+        debit: info.debit,
+        months: months
+    });
+}
+
+function try_parse_row(row: string[], columns: TableColumns): Deposit | undefined {
+    const tgid = row[columns.tgid];
     if (!tgid || tgid.length === 0) {
         return undefined;
     }
 
-    const credit  = credit_str ? Math.abs(parseInt(credit_str)) : 0;
-    const debit   = debit_str ? parseInt(debit_str) : 0;
+    const chorister = row[columns.chorister];
+    const credit_str = row[columns.credit];
+    const debit_str = row[columns.debit];
+
+    const credit = credit_str ? Math.abs(parseInt(credit_str)) : 0;
+    const debit = debit_str ? parseInt(debit_str) : 0;
     const balance = debit - credit;
 
     const membership_map = new Map<number, number>();
-    membership.forEach((amount, month_idx) => {
-        if (month_idx >= months.length) {
-            return;
-        }
-        const date = months[month_idx];
-        if (date) {
-            membership_map.set(date.getTime(), amount ? parseInt(amount) : 0);
-        }
-    });
+    for (const [date, col_idx] of columns.months) {
+        const amount = row[col_idx] ?? "0";
+        membership_map.set(date, parseInt(amount) || 0);
+    }
+
     return {
         tgid,
         chorister,
@@ -78,23 +169,6 @@ function try_parse_row(row: string[], months: Date[]): Deposit | undefined {
         membership: membership_map,
         last_fetch_date: new Date(),
     };
-}
-
-function check_header(header: string[]): Status {
-    const [tgid, chorister, credit, debit] = header;
-    if (tgid.toLowerCase() !== "tgid") {
-        return Status.fail("First column must be 'Tgid'");
-    }
-    if (chorister.toLowerCase() !== "chorister") {
-        return Status.fail("Second column must be 'chorister'");
-    }
-    if (credit.toLowerCase() !== "credit") {
-        return Status.fail("Third column must be 'Credit'");
-    }
-    if (debit.toLowerCase() !== "debit") {
-        return Status.fail("Fourth column must be 'Debit'");
-    }
-    return Status.ok();
 }
 
 export class DepositsFetcher {
@@ -129,27 +203,24 @@ export class DepositsFetcher {
         }
         this.last_fetch_date = new Date();
 
-        console.log("Refetching deposits");
-
-        const sheet_id = "1F-ZlOD8ags8A-r40V700qBCbJrXTG07Dbet9wFmWtYc";
+        const sheet_id = Config.DepositTracker().google_sheet_id;
         const sheet = await this.sheets!.spreadsheets.values.get({
             spreadsheetId: sheet_id,
-            range: "A:G"
+            range: "A:K"
         });
         if (!sheet.data.values) {
             return Status.fail("can't fetch sheet data");
         }
 
         const header = sheet.data.values[0];
-        const header_status = check_header(header);
+        const header_status = try_parse_header(header);
         if (!header_status.ok()) {
             return header_status.wrap("invalid header");
         }
+        const columns = header_status.value!;
 
-        const [, , , , ...months] = header;
-        const months_dates = months.map(parse_date);
-
-        const deposits = sheet.data.values.slice(1).map((row) => try_parse_row(row, months_dates));
+        const deposits = sheet.data.values.slice(1)
+            .map(row => try_parse_row(row, columns));
 
         deposits.forEach((deposit) => {
             if (deposit && deposit.tgid) {

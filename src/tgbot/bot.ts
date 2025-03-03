@@ -1,43 +1,27 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Status, StatusWith } from '../status.js';
+import { Status } from '../status.js';
 import { BotAPI } from './api/telegram.js';
 import { GoogleTranslate } from './api/google_translate.js';
 import { load_database_from_file } from './database_loader.js';
 import { Runtime } from './runtime.js';
+import { Config } from './config.js';
 
-type Config = {
-    database_filename: string;
-    runtime_cache_filename: string;
-    google_cloud_key_file: string;
-    tgbot_token_file: string;
-    runtime_dump_interval_sec: number;
-}
-
-function load_configuration(): StatusWith<Config> {
-    const config_path = path.join(process.cwd(), 'config', 'botcfg.json');
-    try {
-        const raw = fs.readFileSync(config_path, 'utf-8');
-        const config = JSON.parse(raw) as Config;
-        return StatusWith.ok().with(config);
-    } catch (error) {
-        if (error instanceof Error) {
-            return StatusWith.fail(error.message);
-        }
-        return StatusWith.fail(`${error}`);
+// Loading configuration
+{
+    const cfgfile = path.join(process.cwd(), 'config', 'botcfg.json');
+    const status = Config.Load(cfgfile);
+    if (!status.done()) {
+        console.error(`Failed to load configuration from ${cfgfile}: ${status.what()}`);
+        process.exit(1);
+    }
+    if (status.has_warnings()) {
+        console.warn("Warnings while loading configuration:", status.what());
     }
 }
 
-const config_status = load_configuration();
-if (!config_status.done() || config_status.value == undefined) {
-    console.error('Failed to load configuration:', config_status.what());
-    process.exit(1);
-}
-
-const config = config_status.value!;
-
 // Load database
-const database_status = load_database_from_file(config.database_filename);
+const database_status = load_database_from_file(Config.data.database_filename);
 if (!database_status.done() || database_status.value == undefined) {
     console.error('Failed to load database:', database_status.what());
     process.exit(1);
@@ -45,7 +29,7 @@ if (!database_status.done() || database_status.value == undefined) {
 const database = database_status.value;
 
 // Loading runtime data
-const runtime_status = Runtime.Load(config.runtime_cache_filename, database);
+const runtime_status = Runtime.Load(Config.data.runtime_cache_filename, database);
 if (!runtime_status.done() || runtime_status.value == undefined) {
     console.error('Failed to load runtime:', runtime_status.what());
     process.exit(1);
@@ -56,14 +40,14 @@ if (!runtime_status.ok()) {
 const runtime = runtime_status.value;
 
 // Initialize APIs
-const tg_token = fs.readFileSync(config.tgbot_token_file, 'utf-8');
+const tg_token = fs.readFileSync(Config.data.tgbot_token_file, 'utf-8');
 if (!tg_token) {
     console.error('Error: Token not found in tgbot_token');
     process.exit(1);
 }
 
 BotAPI.init(tg_token.split('\n')[0].trim());
-GoogleTranslate.init(config.google_cloud_key_file);
+GoogleTranslate.init(Config.data.google_cloud_key_file);
 
 // Configure bot
 const bot = BotAPI.instance();
@@ -78,7 +62,6 @@ bot.on("message", async (msg) => {
     }
 });
 
-// Обработка выбора файла
 bot.on("callback_query", (query) => {
     const status = runtime.handle_callback(query);
     if (!status.ok()) {
@@ -88,7 +71,7 @@ bot.on("callback_query", (query) => {
 
 async function main() {
     console.log("Runnning...");
-    const status = await runtime.start(config.runtime_dump_interval_sec, config.google_cloud_key_file);
+    const status = await runtime.start();
     if (!status.ok()) {
         console.error(`${status.what()}`);
         process.exit(1);

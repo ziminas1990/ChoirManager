@@ -3,9 +3,9 @@ import { Logic } from './abstracts.js';
 import { Dialog } from './dialog.js';
 import { Database, Role, User } from '../database.js';
 import { Status, StatusWith } from '../../status.js';
-import { DepositsFetcher } from '../fetchers/deposits.js';
+import { DepositsFetcher } from '../fetchers/deposits_fetcher.js';
 import { DepositsTracker, DepositsTrackerEvent } from './deposits_tracker.js';
-import { DepositActivity } from '../activities/deposit.js';
+import { DepositActivity } from '../activities/deposit_activity.js';
 
 
 export class UserLogic extends Logic<void> {
@@ -60,6 +60,20 @@ export class UserLogic extends Logic<void> {
 
     get_last_activity() {
         return this.last_activity;
+    }
+
+    async send_deposit_info(): Promise<Status> {
+        if (!this.dialog) {
+            return Status.fail("no active dialog");
+        }
+
+        const deposit_info = this.deposit_tracker?.get_deposit()
+        if (deposit_info) {
+            return await this.deposit_activity.send_deposit_info(deposit_info, this.dialog);
+        } else {
+            this.dialog?.send_message("Error: no deposit info available")
+            return Status.fail("no deposit info available");
+        }
     }
 
     async proceed_impl(now: Date): Promise<Status> {
@@ -142,6 +156,9 @@ export class UserLogic extends Logic<void> {
     }
 
     private async handle_deposit_tracker_event(event: DepositsTrackerEvent): Promise<Status> {
-        return await this.deposit_activity.on_deposit_event(event)
+        if (!this.dialog) {
+            return Status.fail("no active dialog");
+        }
+        return await this.deposit_activity.on_deposit_event(event, this.dialog)
     }
 }

@@ -21,7 +21,7 @@ export class Status {
         return status;
     }
 
-    static warning(details: string, warnings: Status[]): Status {
+    static warning(details: string, warnings: Status[] = []): Status {
         const status = new Status();
         status.warn = { details, nested: warnings };
         return status;
@@ -32,6 +32,8 @@ export class Status {
 
     // Check if no errors occured and no warnings occured
     public ok(): boolean { return this.error == undefined && this.warn == undefined; }
+
+    public has_warnings(): boolean { return this.warn != undefined; }
 
     public wrap(operation: string): Status {
         if (this.error) {
