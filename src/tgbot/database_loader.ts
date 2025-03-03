@@ -15,12 +15,12 @@ let next_user_id = 1;
 
 const globals = {
     next_user_id: 1,
-    valid_roles: new Map(Object.values(Role).map((v) => [v.toString(), v])),
+    valid_roles: new Map(Object.values(Role).map((v) => [v.toString().toLowerCase(), v])),
     valid_langs: ["ru", "en"],
 }
 
 function read_role(role: string): StatusWith<Role> {
-    if (!globals.valid_roles.has(role)) {
+    if (!globals.valid_roles.has(role.toLowerCase())) {
         return StatusWith.fail(`Invalid role: ${role}`);
     }
     return StatusWith.ok().with(globals.valid_roles.get(role)!);

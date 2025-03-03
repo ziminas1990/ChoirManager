@@ -81,9 +81,7 @@ export class Dialog extends Logic<void> {
     async send_message(msg: string): Promise<Status> {
         if (this.chat_id) {
             console.log(`Sending to ${this.chat_id}: ${msg}`);
-            await BotAPI.instance().sendMessage(this.chat_id, msg, {
-                parse_mode: "Markdown"
-            });
+            await BotAPI.instance().sendMessage(this.chat_id, msg);
             return Status.ok();
         } else {
             return Status.fail("Chag id is NOT set")

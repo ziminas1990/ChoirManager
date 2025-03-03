@@ -10,12 +10,20 @@ import { Dialog } from "../logic/dialog.js";
 
 
 export class DepositActivity extends BaseActivity {
+
+    // To duplicate all notifications to them
+    static accountants: UserLogic[] = []
+
     private messages: Messages
 
     constructor(user: UserLogic)
     {
         super();
         this.messages = new Messages(user.data.lang)
+    }
+
+    static add_accountant(accountant: UserLogic) {
+        this.accountants.push(accountant);
     }
 
     async proceed(_: Date): Promise<Status> {
@@ -41,9 +49,22 @@ export class DepositActivity extends BaseActivity {
     async on_deposit_event(event: DepositsTrackerEvent, dialog: Dialog): Promise<Status> {
         if (event.what == "deposit_change") {
             const message = this.messages.deposit_change(event.deposit, event.changes);
-            return await dialog.send_message(message);
+            const status = await dialog.send_message(message);
+            await this.notify_accountants(dialog, message);
+            return status;
         }
         return Status.ok();
+    }
+
+    async notify_accountants(user_dialog: Dialog, message: string) {
+        const who = user_dialog.user.data;
+        for (const accountant of DepositActivity.accountants) {
+            const dialog = accountant.main_dialog();
+            if (dialog) {
+                await dialog.send_message(
+                    `Notification for ${who.name} ${who.surname} (@${who.tgid}):\n\n${message}`);
+            }
+        }
     }
 }
 
@@ -59,7 +80,7 @@ class Messages {
 
     deposit_change(deposit: Deposit, change: DepositChange): string {
         const lines: string[] = [];
-        lines.push("**" + this.deposit_changes_test() + "**");
+        lines.push(this.deposit_changes_test());
         lines.push("");
 
         if (change.balance) {
@@ -72,6 +93,9 @@ class Messages {
             const [date, before, after] = membership_change;
             lines.push(this.membership_change(date, before, after));
         }
+
+        lines.push("");
+        lines.push(this.waiting_membership(deposit));
 
         return lines.join("\n")
     }
@@ -98,7 +122,7 @@ class Messages {
 
         return [
             this.lang == "ru" ? "Средств на депозите:" : "Funds on deposit:",
-            `${change[0]} -> **${change[1]}**`,
+            `${change[0]} -> ${change[1]}`,
             `(${diff_str})`
         ].join(" ");
     }
@@ -125,12 +149,33 @@ class Messages {
         const paid = deposit.membership.get(this_month.getTime()) ?? 0;
 
         lines.push(this.lang == "ru" ? "Внесено за" : "Paid for" + ` ${month}: ${paid} GEL`)
-
-        if (paid + deposit.balance < 70) {
-            const diff = 70 - (paid + deposit.balance);
-            lines.push("")
-            lines.push(this.lang == "ru" ? "Нужно внести ещё" : "Need to deposit another" + ` ${diff} GEL`)
-        }
+        lines.push("")
+        lines.push(this.waiting_membership(deposit));
         return lines.join("\n")
+    }
+
+    waiting_membership(deposit: Deposit): string {
+        const now = new Date();
+        const this_month = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+        const month = monthes[this.lang][this_month.getMonth()];
+        const paid = deposit.membership.get(this_month.getTime()) ?? 0;
+
+        const total = paid + deposit.balance;
+
+        if (total < 70) {
+            const diff = 70 - total;
+            if (this.lang == "ru") {
+                return `За ${month} нужно внести ещё ${diff} GEL`;
+            } else {
+                return `You are expected to pay another ${diff} GEL for ${month}`;
+            }
+        }
+
+        if (this.lang == "ru") {
+            return `За ${month} ничего платить не нужно`;
+        } else {
+            return `Membership fee for ${month} is paid `;
+        }
+
     }
 }

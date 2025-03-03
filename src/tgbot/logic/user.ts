@@ -19,6 +19,10 @@ export class UserLogic extends Logic<void> {
         super(proceed_interval_ms);
         this.last_activity = new Date();
         this.deposit_activity = new DepositActivity(this);
+
+        if (this.is_accountant()) {
+            DepositActivity.add_accountant(this);
+        }
     }
 
     attach_deposit_fetcher(fetcher: DepositsFetcher): void {
@@ -31,6 +35,14 @@ export class UserLogic extends Logic<void> {
 
     is_admin(): boolean {
         return this.data.is(Role.Admin);
+    }
+
+    is_accountant(): boolean {
+        return this.data.is(Role.Accountant)
+    }
+
+    is_member(): boolean {
+        return this.data.is(Role.Chorister) || this.data.is(Role.Conductor);
     }
 
     main_dialog(): Dialog | undefined {

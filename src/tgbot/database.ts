@@ -5,6 +5,7 @@ export enum Role {
     Manager = "manager",
     Admin = "admin",
     Guest = "guest",
+    Accountant = "accountant",
     ExChorister = "ex-chorister",
 }
 
