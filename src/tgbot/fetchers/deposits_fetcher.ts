@@ -196,7 +196,7 @@ export class DepositsFetcher {
 
     async proceed(): Promise<Status> {
         const now_ms            = new Date().getTime();
-        const fetch_interval_ms = 10 * 1000;
+        const fetch_interval_ms = Config.DepositTracker().fetch_interval_sec * 1000;
 
         if (this.last_fetch_date && now_ms - this.last_fetch_date.getTime() < fetch_interval_ms) {
             return Status.ok().with(this.choristers);

@@ -100,10 +100,8 @@ export class Runtime {
             this.next_dump = new Date();
         }
 
-        if (this.deposits_fetcher) {
-            for (const user of this.users.values()) {
-                user.attach_deposit_fetcher(this.deposits_fetcher);
-            }
+        for (const user of this.users.values()) {
+            this.on_user_added(user);
         }
 
         return Status.ok();
@@ -168,6 +166,7 @@ export class Runtime {
             if (!user_logic) {
                 user_logic = new UserLogic(user, 100);
                 this.users.set(user.id, user_logic);
+                this.on_user_added(user_logic);
             }
             return user_logic;
         }
@@ -181,6 +180,7 @@ export class Runtime {
                 new User(0, "guest", "", [Role.Guest], tg_id, "ru"),
                 500);
             this.guest_users.set(tg_id, user);
+            this.on_user_added(user);
         }
         return user;
     }
@@ -282,6 +282,17 @@ export class Runtime {
 
         return Status.ok_and_warnings("loading users", load_users_problems)
                      .with(runtime);
+    }
+
+    private on_user_added(user: UserLogic) {
+        if (user.is_guest()) {
+            return;
+        }
+
+        if (this.deposits_fetcher) {
+            console.log("attaching deposit fetcher to", user.data.tgid);
+            user.attach_deposit_fetcher(this.deposits_fetcher);
+        }
     }
 }
 

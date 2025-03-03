@@ -95,7 +95,7 @@ export class MainActivity extends BaseActivity {
     }
 
     private async on_deposit_request(): Promise<Status> {
-        return this.dialog.user.send_deposit_info()
+        return await this.dialog.user.send_deposit_info()
     }
 
     private get_keyboard(): TelegramBot.ReplyKeyboardMarkup {

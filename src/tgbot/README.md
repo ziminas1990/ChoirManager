@@ -49,7 +49,7 @@ docker run -ti --network=host -v $(pwd)/config:/mnt/config \
 
 For local run:
 ```bash
-docker run -ti --network=host -v $(pwd)/config:/mnt/config --name ursa-major-agent ziminas1990/ursa-major-agent:latest
+docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config --name ursa-major-agent ziminas1990/ursa-major-agent:latest
 ```
 
 ## Things to be done:
