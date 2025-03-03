@@ -51,3 +51,11 @@ For local run:
 ```bash
 docker run -ti --network=host -v $(pwd)/config:/mnt/config --name ursa-major-agent ziminas1990/ursa-major-agent:latest
 ```
+
+## Things to be done:
+* reload config with users by admin's request
+* sending runtime.cfg backup to admin by request
+* ignore all messages, received during the startup
+* figure out how to enable valid markdown support in messages
+* notifications about new applications
+* notifications about new feedback
