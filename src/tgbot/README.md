@@ -41,7 +41,7 @@ touch ./config/google_cloud_key.json
 touch ./config/tgbot_token
 # Update local image (optional)
 docker pull ziminas1990/ursa-major-agent:latest
-# Add botcfg
+# Run the bot
 docker run -ti --network=host -v $(pwd)/config:/mnt/config \
        -d --name ursa-major-agent --restart unless-stopped \
        ziminas1990/ursa-major-agent:latest

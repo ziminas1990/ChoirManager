@@ -113,7 +113,7 @@ class Messages {
     }
 
     balance(amount: number): string {
-        return this.lang == "ru" ? "Средств на депозите:" : "Funds on deposit:" + ` ${amount} GEL`;
+        return (this.lang == "ru" ? "Средств на депозите:" : "Funds on deposit:") + ` ${amount} GEL`;
     }
 
     balance_changed(change: [number, number]): string {
@@ -131,8 +131,8 @@ class Messages {
         const month = monthes[this.lang][date.getMonth()]
 
         return [
-            this.lang == "ru" ? "Членский взнос за " : "Membership for " + `${month}:`,
-            `${before} -> ${after}`
+            this.lang == "ru" ? "Членский взнос за" : "Membership for",
+            `${month}: ${before} -> ${after}`
         ].join(" ");
     }
 
@@ -148,7 +148,7 @@ class Messages {
         const month = monthes[this.lang][this_month.getMonth()];
         const paid = deposit.membership.get(this_month.getTime()) ?? 0;
 
-        lines.push(this.lang == "ru" ? "Внесено за" : "Paid for" + ` ${month}: ${paid} GEL`)
+        lines.push((this.lang == "ru" ? "Внесено за" : "Paid for") + ` ${month}: ${paid} GEL`)
         lines.push("")
         lines.push(this.waiting_membership(deposit));
         return lines.join("\n")
