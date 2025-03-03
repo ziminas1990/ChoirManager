@@ -5,11 +5,12 @@ import crypto from "crypto";
 import { Status, StatusWith } from "../status.js";
 import { Database, Role, User } from "./database.js";
 import { UserLogic } from "./logic/user.js";
-import { apply_interval, pack_map, unpack_map } from "./utils.js";
+import { pack_map, unpack_map } from "./utils.js";
 import { AnnounceTranslator } from "./activities/translator.js";
 import { AdminPanel } from "./activities/admin_panel.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Config } from "./config.js";
+import { Proceeder } from "./logic/abstracts.js";
 
 
 class RuntimeCfg {
@@ -52,10 +53,12 @@ export class Runtime {
     private admin_panel: AdminPanel;
     private deposits_fetcher?: DepositsFetcher;
 
-    private next_users_proceed: Date;
-    private next_guests_proceed: Date;
-
     private runtime_hash?: string;
+
+    // We need a separate proceeder for each user to guarantee that all users will
+    // be proceeded independently, so that if some user stuck in it's proceed() due to
+    // some lokng operation, it won't affect another users
+    private user_proceeders: Map<UserLogic, Proceeder<void>> = new Map();
 
     private last_backup?: {
         hash: string;
@@ -70,8 +73,6 @@ export class Runtime {
     {
         this.translator = new AnnounceTranslator(this);
         this.admin_panel = new AdminPanel(this);
-        this.next_users_proceed = new Date();
-        this.next_guests_proceed = new Date();
     }
 
     async start(): Promise<Status> {
@@ -205,22 +206,14 @@ export class Runtime {
             }
         }
 
-        const user_proceeds: Promise<Status>[] = [];
-        if (this.next_users_proceed < now) {
-            for (const user of this.users.values()) {
-                user_proceeds.push(user.proceed(now));
+        // Check that all users have a related proceeders
+        for (const user of [...this.users.values(), ...this.guest_users.values()]) {
+            if (this.user_proceeders.has(user)) {
+                continue;
             }
-            await Promise.all(user_proceeds);
-            apply_interval(this.next_users_proceed, { milliseconds: 100})
-        }
-
-        const guests_proceeds: Promise<Status>[] = [];
-        if (this.next_guests_proceed < now) {
-            for (const guest of this.guest_users.values()) {
-                guests_proceeds.push(guest.proceed(now));
-            }
-            await Promise.all(guests_proceeds);
-            apply_interval(this.next_guests_proceed, { milliseconds: 500})
+            const proceeder = new Proceeder(user, 50);
+            proceeder.run();
+            this.user_proceeders.set(user, proceeder);
         }
 
         if (now >= this.next_dump && this.update_interval_sec > 0) {
