@@ -61,3 +61,4 @@ docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config --name ursa-majo
 * notifications about new feedback
 * use webpack to pack bot into a single js-file and publish docker image with this single file
 * implement good logging
+* get rid of users config

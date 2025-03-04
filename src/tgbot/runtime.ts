@@ -246,12 +246,7 @@ export class Runtime {
             const time_diff = new Date().getTime() - this.last_backup.time.getTime();
             // Do backup once a day
             if (time_diff > 24 * 60 * 60 * 1000) {
-                console.log("Sending runtime backup, hash:", runtime_hash);
-                this.last_backup = {
-                    hash: runtime_hash,
-                    time: new Date(),
-                };
-                this.admin_panel.send_file_to_admin(this.cfg.filename, "application/json");
+                this.send_backup_to_admins();
             }
         }
     }
@@ -295,6 +290,18 @@ export class Runtime {
         // Notify admins:
         this.admin_panel.send_notification(
             `User ${user.data.name} ${user.data.surname} (@${user.data.tgid}) has joined`);
+    }
+
+    private async send_backup_to_admins(): Promise<void> {
+        const runtime_data = JSON.stringify(Runtime.pack(this));
+        const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
+
+        console.log("Sending runtime backup, hash:", runtime_hash);
+        this.last_backup = {
+            hash: runtime_hash,
+            time: new Date(),
+        };
+        this.admin_panel.send_runtime_backup_to_admins();
     }
 }
 

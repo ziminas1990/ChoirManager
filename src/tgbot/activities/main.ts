@@ -40,6 +40,11 @@ export class MainActivity extends BaseActivity {
             return Status.ok();
         }
 
+        // Check for service messages
+        if (text.startsWith("/")) {
+            return this.on_service_message(text);
+        }
+
         // First of all check if user hit any of the buttons
         if (text === this.messages.again()) {
             this.start();
@@ -96,6 +101,13 @@ export class MainActivity extends BaseActivity {
 
     private async on_deposit_request(): Promise<Status> {
         return await this.dialog.user.send_deposit_info()
+    }
+
+    private async on_service_message(command: string): Promise<Status> {
+        if (command == "/backup") {
+            return this.dialog.user.send_runtime_backup();
+        }
+        return Status.ok();
     }
 
     private get_keyboard(): TelegramBot.ReplyKeyboardMarkup {

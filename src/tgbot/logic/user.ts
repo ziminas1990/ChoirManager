@@ -1,4 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
+import fs from "fs";
+
 import { Logic } from './abstracts.js';
 import { Dialog } from './dialog.js';
 import { Database, Role, User } from '../database.js';
@@ -6,6 +8,8 @@ import { Status, StatusWith } from '../../status.js';
 import { DepositsFetcher } from '../fetchers/deposits_fetcher.js';
 import { DepositsTracker, DepositsTrackerEvent } from './deposits_tracker.js';
 import { DepositActivity } from '../activities/deposit_activity.js';
+import { BotAPI } from '../api/telegram.js';
+import { Config } from '../config.js';
 
 
 export class UserLogic extends Logic<void> {
@@ -114,6 +118,25 @@ export class UserLogic extends Logic<void> {
         }
 
         return Status.ok_and_warnings("dialog proceed", warnings);
+    }
+
+    async send_runtime_backup(): Promise<Status> {
+        if (!this.dialog) {
+            return Status.fail("no active dialog");
+        }
+        if (!this.is_admin()) {
+            return Status.fail("not an admin");
+        }
+
+        BotAPI.instance().sendDocument(
+            this.dialog.chat_id,
+            fs.createReadStream(Config.data.runtime_cache_filename),
+            undefined,
+            {
+                contentType: "application/json",
+            }
+        );
+        return Status.ok();
     }
 
     static pack(user: UserLogic) {

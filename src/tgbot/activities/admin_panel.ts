@@ -1,8 +1,6 @@
-import fs from "fs";
-
+import TelegramBot from "node-telegram-bot-api";
 import { Status } from "../../status.js";
 import { Runtime } from "../runtime.js";
-import TelegramBot from "node-telegram-bot-api";
 import { BotAPI } from "../api/telegram.js";
 
 export class AdminPanel {
@@ -25,28 +23,16 @@ export class AdminPanel {
         return Status.fail("unexpected message");
     }
 
-    send_file_to_admin(filename: string, content_type: string): Status {
+    async send_runtime_backup_to_admins(): Promise<Status> {
         const admins = [...this.runtime.all_users()].filter(logic => logic.is_admin());
         const problems: Status[] = [];
         for (const admin of admins) {
-            const dialog = admin.main_dialog();
-            if (!dialog) {
-                continue;
-            }
-            try {
-                BotAPI.instance().sendDocument(
-                    dialog.chat_id,
-                    fs.createReadStream(filename),
-                    undefined,
-                    {
-                    contentType: content_type,
-                    }
-                );
-            } catch (err) {
-                problems.push(Status.fail(`failed to send file to admin ${dialog.chat_id}: ${err}`));
+            const status = await admin.send_runtime_backup();
+            if (!status.ok()) {
+                problems.push(status);
             }
         }
-        return Status.ok_and_warnings("send file to admins", problems);
+        return Status.ok_and_warnings("send runtime backup to admins", problems);
     }
 
     send_notification(notification: string): Status {
@@ -58,7 +44,7 @@ export class AdminPanel {
                 dialog.send_message(notification);
             }
         }
-        return Status.ok_and_warnings("send file to admins", problems);
+        return Status.ok_and_warnings("send notification to admins", problems);
     }
 
     private set_announce_thread(msg: TelegramBot.Message): Status {

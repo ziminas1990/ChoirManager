@@ -13,7 +13,7 @@ export class Config {
             google_sheet_id: string
             fetch_interval_sec: number,  // not less than 5 seconds
             collect_interval_sec: number  // not less than 5 seconds
-        }
+        },
     }
 
     static Load(path: string): Status {
