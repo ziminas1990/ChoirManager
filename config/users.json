@@ -4,6 +4,13 @@
         "surname": "Зимин",
         "roles": ["chorister", "manager", "admin", "accountant"],
         "tgig": "@alexander_in_tg",
+        "lang": "ru"
+    },
+    {
+        "name": "Aleksandr (test)",
+        "surname": "Geo",
+        "roles": ["chorister"],
+        "tgig": "@aleksandr_in_geo",
         "lang": "en"
     },
     {
@@ -13,7 +20,7 @@
         "tgig": "@evgecsh"
     },
     {
-        "name": "Аарон",
+        "name": "Aaron",
         "surname": "",
         "roles": ["chorister"],
         "tgig": "@apwood"
@@ -55,8 +62,8 @@
         "tgig": "@ALENAPUGACHEVA78"
     },
     {
-        "name": "Алессандро",
-        "surname": "",
+        "name": "Alessandro",
+        "surname": "Caglio",
         "roles": ["chorister"],
         "tgig": "@godog42"
     },

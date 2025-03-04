@@ -115,12 +115,7 @@ class Messages {
     {}
 
     again(): string {
-        switch (this.lang) {
-            case "ru": return "🔄";
-            case "en":
-            default:
-                return "🔄";
-        }
+        return "🔄";
     }
 
     download_scores(): string {

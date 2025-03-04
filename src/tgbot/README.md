@@ -59,3 +59,5 @@ docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config --name ursa-majo
 * figure out how to enable valid markdown support in messages
 * notifications about new applications
 * notifications about new feedback
+* use webpack to pack bot into a single js-file and publish docker image with this single file
+* implement good logging

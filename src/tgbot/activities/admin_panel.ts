@@ -49,6 +49,18 @@ export class AdminPanel {
         return Status.ok_and_warnings("send file to admins", problems);
     }
 
+    send_notification(notification: string): Status {
+        const admins = [...this.runtime.all_users()].filter(logic => logic.is_admin());
+        const problems: Status[] = [];
+        for (const admin of admins) {
+            const dialog = admin.main_dialog();
+            if (dialog) {
+                dialog.send_message(notification);
+            }
+        }
+        return Status.ok_and_warnings("send file to admins", problems);
+    }
+
     private set_announce_thread(msg: TelegramBot.Message): Status {
         if (msg.message_thread_id == undefined) {
             return Status.fail("message thread id is undefined");

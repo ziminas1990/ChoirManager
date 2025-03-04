@@ -284,15 +284,17 @@ export class Runtime {
                      .with(runtime);
     }
 
-    private on_user_added(user: UserLogic) {
-        if (user.is_guest()) {
-            return;
+    private async on_user_added(user: UserLogic): Promise<void> {
+        if (!user.is_guest()) {
+            if (this.deposits_fetcher) {
+                console.log("attaching deposit fetcher to", user.data.tgid);
+                user.attach_deposit_fetcher(this.deposits_fetcher);
+            }
         }
 
-        if (this.deposits_fetcher) {
-            console.log("attaching deposit fetcher to", user.data.tgid);
-            user.attach_deposit_fetcher(this.deposits_fetcher);
-        }
+        // Notify admins:
+        this.admin_panel.send_notification(
+            `User ${user.data.name} ${user.data.surname} (@${user.data.tgid}) has joined`);
     }
 }
 
