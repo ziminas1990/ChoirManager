@@ -101,7 +101,7 @@ export class Runtime {
         }
 
         for (const user of this.users.values()) {
-            this.on_user_added(user);
+            this.on_user_added(user, true);
         }
 
         return Status.ok();
@@ -166,7 +166,7 @@ export class Runtime {
             if (!user_logic) {
                 user_logic = new UserLogic(user, 100);
                 this.users.set(user.id, user_logic);
-                this.on_user_added(user_logic);
+                this.on_user_added(user_logic, false);
             }
             return user_logic;
         }
@@ -180,7 +180,7 @@ export class Runtime {
                 new User(0, "guest", "", [Role.Guest], tg_id, "ru"),
                 500);
             this.guest_users.set(tg_id, user);
-            this.on_user_added(user);
+            this.on_user_added(user, false);
         }
         return user;
     }
@@ -279,7 +279,7 @@ export class Runtime {
                      .with(runtime);
     }
 
-    private async on_user_added(user: UserLogic): Promise<void> {
+    private async on_user_added(user: UserLogic, startup: boolean): Promise<void> {
         if (!user.is_guest()) {
             if (this.deposits_fetcher) {
                 console.log("attaching deposit fetcher to", user.data.tgid);
@@ -288,8 +288,10 @@ export class Runtime {
         }
 
         // Notify admins:
-        this.admin_panel.send_notification(
-            `User ${user.data.name} ${user.data.surname} (@${user.data.tgid}) has joined`);
+        if (!startup) {
+            this.admin_panel.send_notification(
+                `User ${user.data.name} ${user.data.surname} (@${user.data.tgid}) has joined`);
+        }
     }
 
     private async send_backup_to_admins(): Promise<void> {
