@@ -2,10 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Status } from '../status.js';
 import { BotAPI } from './api/telegram.js';
+import { GoogleDocsAPI } from './api/google_docs.js';
 import { GoogleTranslate } from './api/google_translate.js';
 import { load_database_from_file } from './database_loader.js';
 import { Runtime } from './runtime.js';
 import { Config } from './config.js';
+import { OpenaiAPI } from "./api/openai.js";
 
 // Loading configuration
 {
@@ -46,8 +48,25 @@ if (!tg_token) {
     process.exit(1);
 }
 
-BotAPI.init(tg_token.split('\n')[0].trim());
+if (Config.HasOpenAI()) {
+    const status = OpenaiAPI.init();
+    if (!status.ok()) {
+        console.error(`Failed to initialize OpenAI API: ${status.what()}`);
+        process.exit(1);
+    }
+}
+
+{
+    const status = GoogleDocsAPI.authenticate(Config.data.google_cloud_key_file);
+    if (!status.ok()) {
+        console.error(`Failed to initialize Google Docs API: ${status.what()}`);
+        process.exit(1);
+    }
+}
+
 GoogleTranslate.init(Config.data.google_cloud_key_file);
+
+BotAPI.init(tg_token.split('\n')[0].trim());
 
 // Configure bot
 const bot = BotAPI.instance();

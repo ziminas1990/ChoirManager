@@ -47,6 +47,15 @@ docker run -ti --network=host -v $(pwd)/config:/mnt/config \
        ziminas1990/ursa-major-agent:latest
 ```
 
+To restart (without update):
+```bash
+docker kill ursa-major-agent
+docker rm ursa-major-agent
+docker run -ti --network=host -v $(pwd)/config:/mnt/config \
+       -d --name ursa-major-agent --restart unless-stopped \
+       ziminas1990/ursa-major-agent:latest
+```
+
 For local run:
 ```bash
 docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config --name ursa-major-agent ziminas1990/ursa-major-agent:latest
@@ -62,3 +71,4 @@ docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config --name ursa-majo
 * use webpack to pack bot into a single js-file and publish docker image with this single file
 * implement good logging
 * get rid of users config
+* BUG: adding to memberships table

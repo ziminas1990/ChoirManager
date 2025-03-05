@@ -1,7 +1,6 @@
-import * as fs from 'fs';
-import { Auth, google, sheets_v4 } from 'googleapis';
 import { Status, StatusWith } from '../../status.js';
 import { Config } from '../config.js';
+import { GoogleSpreadsheet } from '../api/google_docs.js';
 
 // Assuming the date format is DD.MM.YY
 function try_parse_date(date: string): Date | undefined {
@@ -46,8 +45,8 @@ export class Deposit {
         public readonly chorister: string,
         public readonly balance: number,
         public readonly membership: Map<number, number>,
-        public readonly last_fetch_date: Date,
-    ) {}
+        public readonly last_fetch_date: Date)
+    {}
 
     static diff(prev: Deposit, next: Deposit): DepositChange | undefined {
         const changes: DepositChange = {};
@@ -175,18 +174,13 @@ export class DepositsFetcher {
     private last_fetch_date?: Date;
     private choristers: Map<string, Deposit> = new Map();
 
-    private auth?: Auth.GoogleAuth;
-    private sheets?: sheets_v4.Sheets;
+    private sheet: GoogleSpreadsheet;
 
-    constructor() {}
+    constructor() {
+        this.sheet = new GoogleSpreadsheet(Config.DepositTracker().google_sheet_id)
+    }
 
-    async start(google_could_file: string): Promise<Status> {
-        const auth_status = DepositsFetcher.authenticate(google_could_file);
-        if (!auth_status.ok()) {
-            return auth_status.wrap("Failed to authenticate");
-        }
-        this.auth   = auth_status.value!;
-        this.sheets = google.sheets({ version: "v4", auth: this.auth });
+    async start(): Promise<Status> {
         return this.proceed();
     }
 
@@ -195,32 +189,27 @@ export class DepositsFetcher {
     }
 
     async proceed(): Promise<Status> {
-        const now_ms            = new Date().getTime();
-        const fetch_interval_ms = Config.DepositTracker().fetch_interval_sec * 1000;
-
-        if (this.last_fetch_date && now_ms - this.last_fetch_date.getTime() < fetch_interval_ms) {
+        if (!this.time_to_fetch()) {
             return Status.ok().with(this.choristers);
         }
-        this.last_fetch_date = new Date();
 
-        const sheet_id = Config.DepositTracker().google_sheet_id;
-        const sheet = await this.sheets!.spreadsheets.values.get({
-            spreadsheetId: sheet_id,
-            range: "A:K"
-        });
-        if (!sheet.data.values) {
-            return Status.fail("can't fetch sheet data");
+        const sheet_status = await this.sheet.read("A:K");
+        if (!sheet_status.ok()) {
+            return sheet_status.wrap("can't fetch sheet data");
+        }
+        const table = sheet_status.value!;
+        if (table.length < 2) {
+            return Status.ok(); // Just no any data (or header only), not an error
         }
 
-        const header = sheet.data.values[0];
+        const header = table[0];
         const header_status = try_parse_header(header);
         if (!header_status.ok()) {
             return header_status.wrap("invalid header");
         }
         const columns = header_status.value!;
 
-        const deposits = sheet.data.values.slice(1)
-            .map(row => try_parse_row(row, columns));
+        const deposits = table.slice(1).map(row => try_parse_row(row, columns));
 
         deposits.forEach((deposit) => {
             if (deposit && deposit.tgid) {
@@ -230,21 +219,20 @@ export class DepositsFetcher {
         return Status.ok();
     }
 
-    private static authenticate(google_could_file: string): StatusWith<Auth.GoogleAuth> {
-        let credentials: any | undefined = undefined;
-        try {
-            credentials = JSON.parse(fs.readFileSync(google_could_file, "utf8"));
-        } catch (error) {
-            return Status.fail(`Failed to load credentials: ${error}`);
+    // Check if it is time to fetch data since previous check.
+    // NOTE: if function returns true, last_fetch_date is set to current time.
+    private time_to_fetch(): boolean {
+        const now_ms = new Date().getTime();
+        if (!this.last_fetch_date) {
+            this.last_fetch_date = new Date();
+            return true;
         }
-        if (!credentials) {
-            return Status.fail("Failed to load credentials");
+        const fetch_interval_ms = Config.DepositTracker().fetch_interval_sec * 1000;
+        const time_since_last_fetch = now_ms - this.last_fetch_date.getTime();
+        if (time_since_last_fetch < fetch_interval_ms) {
+            return false;
         }
-
-        const auth = new google.auth.GoogleAuth({
-            credentials: credentials,
-            scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
-        });
-        return Status.ok().with(auth);
+        this.last_fetch_date = new Date();
+        return true;
     }
 }

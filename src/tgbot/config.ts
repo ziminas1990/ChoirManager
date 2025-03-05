@@ -9,11 +9,16 @@ export class Config {
         google_cloud_key_file: string;
         tgbot_token_file: string;
         runtime_dump_interval_sec: number;
+        openai_api_key_file?: string;
         deposit_tracking?: {
             google_sheet_id: string
             fetch_interval_sec: number,  // not less than 5 seconds
-            collect_interval_sec: number  // not less than 5 seconds
+            collect_interval_sec: number  // not less than 10 seconds
         },
+        assistant?: {
+            fetch_interval_sec: number  // not less than 60 seconds
+            faq_document_id: string
+        }
     }
 
     static Load(path: string): Status {
@@ -33,11 +38,26 @@ export class Config {
         return this.data.deposit_tracking != undefined;
     }
 
+    static HasOpenAI(): boolean {
+        return this.data.openai_api_key_file != undefined;
+    }
+
+    static HasAssistant(): boolean {
+        return this.data.assistant != undefined;
+    }
+
     static DepositTracker() {
         if (!this.data.deposit_tracking) {
             throw new Error("deposit_tracking is not specified!")
         }
         return this.data.deposit_tracking!;
+    }
+
+    static Assistant() {
+        if (!this.data.assistant) {
+            throw new Error("assistant is not specified!")
+        }
+        return this.data.assistant!;
     }
 
     private static verify(): Status {
@@ -98,6 +118,30 @@ export class Config {
             }
         } else {
             warnings.push(Status.warning("'deposit_tracking' is not specifed, feature will be DISABLED"));
+        }
+
+        // Assistant configuration
+        if (this.data.assistant) {
+            const fail_prefix = "assistant misconfiguration";
+            const cfg = this.data.assistant;
+            if (!cfg.faq_document_id) {
+                return Status.fail(`${fail_prefix}: 'faq_document_id' MUST be specified`);
+            }
+            if (!cfg.fetch_interval_sec) {
+                return Status.fail(`${fail_prefix}: 'fetch_interval_sec' MUST be specified`);
+            }
+            if (cfg.fetch_interval_sec < 60) {
+                return Status.fail(`${fail_prefix}: 'fetch_interval_sec' MUST be at least 60 seconds`);
+            }
+        } else {
+            warnings.push(Status.warning("'assistant' is not specifed, feature will be DISABLED"));
+        }
+
+        if (this.HasAssistant() && !this.HasOpenAI()) {
+            warnings.push(Status.warning([
+                "'assistant' is specifed, but 'openai_api_key_file' is not specifed,",
+                " feature will be DISABLED",
+            ].join()));
         }
 
         return Status.ok_and_warnings("verification", warnings);

@@ -17,7 +17,7 @@ export class UserLogic extends Logic<void> {
     private messages_queue: TelegramBot.Message[] = [];
     private last_activity?: Date;
     private deposit_tracker?: DepositsTracker;
-    private deposit_activity: DepositActivity
+    private deposit_activity: DepositActivity;
 
     constructor(public readonly data: User, proceed_interval_ms: number) {
         super(proceed_interval_ms);

@@ -11,6 +11,8 @@ import { AdminPanel } from "./activities/admin_panel.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Config } from "./config.js";
 import { Proceeder } from "./logic/abstracts.js";
+import { DocumentsFetcher } from "./fetchers/document_fetcher.js";
+import { ChoristerAssistant } from "./ai_assistants/chorister_assistant.js";
 
 
 class RuntimeCfg {
@@ -52,6 +54,7 @@ export class Runtime {
     private translator: AnnounceTranslator;
     private admin_panel: AdminPanel;
     private deposits_fetcher?: DepositsFetcher;
+    private documents_fetcher?: DocumentsFetcher;
 
     private runtime_hash?: string;
 
@@ -88,11 +91,20 @@ export class Runtime {
 
         if (Config.HasDepoditTracker()) {
             this.deposits_fetcher = new DepositsFetcher();
-            const deposits_status = await this.deposits_fetcher.start(
-                Config.data.google_cloud_key_file);
+            const deposits_status = await this.deposits_fetcher.start();
             if (!deposits_status.ok()) {
                 return deposits_status.wrap("Failed to start deposits fetcher");
             }
+        }
+
+
+        if (Config.HasAssistant()) {
+            this.documents_fetcher = new DocumentsFetcher(Config.Assistant().fetch_interval_sec);
+            const documents_status = await this.documents_fetcher.start();
+            if (!documents_status.ok()) {
+                return documents_status.wrap("Failed to start documents fetcher");
+            }
+            ChoristerAssistant.init(this.documents_fetcher);
         }
 
         this.update_interval_sec = Config.data.runtime_dump_interval_sec;
@@ -282,7 +294,6 @@ export class Runtime {
     private async on_user_added(user: UserLogic, startup: boolean): Promise<void> {
         if (!user.is_guest()) {
             if (this.deposits_fetcher) {
-                console.log("attaching deposit fetcher to", user.data.tgid);
                 user.attach_deposit_fetcher(this.deposits_fetcher);
             }
         }

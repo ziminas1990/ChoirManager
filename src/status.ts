@@ -21,6 +21,12 @@ export class Status {
         return status;
     }
 
+    static exception(error: unknown): Status {
+        const status = new Status();
+        status.error = { details: error instanceof Error ? error.message : String(error) };
+        return status;
+    }
+
     static warning(details: string, warnings: Status[] = []): Status {
         const status = new Status();
         status.warn = { details, nested: warnings };

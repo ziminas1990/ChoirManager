@@ -61,7 +61,11 @@ export class MainActivity extends BaseActivity {
             return Status.ok();
         }
 
-        return Status.fail(`unexpected message: "${msg.text}"`);
+        if (!msg.text) {
+            return Status.ok();
+        }
+
+        return this.dialog_with_assistant(msg.text);
     }
 
     async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
@@ -87,6 +91,29 @@ export class MainActivity extends BaseActivity {
                 reply_markup: this.get_keyboard(),
             }
         );
+        return Status.ok();
+    }
+
+    private async dialog_with_assistant(message: string): Promise<Status> {
+        const thread = await this.dialog.get_chorister_assistant();
+        if (!thread.ok()) {
+            return Status.fail(`failed to get chorister assistant thread: ${thread.what()}`);
+        }
+
+        const status = await thread.value!.send_message(message);
+        if (!status.ok()) {
+            return Status.fail(`failed to send message: ${status.what()}`);
+        }
+
+        for (const msg of status.value!) {
+            BotAPI.instance().sendMessage(
+                this.dialog.chat_id,
+                msg,
+                {
+                    reply_markup: this.get_keyboard(),
+                }
+            );
+        }
         return Status.ok();
     }
 
