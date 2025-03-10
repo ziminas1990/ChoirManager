@@ -6,6 +6,7 @@ import { DownloadScoresActivity } from "./download_scores.js";
 import { Status } from "../../status.js";
 import { Language } from "../database.js";
 import { seconds_since } from "../utils.js";
+import { Action, ChoristerAssistant } from "../ai_assistants/chorister_assistant.js";
 
 export class MainActivity extends BaseActivity {
     private messages: Messages;
@@ -56,11 +57,6 @@ export class MainActivity extends BaseActivity {
             return await this.on_deposit_request();
         }
 
-        if (this.child_activity && !this.child_activity.done()) {
-            this.child_activity.on_message(msg);
-            return Status.ok();
-        }
-
         if (!msg.text) {
             return Status.ok();
         }
@@ -95,26 +91,53 @@ export class MainActivity extends BaseActivity {
     }
 
     private async dialog_with_assistant(message: string): Promise<Status> {
-        const thread = await this.dialog.get_chorister_assistant();
-        if (!thread.ok()) {
-            return Status.fail(`failed to get chorister assistant thread: ${thread.what()}`);
+        if (!ChoristerAssistant.is_available()) {
+            return Status.ok();
         }
 
-        const status = await thread.value!.send_message(message);
-        if (!status.ok()) {
-            return Status.fail(`failed to send message: ${status.what()}`);
+        const assistant = ChoristerAssistant.get_instance();
+        const username = this.dialog.user.data.tgid;
+
+        const send_status = await assistant.send_message(username, message);
+        if (!send_status.ok()) {
+            return Status.fail(`failed to send message: ${send_status.what()}`);
         }
 
-        for (const msg of status.value!) {
-            BotAPI.instance().sendMessage(
-                this.dialog.chat_id,
-                msg,
-                {
-                    reply_markup: this.get_keyboard(),
+        console.log(JSON.stringify(send_status.value, null, 2));
+
+        for (const msg of send_status.value!) {
+            if (msg.message) {
+                BotAPI.instance().sendMessage(
+                    this.dialog.chat_id,
+                    msg.message!,
+                    {
+                        reply_markup: this.get_keyboard(),
+                    }
+                );
+            }
+            if (msg.actions && msg.actions.length > 0) {
+                for (const action of msg.actions) {
+                    const status = await this.on_action(action);
+                    if (!status.ok()) {
+                        return status;
+                    }
                 }
-            );
+            }
         }
         return Status.ok();
+    }
+
+    private async on_action(action: Action): Promise<Status> {
+        switch (action.what) {
+            case "scores_list":
+            case "download_scores":
+                this.on_download_scores();
+                return Status.ok();
+            case "get_deposit_info":
+                return await this.on_deposit_request();
+            default:
+                return Status.fail(`unknown action: ${action.what}`);
+        }
     }
 
     private on_download_scores(): void {

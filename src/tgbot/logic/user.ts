@@ -10,6 +10,9 @@ import { DepositsTracker, DepositsTrackerEvent } from './deposits_tracker.js';
 import { DepositActivity } from '../activities/deposit_activity.js';
 import { BotAPI } from '../api/telegram.js';
 import { Config } from '../config.js';
+import { ChoristerAssistant } from '../ai_assistants/chorister_assistant.js';
+import { DocumentsFetcher } from '../fetchers/document_fetcher.js';
+import { OpenaiAPI } from '../api/openai.js';
 
 
 export class UserLogic extends Logic<void> {
@@ -18,6 +21,8 @@ export class UserLogic extends Logic<void> {
     private last_activity?: Date;
     private deposit_tracker?: DepositsTracker;
     private deposit_activity: DepositActivity;
+
+    private chorister_assustant?: ChoristerAssistant
 
     constructor(public readonly data: User, proceed_interval_ms: number) {
         super(proceed_interval_ms);
@@ -31,6 +36,12 @@ export class UserLogic extends Logic<void> {
 
     attach_deposit_fetcher(fetcher: DepositsFetcher): void {
         this.deposit_tracker = new DepositsTracker(this.data.tgid, fetcher);
+    }
+
+    attach_documents_fetcher(fetcher: DocumentsFetcher) {
+        if (OpenaiAPI.is_available()) {
+            this.chorister_assustant = new ChoristerAssistant(fetcher);
+        }
     }
 
     is_guest(): boolean {
@@ -76,6 +87,10 @@ export class UserLogic extends Logic<void> {
 
     get_last_activity() {
         return this.last_activity;
+    }
+
+    get_chorister_assistant(): ChoristerAssistant | undefined {
+        return this.chorister_assustant;
     }
 
     async send_deposit_info(): Promise<Status> {

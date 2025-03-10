@@ -368,5 +368,11 @@
         "surname": "Стрыгина",
         "roles": ["ex-chorister"],
         "tgig": "@kjet_il"
+    },
+    {
+        "name": "Никита",
+        "surname": "Колосов",
+        "roles": ["chorister"],
+        "tgig": "@nik184"
     }
 ]

@@ -97,7 +97,6 @@ export class Runtime {
             }
         }
 
-
         if (Config.HasAssistant()) {
             this.documents_fetcher = new DocumentsFetcher(Config.Assistant().fetch_interval_sec);
             const documents_status = await this.documents_fetcher.start();

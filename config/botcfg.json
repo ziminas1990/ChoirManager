@@ -11,6 +11,8 @@
         "collect_interval_sec": 6
     },
     "assistant": {
+        "openai_api": "vanilla",
+        "model": "gpt-4o",
         "fetch_interval_sec": 60,
         "faq_document_id": "1Voaud1Thf71QuATIOC_2zDK29o-aVcmi5Fnz_3RoBes"
     }

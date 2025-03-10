@@ -71,6 +71,7 @@ export class Assistant {
     async init(
         model: "gpt-4o" | "gpt-4o-mini",
         instructions: string,
+        response_format: "text" | "json",
     ): Promise<Status> {
         if (!OpenaiAPI.is_available()) {
             return Status.fail("OpenAI API is not initialized");
@@ -82,6 +83,9 @@ export class Assistant {
                 name: this.name,
                 description: this.description,
                 instructions: instructions,
+                response_format: response_format === "json"
+                    ? { type: "json_object" }
+                    : undefined,
             });
             return Status.ok();
         } catch (error) {

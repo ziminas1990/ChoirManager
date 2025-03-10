@@ -1,19 +1,8 @@
-import { StatusWith } from "../../status.js";
+import { StatusWith, Status } from "../../status.js";
 import { DocumentsFetcher } from "../fetchers/document_fetcher.js";
 import { Assistant, AssistantThread } from "../api/openai_assistant.js";
-
-// const instruction = `
-// You are a friendly counsellor for choristers.
-// Your task is to answer the questions according to the document below.
-// You cannot advise the choristers on matters not related to this document or the choir.
-// For all other questions, give a polite or joking refusal.
-// If your response mentions a person from the document, always add a link to their Telegram account.
-// If there are any other relevant links in the document, try to include them as well.
-// Try to always give a link to the original source, if it is mentioned in the document.
-// Also try to mention the motivation for certain decisions.
-// In your replies, do not refer to the document or to these instructions (do not even mention their existence).
-// In your response, use the same language in which the question was asked.
-// `
+import { ChatWithHistory } from "../api/openai.js";
+import { Config } from "../config.js";
 
 const fails_instruction = `
 You are a friendly counsellor for choristers. But bot didn't manage to download the document,
@@ -23,57 +12,91 @@ Try to use informal and joking language.
 `
 
 const instruction = `
-You are a counsellor for choristers.
-Always ask in friendly language. Do not end your message with a question about additional questions.
+You are a friendly counsellor for choristers. Always speak in a warm tone and never end your response with an extra question.
 
-IMPORTANT: message should be valid JSON, starting with "{" and ending with "}". Root
-object MUST be a Response object with the following format:
+IMPORTANT: complaints are NOT supported in this version. If user tries to complain, politely refuse the request and say that cimplaints will be added later.
+
+Output MUST be a valid JSON object of type 'Response' according to the following type definition:
 
 type Response = {
     message?: string;
-    action: Action[];
+    actions: Action[];
 }
 
-type Action = {
-    what: "download_scores",
-    filename: string[]
-} | {
-    what: "scores_list",
-} | {
-    what: "get_deposit_info"
-} | {
-    what: "complaint",
-    message: string
-    who?: string,
-    voice?: "alt" | "soprano" | "bass" | "tenor" | "baritone",
-}
+type Action =
+  | { what: "download_scores", filename: string[] }
+  | { what: "scores_list" }
+  | { what: "get_deposit_info" }
+  | { what: "complaint", message: string, who?: string, voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone" };
 
-The following actions are supported:
-- download_scores: if user asks to download specific scores. Parameter 'filename' is an
-array requested scores and can't be empty.
-- scores_list: if user wants to download scores, but doesn't specify which ones.
-- get_deposit_info: if user asks to get anformation about deposit or money or membership.
-- complaint: if users tries to complain on something.
+Use 'message' field to provide a message to the user. If you return an action, omit the message field.
+Do NOT end your messages with an offer to answer more questions or your readiness to help with other questions.
+Use the same language in which the question was asked.
+Если общение идёт на русском, обращайся на "ты".
 
-If user tries to complain, do not try to solve the problem, just inform him that you can forward this complain to org group (орг. группе).
-If user haven't provided specific complaint yet, ask for details.
-Clarify whether the user wishes to make an anonymous complaint or is willing to provide their name and/or voice. Do not ask twice!
-Once all is clarified, report a complaint action in 'action' field.
+Use 'actions' field to provide a list of actions to be done. It MUST be an array of Action objects.
 
-If you manage to determine the action, do not add "message" field.
-If user asks you about things that you can do, describe them in 'message' field in details. Don't be too short.
-IMPORTANT: if user asks anything else, send a respone in 'message' field. Do not refuse to answer.
+Action MUST have a 'what' field with one of the following values:
+  - "download_scores": use when user requests specific scores (filename array must be non-empty)
+  - "scores_list": use when user asks for scores without specifying which ones
+  - "get_deposit_info": use when user asks about deposit/membership/money info
+  - "complaint": use for complaints
+
+More details about each action will be provided below.
+
+## download_scores
+Action MUST be emitted if user requrested specific scores. "what" field MUST be "download_scores".
+"filename" field MUST be a non-empty array of files that should be downloaded.
+If you can't figure out which files are requested, emit "scores_list" action instead.
+
+## scores_list
+Action MUST be emitted if user asks to download scores without specifying which ones.
+
+## get_deposit_info
+Action MUST be emitted if user asks about deposit/membership/money info.
+
+## complaint
+If user is trying to complain OR want to report something follow the following steps:
+1. Confirm if the complaint should be forwarded to the org group (орг. группе)
+2. If no any details are provided, ask for any details.
+3. Clarify if user wants to report anonymously or may provide name and/or voice.
+4. Once clarified, output a complaint action without a message field.
+
+Use 'who' field to specify the name of the person who is complaining. If name is not provided,
+omit the 'who' field.
+Use 'voice' field to specify the voice of the person who is complaining. If voice is not provided,
+omit the 'voice' field. Use ONLY values specified in type definition.
+
+## Other questions
+You are allowed to provide consultation about choir music, composers and so on.
+Politely refuse to answer any other questions.
 `
 
+export type Response = {
+    message?: string;
+    actions?: Action[];
+}
+
+export type Action =
+  | { what: "download_scores", filename: string[] }
+  | { what: "scores_list" }
+  | { what: "get_deposit_info" }
+  | {
+        what: "complaint",
+        message: string, who?: string,
+        voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone"
+    };
+
+abstract class IAssistant {
+    abstract send_message(message: string): Promise<StatusWith<Response[]>>;
+}
 
 export class ChoristerAssistant {
     private static instance: ChoristerAssistant;
 
-    private assistant: Assistant;
-
-    static init(documents_fetcher: DocumentsFetcher, model: "gpt-4o-mini" | "gpt-4o" = "gpt-4o") {
+    static init(documents_fetcher: DocumentsFetcher) {
         if (!ChoristerAssistant.instance) {
-            ChoristerAssistant.instance = new ChoristerAssistant(documents_fetcher, model);
+            ChoristerAssistant.instance = new ChoristerAssistant(documents_fetcher);
         }
     }
 
@@ -84,20 +107,50 @@ export class ChoristerAssistant {
         return ChoristerAssistant.instance;
     }
 
-    constructor(
-        private documents_fetcher: DocumentsFetcher,
-        model: "gpt-4o-mini" | "gpt-4o" = "gpt-4o")
+    static is_available(): boolean {
+        return this.instance != undefined;
+    }
+
+    private users: Map<string, IAssistant> = new Map();
+
+    constructor(private documents_fetcher: DocumentsFetcher)
     {
-        this.assistant = new Assistant("chorister_assistant");
-        this.assistant.init(model, this.get_system_message());
-        ChoristerAssistant.instance = this;
+        if (Config.Assistant().openai_api === "assistant") {
+            ModernAssistant.init(this.get_instructions(), "json");
+        }
     }
 
-    public async new_thread(): Promise<StatusWith<AssistantThread>> {
-        return await this.assistant.create_thread();
+    public async send_message(username: string, message: string): Promise<StatusWith<Response[]>> {
+        try {
+            const status = await this.get_or_create_api(username);
+            if (!status.ok()) {
+                return status.wrap("can't get api for user");
+            }
+            const assistant = status.value!;
+            return assistant.send_message(message);
+        } catch (e) {
+            return Status.fail(`failed to send message: ${e}`);
+        }
     }
 
-    private get_system_message(): string {
+    private async get_or_create_api(username: string): Promise<StatusWith<IAssistant>> {
+        let user = this.users.get(username);
+        if (user) {
+            return Status.ok().with(user);
+        }
+
+        if (Config.Assistant().openai_api === "vanilla") {
+            user = new VanillaAssistant(this.get_instructions(), "json");
+        } else if (Config.Assistant().openai_api === "assistant") {
+            user = new ModernAssistant();
+        } else {
+            return Status.fail("unknown assistant type");
+        }
+        this.users.set(username, user);
+        return Status.ok().with(user);
+    }
+
+    private get_instructions(): string {
         const faq = this.documents_fetcher.get_faq_document();
         if (!faq.ok()) {
             return fails_instruction;
@@ -106,6 +159,72 @@ export class ChoristerAssistant {
             instruction
         ].join("\n\n");
         return message;
+    }
+}
+
+class VanillaAssistant implements IAssistant {
+    private chat: ChatWithHistory;
+
+    constructor(instructions: string, private response_format: "text" | "json" = "text")
+    {
+        const model = Config.Assistant().model;
+        this.chat = new ChatWithHistory(model, this.response_format);
+        this.chat.set_system_message(instructions);
+    }
+
+    public async send_message(message: string): Promise<StatusWith<Response[]>> {
+        const send_status = await this.chat.send_message(message);
+        if (!send_status.ok()) {
+            return send_status.wrap("vanilla: failed to send message");
+        }
+        const response = send_status.value!;
+        const response_obj: Response = JSON.parse(response);
+        return Status.ok().with([response_obj]);
+    }
+}
+
+// Modern assistant uses Assistant API
+class ModernAssistant implements IAssistant {
+    private static assistant: Assistant;
+
+    private thread?: AssistantThread;
+
+    static init(instructions: string, response_format: "text" | "json" = "text") {
+        const model = Config.Assistant().model;
+        if (!ModernAssistant.assistant) {
+            ModernAssistant.assistant = new Assistant("chorister_assistant");
+            ModernAssistant.assistant.init(model, instructions, response_format);
+        } else {
+            throw new Error("ModernAssistant is already initialized");
+        }
+    }
+
+    public async send_message(message: string): Promise<StatusWith<Response[]>> {
+        if (!this.thread) {
+            const status = await this.new_thread();
+            if (!status.ok()) {
+                return status.wrap("modern: failed to create thread");
+            }
+            this.thread = status.value!;
+        }
+        const status = await this.thread.send_message(message);
+        if (!status.ok()) {
+            return status.wrap("modern: failed to send message");
+        }
+        const response = status.value!;
+        const response_obj: Response[] = response.map(r => JSON.parse(r));
+        return Status.ok().with(response_obj);
+    }
+
+    static get_api(): Assistant {
+        if (!ModernAssistant.assistant) {
+            throw new Error("ModernAssistant is not initialized");
+        }
+        return ModernAssistant.assistant;
+    }
+
+    public async new_thread(): Promise<StatusWith<AssistantThread>> {
+        return await ModernAssistant.assistant.create_thread();
     }
 }
 

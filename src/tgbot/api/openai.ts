@@ -36,6 +36,7 @@ export class ChatWithHistory {
 
     constructor(
         private model: "gpt-4o-mini" | "gpt-4o",
+        private response_format: "text" | "json",
         private max_history_length_sym: number = 0x4000,
         private max_message_length_sym: number = 0x1000)
     {
@@ -47,7 +48,7 @@ export class ChatWithHistory {
         this.system_message = { role: "system", content: message };
     }
 
-    public async send_message(message: string, role: "user" | "system"): Promise<StatusWith<string>> {
+    public async send_message(message: string): Promise<StatusWith<string>> {
         const instance = OpenaiAPI.get_instance();
         if (!instance) {
             return StatusWith.fail("OpenAI API is not initialized");
@@ -57,7 +58,7 @@ export class ChatWithHistory {
             return StatusWith.fail("Message is too long");
         }
 
-        this.push_to_history({ role: role, content: message });
+        this.push_to_history({ role: "user", content: message });
 
         const messages: ChatCompletionMessageParam[] = [];
         if (this.system_message) {
@@ -70,6 +71,9 @@ export class ChatWithHistory {
                 model: this.model,
                 store: true,
                 messages: messages,
+                response_format: this.response_format === "json"
+                    ? { type: "json_object" }
+                    : undefined,
             });
             this.history.push(completion.choices[0].message);
             const response = completion.choices[0].message.content;

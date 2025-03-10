@@ -32,6 +32,7 @@
     "googleapis": "^144.0.0",
     "mustache": "^4.2.0",
     "node-telegram-bot-api": "^0.66.0",
+    "openai": "^4.86.1",
     "plotly.js": "^3.0.0",
     "plotly.js-dist": "^3.0.0"
   }

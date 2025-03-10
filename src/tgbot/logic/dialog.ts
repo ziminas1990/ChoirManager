@@ -1,4 +1,6 @@
+import assert from 'assert';
 import TelegramBot from 'node-telegram-bot-api';
+
 import { Logic } from './abstracts.js';
 import { UserLogic } from './user.js';
 import { BaseActivity } from '../activities/base_activity.js';
@@ -6,9 +8,6 @@ import { MainActivity } from '../activities/main.js';
 import { BotAPI } from '../api/telegram.js';
 import { Status, StatusWith } from '../../status.js';
 import { GuestActivity } from '../activities/guest_activity.js';
-import assert from 'assert';
-import { AssistantThread } from '../api/openai_assistant.js';
-import { ChoristerAssistant } from '../ai_assistants/chorister_assistant.js';
 
 type Input = {
     what: "message",
@@ -21,7 +20,6 @@ type Input = {
 export class Dialog extends Logic<void> {
 
     private input_queue: Input[] = [];
-    private chorister_assistant?: AssistantThread;
 
     // activities stack
     private activity: BaseActivity;
@@ -89,23 +87,6 @@ export class Dialog extends Logic<void> {
         } else {
             return Status.fail("Chag id is NOT set")
         }
-    }
-
-    async get_chorister_assistant(): Promise<StatusWith<AssistantThread>> {
-        if (this.chorister_assistant) {
-            return StatusWith.ok().with(this.chorister_assistant);
-        }
-
-        const assistant = ChoristerAssistant.get_instance();
-        if (!assistant) {
-            return Status.fail("ChoristerAssistant is not initialized");
-        }
-        const status = await assistant.new_thread();
-        if (!status.ok()) {
-            return status.wrap("failed to create new thread");
-        }
-        this.chorister_assistant = status.value;
-        return StatusWith.ok().with(this.chorister_assistant);
     }
 
     static pack(dialog: Dialog) {
