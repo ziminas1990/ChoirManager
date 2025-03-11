@@ -1,9 +1,10 @@
+import fs from "fs";
+import path from "path";
 import TelegramBot from "node-telegram-bot-api";
+
 import { Dialog } from "../logic/dialog.js";
 import { BaseActivity } from "./base_activity.js";
 import { BotAPI } from "../api/telegram.js";
-import fs from "fs";
-import path from "path";
 import { Status } from "../../status.js";
 import { Language } from "../database.js";
 import { Runtime } from "../runtime.js";
@@ -43,21 +44,25 @@ export class DownloadScoresActivity extends BaseActivity {
         if (file_name == undefined) {
             return Status.fail(`unexpected callback: ${query.data}`);
         }
+        return DownloadScoresActivity.send_scores(this.dialog, file_name);
+    }
 
-        const filePath = path.join(SCORES_DIR, file_name);
-
-        await BotAPI.instance().sendDocument(
-            this.dialog.chat_id,
-            fs.createReadStream(filePath),
-            undefined,
-            {
-                contentType: "application/pdf",
-            }
-        ).catch((err: Error) => {
+    static async send_scores(dialog: Dialog, filename: string): Promise<Status> {
+        try {
+            const filePath = path.join(SCORES_DIR, filename);
+            await BotAPI.instance().sendDocument(
+                dialog.chat_id,
+                fs.createReadStream(filePath),
+                undefined,
+                {
+                    contentType: "application/pdf",
+                }
+            );
+        } catch (err) {
             BotAPI.instance().sendMessage(
-                this.dialog.chat_id, Messages.fail_to_send_file(this.dialog.user.data.lang));
-            return Status.fail(`failed to send file: ${err.message}`);
-        });
+                dialog.chat_id, Messages.fail_to_send_file(dialog.user.data.lang));
+            return Status.exception(err);
+        }
         return Status.ok();
     }
 

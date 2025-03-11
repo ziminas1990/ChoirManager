@@ -3,6 +3,8 @@ import { DocumentsFetcher } from "../fetchers/document_fetcher.js";
 import { Assistant, AssistantThread } from "../api/openai_assistant.js";
 import { ChatWithHistory } from "../api/openai.js";
 import { Config } from "../config.js";
+import { Runtime } from "../runtime.js";
+import { Scores } from "../database.js";
 
 const fails_instruction = `
 You are a friendly counsellor for choristers. But bot didn't manage to download the document,
@@ -24,7 +26,7 @@ type Response = {
 }
 
 type Action =
-  | { what: "download_scores", filename: string[] }
+  | { what: "download_scores", filename: string }
   | { what: "scores_list" }
   | { what: "get_deposit_info" }
   | { what: "complaint", message: string, who?: string, voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone" };
@@ -46,8 +48,14 @@ More details about each action will be provided below.
 
 ## download_scores
 Action MUST be emitted if user requrested specific scores. "what" field MUST be "download_scores".
-"filename" field MUST be a non-empty array of files that should be downloaded.
-If you can't figure out which files are requested, emit "scores_list" action instead.
+"filename" field MUST be a non-empty string that contains scores file name.
+User may ask to download scores by it's name, or hint, or author. Look thorugh the list
+of scores above and fine the most relevant score. Use 'file' column to fill "filename"
+field of the action.
+
+%%scores%%
+
+If you can't figure out which file is requested, emit "scores_list" action instead.
 
 ## scores_list
 Action MUST be emitted if user asks to download scores without specifying which ones.
@@ -78,7 +86,7 @@ export type Response = {
 }
 
 export type Action =
-  | { what: "download_scores", filename: string[] }
+  | { what: "download_scores", filename: string }
   | { what: "scores_list" }
   | { what: "get_deposit_info" }
   | {
@@ -129,7 +137,7 @@ export class ChoristerAssistant {
             const assistant = status.value!;
             return assistant.send_message(message);
         } catch (e) {
-            return Status.fail(`failed to send message: ${e}`);
+            return Status.exception(e);
         }
     }
 
@@ -155,10 +163,31 @@ export class ChoristerAssistant {
         if (!faq.ok()) {
             return fails_instruction;
         }
+
+        console.log(this.get_scores_table_csv());
+
         const message = [
-            instruction
+            instruction.replace("%%scores%%", this.get_scores_table_csv())
         ].join("\n\n");
+
+        console.log(message);
+
         return message;
+    }
+
+    private get_scores_table_csv(): string {
+        const runtime = Runtime.get_instance();
+        const scores = runtime.get_database().all_scores();
+
+        const table: string[] = [
+            Scores.csv_header()
+        ];
+        for (const score of scores) {
+            if (score.file) {
+                table.push(score.to_csv());
+            }
+        }
+        return table.join("\n");
     }
 }
 

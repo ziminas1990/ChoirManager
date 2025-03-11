@@ -130,9 +130,9 @@ export class MainActivity extends BaseActivity {
     private async on_action(action: Action): Promise<Status> {
         switch (action.what) {
             case "scores_list":
+                return await this.on_download_scores();
             case "download_scores":
-                this.on_download_scores();
-                return Status.ok();
+                return await this.on_download_scores(action.filename);
             case "get_deposit_info":
                 return await this.on_deposit_request();
             default:
@@ -140,13 +140,19 @@ export class MainActivity extends BaseActivity {
         }
     }
 
-    private on_download_scores(): void {
+    private async on_download_scores(filename?: string): Promise<Status> {
         if (this.dialog.user.is_guest()) {
-            return;
+            return Status.ok();
+        }
+
+        if (filename) {
+            return (await DownloadScoresActivity.send_scores(this.dialog, filename))
+                .wrap(`failed to download scores "${filename}"`);
         }
 
         this.child_activity = new DownloadScoresActivity(this.dialog);
         this.child_activity.start();
+        return Status.ok();
     }
 
     private async on_deposit_request(): Promise<Status> {

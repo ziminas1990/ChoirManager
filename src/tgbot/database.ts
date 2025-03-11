@@ -94,12 +94,16 @@ export class Scores {
         public author: string,
         public hints: string,
         public duration: number,
-        public file: string,
+        public file?: string,
     ) {}
+
+    static csv_header(): string {
+        return "name;author;hints;file";
+    }
 
     public to_csv(separator: string = ";"): string {
         return [this.author, this.hints, this.duration, this.file]
-            .map(s => s.toString())
+            .map(s => `"${s}"`)
             .map(s => s.replace(separator, separator == ";" ? "," : ";"))
             .join(separator);
     }

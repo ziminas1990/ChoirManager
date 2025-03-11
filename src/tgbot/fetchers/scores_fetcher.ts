@@ -33,10 +33,16 @@ function try_parse_header(header: string[]): StatusWith<TableColumns> {
 }
 
 function try_parse_row(row: string[], columns: TableColumns): StatusWith<Scores> {
-    const author = row[columns.author];
     const name = row[columns.name];
-    const hints = row[columns.hints];
-    const duration = parseInt(row[columns.duration]);
+    if (!name) {
+        return StatusWith.fail("no name found");
+    }
+    const author = row[columns.author];
+    if (!author) {
+        return StatusWith.fail(`no author found for ${name}`);
+    }
+    const hints = row[columns.hints] ?? "";
+    const duration = parseInt(row[columns.duration] ?? "0");
     const file = row[columns.file];
     const scores = new Scores(name, author, hints, duration, file);
     return StatusWith.ok().with(scores);
