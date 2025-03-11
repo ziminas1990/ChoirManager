@@ -7,9 +7,15 @@ import { DepositsTrackerEvent } from "../logic/deposits_tracker.js";
 import { BaseActivity } from "./base_activity.js";
 import { UserLogic } from "../logic/user.js";
 import { Dialog } from "../logic/dialog.js";
+import pino from "pino";
 
 
 export class DepositActivity extends BaseActivity {
+    private logger: pino.Logger;
+    constructor(parent_logger: pino.Logger) {
+        super();
+        this.logger = parent_logger.child({ activity: "deposit" });
+    }
 
     // To duplicate all notifications to them
     static accountants: UserLogic[] = []
@@ -53,8 +59,11 @@ export class DepositActivity extends BaseActivity {
         for (const accountant of DepositActivity.accountants) {
             const dialog = accountant.main_dialog();
             if (dialog) {
-                await dialog.send_message(
+                const status = await dialog.send_message(
                     `Notification for ${who.name} ${who.surname} (@${who.tgid}):\n\n${message}`);
+                if (!status.ok()) {
+                    this.logger.warn(`failed to send notification to (@${accountant.data.tgid}): ${status.what()}`);
+                }
             }
         }
     }

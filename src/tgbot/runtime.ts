@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { Status, StatusWith } from "../status.js";
 import { Database, Language, Role, User, Voice } from "./database.js";
 import { UserLogic } from "./logic/user.js";
-import { pack_map, unpack_map } from "./utils.js";
+import { pack_map, return_exception, return_fail, unpack_map } from "./utils.js";
 import { AnnounceTranslator } from "./activities/translator.js";
 import { AdminPanel } from "./activities/admin_panel.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
@@ -15,6 +15,7 @@ import { DocumentsFetcher } from "./fetchers/document_fetcher.js";
 import { ChoristerAssistant } from "./ai_assistants/chorister_assistant.js";
 import { UsersFetcher } from "./fetchers/users_fetcher.js";
 import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
+import pino from "pino";
 
 
 class RuntimeCfg {
@@ -44,12 +45,12 @@ export class Runtime {
 
     private static instance?: Runtime;
 
-    static Load(filename: string, database: Database): StatusWith<Runtime> {
+    static Load(filename: string, database: Database, logger: pino.Logger): StatusWith<Runtime> {
         try {
             const packed = JSON.parse(fs.readFileSync(filename, "utf8"));
-            return Runtime.unpack(filename, database, packed);
+            return Runtime.unpack(filename, database, packed, logger);
         } catch (e) {
-            const empty_runtime = new Runtime(database, new RuntimeCfg(filename), "", new Map());
+            const empty_runtime = new Runtime(database, new RuntimeCfg(filename), "", new Map(), logger);
             return StatusWith.ok().with(empty_runtime);
         }
     }
@@ -85,6 +86,7 @@ export class Runtime {
         private cfg: RuntimeCfg,
         private runtime_hash: string,
         private users: Map<string, UserLogic>,
+        private logger: pino.Logger,
         private guest_users: Map<string, UserLogic> = new Map())
     {
         if (Runtime.instance) {
@@ -92,8 +94,8 @@ export class Runtime {
         }
         Runtime.instance = this;
 
-        this.translator = new AnnounceTranslator();
-        this.admin_panel = new AdminPanel();
+        this.translator = new AnnounceTranslator(logger.child({ "activity": "translator" }));
+        this.admin_panel = new AdminPanel(logger.child({ "activity": "admin_panel" }));
         this.last_backup = {
             hash: runtime_hash,
             time: new Date(),
@@ -120,7 +122,7 @@ export class Runtime {
             if (!documents_status.ok()) {
                 return documents_status.wrap("Failed to start documents fetcher");
             }
-            ChoristerAssistant.init(this.documents_fetcher);
+            ChoristerAssistant.init(this.documents_fetcher, this.logger.child({ "assistant": "chorister" }));
         }
 
         if (Config.HasScoresFetcher()) {
@@ -158,7 +160,7 @@ export class Runtime {
     }
 
     handle_private_message(msg: TelegramBot.Message): Status {
-        log_message(msg);
+        log_message(this.logger, msg);
 
         const username = msg.from?.username;
         if (username == undefined) {
@@ -169,12 +171,12 @@ export class Runtime {
         return user.on_message(msg);
     }
 
-    handle_group_message(msg: TelegramBot.Message): Status {
-        log_message(msg);
+    async handle_group_message(msg: TelegramBot.Message): Promise<Status> {
+        log_message(this.logger, msg);
 
         const username = msg.from?.username;
         if (username == undefined) {
-            return Status.fail("username is undefined");
+            return return_fail("username is undefined", this.logger);
         }
         const user = this.get_user(username);
         if (user == undefined) {
@@ -189,20 +191,20 @@ export class Runtime {
         const sent_by_manager = user.data.roles.includes(Role.Manager);
 
         if (sent_by_admin && sent_to_bot) {
-            return this.admin_panel.handle_message(msg);
+            return await this.admin_panel.handle_message(msg);
         }
 
         if (is_announce && sent_by_manager) {
-            this.translator.on_announce(msg);
+            return await this.translator.on_announce(msg);
         }
         return Status.ok();
     }
 
     handle_callback(query: TelegramBot.CallbackQuery): Status {
         const username = query.from?.username
-        console.log(`Callback query from ${username} in ${query.message?.chat.id}: ${query.data}`);
+        this.logger.info(`Callback query from ${username} in ${query.message?.chat.id}: ${query.data}`);
         if (username == undefined) {
-            return Status.fail("username is undefined");
+            return return_fail("username is undefined", this.logger);
         }
 
         let user = this.get_user(username) ?? this.get_guest_user(username);
@@ -214,7 +216,8 @@ export class Runtime {
         if (user) {
             let user_logic = this.users.get(user.tgid);
             if (!user_logic) {
-                user_logic = new UserLogic(user, 100);
+                const user_logger = this.logger.child({ user: user.tgid });
+                user_logic = new UserLogic(user, 100, user_logger);
                 this.users.set(user.tgid, user_logic);
                 this.on_user_added(user_logic, false);
             }
@@ -226,9 +229,11 @@ export class Runtime {
     get_guest_user(tg_id: string): UserLogic {
         let user = this.guest_users.get(tg_id);
         if (user == undefined) {
+            const user_logger = this.logger.child({ user: tg_id, role: "guest" });
             user = new UserLogic(
                 new User(tg_id, "guest", "", Language.RU, Voice.Unknown, [Role.Guest]),
-                500);
+                500,
+                user_logger);
             this.guest_users.set(tg_id, user);
             this.on_user_added(user, false);
         }
@@ -252,14 +257,14 @@ export class Runtime {
         if (this.users_fetcher) {
             const users_status = await this.users_fetcher.proceed();
             if (!users_status.ok()) {
-                console.error(users_status.what());
+                this.logger.error(users_status.what());
             }
         }
 
         if (this.deposits_fetcher) {
             const deposits_status = await this.deposits_fetcher.proceed();
             if (!deposits_status.ok()) {
-                console.error(deposits_status.what());
+                this.logger.error(deposits_status.what());
             }
         }
 
@@ -285,7 +290,7 @@ export class Runtime {
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
 
         if (runtime_hash != this.runtime_hash) {
-            console.log("Updating runtime, hash:", runtime_hash);
+            this.logger.info("Updating runtime, hash:", runtime_hash);
             fs.writeFileSync(this.cfg.filename, runtime_data);
             this.runtime_hash = runtime_hash;
         }
@@ -307,7 +312,7 @@ export class Runtime {
         } as const;
     }
 
-    static unpack(filename: string, database: Database, packed: ReturnType<typeof Runtime.pack>)
+    static unpack(filename: string, database: Database, packed: ReturnType<typeof Runtime.pack>, logger: pino.Logger)
     : StatusWith<Runtime>
     {
         const runtime_hash = crypto.createHash("sha256").update(JSON.stringify(packed)).digest("hex");
@@ -316,9 +321,9 @@ export class Runtime {
             const old_version: number = packed.version == "1.0" ? 1 : packed.version;
 
             try {
-                packed = update_packed_runtime(old_version, database, packed);
+                packed = update_packed_runtime(old_version, database, packed, logger);
             } catch (e) {
-                return Status.exception(e).wrap("failed to update runtime data");
+                return return_exception(e, logger, "failed to update runtime data");
             }
         }
 
@@ -327,14 +332,14 @@ export class Runtime {
 
         const load_users_problems: Status[] = [];
         const users = unpack_map(packed.users, (packed) => {
-            const status = UserLogic.unpack(database, packed);
+            const status = UserLogic.unpack(database, packed, logger);
             if (!status.ok()) {
                 load_users_problems.push(status);
             }
             return status.value;
         });
 
-        const runtime = new Runtime(database, config, runtime_hash, users);
+        const runtime = new Runtime(database, config, runtime_hash, users, logger);
         return Status.ok_and_warnings("loading users", load_users_problems)
                      .with(runtime);
     }
@@ -357,7 +362,7 @@ export class Runtime {
         const runtime_data = JSON.stringify(Runtime.pack(this));
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
 
-        console.log("Sending runtime backup, hash:", runtime_hash);
+        this.logger.info("Sending runtime backup, hash:", runtime_hash);
         this.last_backup = {
             hash: runtime_hash,
             time: new Date(),
@@ -366,12 +371,12 @@ export class Runtime {
     }
 }
 
-function log_message(msg: TelegramBot.Message) {
+function log_message(logger: pino.Logger, msg: TelegramBot.Message) {
     if (msg.text) {
         if (!msg.text.includes("\n")) {
-            console.log(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
+            logger.info(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
         } else {
-            console.log([
+            logger.info([
                 "-".repeat(40),
                 `Message from ${msg.from?.username} in ${msg.chat.id}:`,
                 msg.text,
@@ -379,15 +384,15 @@ function log_message(msg: TelegramBot.Message) {
             ].join("\n"));
         }
     } else {
-        console.log(`Empty message from ${msg.from?.username} in ${msg.chat.id}`);
+        logger.info(`Empty message from ${msg.from?.username} in ${msg.chat.id}`);
     }
 }
 
 
-function update_packed_runtime(old_version: number, database: Database, data: any): ReturnType<typeof Runtime.pack> {
+function update_packed_runtime(old_version: number, database: Database, data: any, logger: pino.Logger): ReturnType<typeof Runtime.pack> {
     switch (old_version) {
         case 1:
-            const status = update_runtime_v1(database, data);
+            const status = update_runtime_v1(database, data, logger);
             if (!status.ok()) {
                 throw status;
             }
@@ -398,12 +403,12 @@ function update_packed_runtime(old_version: number, database: Database, data: an
 }
 
 // Update from v1 to v2
-function update_runtime_v1(database: Database, data: any): StatusWith<any> {
+function update_runtime_v1(database: Database, data: any, logger: pino.Logger): StatusWith<any> {
     try {
         // in version 1 users were stored as map of user_id: number -> user_logic
         // in version 2 key was replaced with tgid: string
         const users = unpack_map(data.users, (packed) => {
-            const status = UserLogic.unpack(database, packed as any);
+            const status = UserLogic.unpack(database, packed as any, logger);
             if (!status.ok()) {
                 throw status;
             }
@@ -415,7 +420,7 @@ function update_runtime_v1(database: Database, data: any): StatusWith<any> {
         data.version = 2;
         return Status.ok().with(data);
     } catch (e) {
-        return Status.exception(e).wrap("Failed to unpack users");
+        return return_exception(e, logger, "Failed to unpack users");
     }
 }
 

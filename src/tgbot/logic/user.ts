@@ -13,7 +13,7 @@ import { Config } from '../config.js';
 import { ChoristerAssistant } from '../ai_assistants/chorister_assistant.js';
 import { DocumentsFetcher } from '../fetchers/document_fetcher.js';
 import { OpenaiAPI } from '../api/openai.js';
-
+import pino from 'pino';
 
 export class UserLogic extends Logic<void> {
     private dialog?: Dialog;
@@ -24,14 +24,22 @@ export class UserLogic extends Logic<void> {
 
     private chorister_assustant?: ChoristerAssistant
 
-    constructor(public readonly data: User, proceed_interval_ms: number) {
+    constructor(
+        public readonly data: User,
+        proceed_interval_ms: number,
+        private readonly logger: pino.Logger)
+    {
         super(proceed_interval_ms);
         this.last_activity = new Date();
-        this.deposit_activity = new DepositActivity();
+        this.deposit_activity = new DepositActivity(this.logger);
 
         if (this.is_accountant()) {
             DepositActivity.add_accountant(this);
         }
+    }
+
+    get_logger(): pino.Logger {
+        return this.logger;
     }
 
     attach_deposit_fetcher(fetcher: DepositsFetcher): void {
@@ -40,7 +48,8 @@ export class UserLogic extends Logic<void> {
 
     attach_documents_fetcher(fetcher: DocumentsFetcher) {
         if (OpenaiAPI.is_available()) {
-            this.chorister_assustant = new ChoristerAssistant(fetcher);
+            const logger = this.logger.child({ "assistant": "chorister" });
+            this.chorister_assustant = new ChoristerAssistant(fetcher, logger);
         }
     }
 
@@ -67,7 +76,7 @@ export class UserLogic extends Logic<void> {
     on_message(msg: TelegramBot.Message): Status {
         this.last_activity = new Date();
         if (msg.chat.type !== "private") {
-            return Status.fail("Message is not from a private chat");
+            return this.return_fail("Message is not from a private chat");
         }
         this.messages_queue.push(msg);
         return Status.ok();
@@ -77,10 +86,10 @@ export class UserLogic extends Logic<void> {
         this.last_activity = new Date();
         const chat_id = query.message?.chat.id;
         if (!chat_id) {
-            return Status.fail("chat_id is undefined");
+            return this.return_fail("chat_id is undefined");
         }
         if (!this.dialog) {
-            return Status.fail("dialog is undefined");
+            return this.return_fail("dialog is undefined");
         }
         return this.dialog.on_callback(query);
     }
@@ -95,7 +104,7 @@ export class UserLogic extends Logic<void> {
 
     async send_deposit_info(): Promise<Status> {
         if (!this.dialog) {
-            return Status.fail("no active dialog");
+            return this.return_fail("no active dialog");
         }
 
         const deposit_info = this.deposit_tracker?.get_deposit()
@@ -103,7 +112,7 @@ export class UserLogic extends Logic<void> {
             return await this.deposit_activity.send_deposit_info(deposit_info, this.dialog);
         } else {
             this.dialog?.send_message("Error: no deposit info available")
-            return Status.fail("no deposit info available");
+            return this.return_fail("no deposit info available");
         }
     }
 
@@ -137,20 +146,22 @@ export class UserLogic extends Logic<void> {
 
     async send_runtime_backup(): Promise<Status> {
         if (!this.dialog) {
-            return Status.fail("no active dialog");
+            return this.return_fail("no active dialog");
         }
         if (!this.is_admin()) {
-            return Status.fail("not an admin");
+            return this.return_fail("not an admin");
         }
 
-        BotAPI.instance().sendDocument(
-            this.dialog.chat_id,
-            fs.createReadStream(Config.data.runtime_cache_filename),
-            undefined,
-            {
-                contentType: "application/json",
-            }
-        );
+        try {
+            await BotAPI.instance().sendDocument(
+                this.dialog.chat_id,
+                fs.createReadStream(Config.data.runtime_cache_filename),
+                undefined,
+                { contentType: "application/json" }
+            );
+        } catch (error) {
+            return this.return_exception(error);
+        }
         return Status.ok();
     }
 
@@ -161,15 +172,19 @@ export class UserLogic extends Logic<void> {
         } as const;
     }
 
-    static unpack(database: Database, packed: ReturnType<typeof UserLogic.pack>)
-    : StatusWith<UserLogic> {
+    static unpack(
+        database: Database,
+        packed: ReturnType<typeof UserLogic.pack>,
+        parent_logger: pino.Logger
+    ): StatusWith<UserLogic> {
         const [tgid, dialog] = [packed.tgid, packed.dlg];
 
         const user = tgid ? database.get_user(tgid) : undefined;
         if (!user) {
             return StatusWith.fail(`User @${tgid} not found`);
         }
-        const logic = new UserLogic(user, 100);
+        const user_logger = parent_logger.child({ user: tgid });
+        const logic = new UserLogic(user, 100, user_logger);
 
         // Load dialogs
         const unpack_dialog_status: StatusWith<Dialog> =
@@ -198,7 +213,7 @@ export class UserLogic extends Logic<void> {
 
         if (!this.dialog || this.dialog.chat_id !== msg.chat.id || is_start) {
             this.dialog = undefined;
-            const status = await Dialog.Start(this, msg.chat.id);
+            const status = await Dialog.Start(this, msg.chat.id, this.logger);
             if (!status.ok()) {
                 return status.wrap("can't start dialog");
             }
@@ -213,5 +228,15 @@ export class UserLogic extends Logic<void> {
             return Status.fail("no active dialog");
         }
         return await this.deposit_activity.on_deposit_event(event, this.dialog)
+    }
+
+    private return_fail(what: string): Status {
+        this.logger.error(what);
+        return Status.fail(what);
+    }
+
+    private return_exception(error: unknown): Status {
+        this.logger.error(error);
+        return Status.exception(error);
     }
 }

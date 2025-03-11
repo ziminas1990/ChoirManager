@@ -8,6 +8,8 @@ import { BotAPI } from "../api/telegram.js";
 import { Status } from "../../status.js";
 import { Language } from "../database.js";
 import { Runtime } from "../runtime.js";
+import pino from "pino";
+import { return_exception, return_fail } from "../utils.js";
 
 const SCORES_DIR = path.join(process.cwd(), 'files/scores');
 
@@ -21,7 +23,7 @@ function split_to_columns<T>(list: T[], columns: number): T[][] {
 
 export class DownloadScoresActivity extends BaseActivity {
 
-    constructor(private dialog: Dialog)
+    constructor(private dialog: Dialog, private readonly logger: pino.Logger)
     {
         super();
     }
@@ -40,14 +42,16 @@ export class DownloadScoresActivity extends BaseActivity {
     }
 
     async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
+        this.logger.info(`callback: ${query.data}`);
         const file_name = query.data?.replace("get_", "");
         if (file_name == undefined) {
-            return Status.fail(`unexpected callback: ${query.data}`);
+            return return_fail(`unexpected callback: ${query.data}`, this.logger);
         }
-        return DownloadScoresActivity.send_scores(this.dialog, file_name);
+        return (await DownloadScoresActivity.send_scores(this.dialog, file_name, this.logger))
+            .wrap(`failed to send scores: ${file_name}`);
     }
 
-    static async send_scores(dialog: Dialog, filename: string): Promise<Status> {
+    static async send_scores(dialog: Dialog, filename: string, logger: pino.Logger): Promise<Status> {
         try {
             const filePath = path.join(SCORES_DIR, filename);
             await BotAPI.instance().sendDocument(
@@ -61,12 +65,14 @@ export class DownloadScoresActivity extends BaseActivity {
         } catch (err) {
             BotAPI.instance().sendMessage(
                 dialog.chat_id, Messages.fail_to_send_file(dialog.user.data.lang));
-            return Status.exception(err);
+            return return_exception(err, logger);
         }
         return Status.ok();
     }
 
     private async send_scores_list(): Promise<Status> {
+        this.logger.info("sending scores list");
+
         const runtime = Runtime.get_instance();
         const database = runtime.get_database();
 
@@ -92,13 +98,17 @@ export class DownloadScoresActivity extends BaseActivity {
             })));
         });
 
-        BotAPI.instance().sendMessage(
-            this.dialog.chat_id,
-            Messages.get_scores_list(this.dialog.user.data.lang),
-            {
-                reply_markup: keyboard,
-            });
-        return Status.ok();
+        try {
+            await BotAPI.instance().sendMessage(
+                this.dialog.chat_id,
+                Messages.get_scores_list(this.dialog.user.data.lang),
+                {
+                    reply_markup: keyboard,
+                });
+            return Status.ok();
+        } catch (err) {
+            return return_exception(err, this.logger);
+        }
     }
 }
 

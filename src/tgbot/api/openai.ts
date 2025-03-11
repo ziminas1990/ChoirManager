@@ -3,6 +3,8 @@ import fs from "fs";
 import { ChatCompletionMessageParam } from "openai/resources";
 import { Config } from "../config.js";
 import { Status, StatusWith } from "../../status.js";
+import pino from "pino";
+import { return_exception, return_fail } from "../utils.js";
 
 export class OpenaiAPI {
     private static _instance: OpenAI;
@@ -37,6 +39,7 @@ export class ChatWithHistory {
     constructor(
         private model: "gpt-4o-mini" | "gpt-4o",
         private response_format: "text" | "json",
+        private readonly logger: pino.Logger,
         private max_history_length_sym: number = 0x4000,
         private max_message_length_sym: number = 0x1000)
     {
@@ -51,11 +54,11 @@ export class ChatWithHistory {
     public async send_message(message: string): Promise<StatusWith<string>> {
         const instance = OpenaiAPI.get_instance();
         if (!instance) {
-            return StatusWith.fail("OpenAI API is not initialized");
+            return return_fail("OpenAI API is not initialized", this.logger);
         }
 
         if (message.length > this.max_message_length_sym) {
-            return StatusWith.fail("Message is too long");
+            return return_fail("Message is too long", this.logger);
         }
 
         this.push_to_history({ role: "user", content: message });
@@ -67,6 +70,7 @@ export class ChatWithHistory {
         messages.push(...this.history);
 
         try {
+            this.logger.info("sending message:", messages);
             const completion = await instance.chat.completions.create({
                 model: this.model,
                 store: true,
@@ -78,11 +82,11 @@ export class ChatWithHistory {
             this.history.push(completion.choices[0].message);
             const response = completion.choices[0].message.content;
             if (!response) {
-                return StatusWith.fail("no response");
+                return return_fail("no response", this.logger);
             }
             return StatusWith.ok().with(response);
         } catch (error) {
-            return Status.exception(error).wrap("OpenAI API error");
+            return return_exception(error, this.logger);
         }
     }
 

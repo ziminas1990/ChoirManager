@@ -1,3 +1,5 @@
+import pino from "pino";
+import { Status } from "../status.js";
 
 export type PackedMap<K, P> = [K, P][];
 
@@ -29,4 +31,17 @@ export function apply_interval(
     }
 
     return date;
+}
+
+export function return_fail(what: string, logger: pino.Logger): Status {
+    logger.error(what);
+    return Status.fail(what);
+}
+
+export function return_exception(error: unknown, logger: pino.Logger, wrap?: string): Status {
+    logger.error(error);
+    if (wrap) {
+        return Status.exception(error).wrap(wrap);
+    }
+    return Status.exception(error);
 }

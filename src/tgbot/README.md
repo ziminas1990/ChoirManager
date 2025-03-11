@@ -61,13 +61,10 @@ docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config --name ursa-majo
 ```
 
 ## Things to be done:
-* reload config with users by admin's request
-* sending runtime.cfg backup to admin by request
 * ignore all messages, received during the startup
 * figure out how to enable valid markdown support in messages
 * notifications about new applications
 * notifications about new feedback
 * use webpack to pack bot into a single js-file and publish docker image with this single file
-* implement good logging
-* get rid of users config
 * BUG: adding to memberships table
+* configure logs rotation

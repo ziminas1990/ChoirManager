@@ -5,6 +5,8 @@ import { ChatWithHistory } from "../api/openai.js";
 import { Config } from "../config.js";
 import { Runtime } from "../runtime.js";
 import { Scores } from "../database.js";
+import pino from "pino";
+import { return_fail } from "../utils.js";
 
 const fails_instruction = `
 You are a friendly counsellor for choristers. But bot didn't manage to download the document,
@@ -102,9 +104,9 @@ abstract class IAssistant {
 export class ChoristerAssistant {
     private static instance: ChoristerAssistant;
 
-    static init(documents_fetcher: DocumentsFetcher) {
+    static init(documents_fetcher: DocumentsFetcher, logger: pino.Logger) {
         if (!ChoristerAssistant.instance) {
-            ChoristerAssistant.instance = new ChoristerAssistant(documents_fetcher);
+            ChoristerAssistant.instance = new ChoristerAssistant(documents_fetcher, logger);
         }
     }
 
@@ -121,7 +123,9 @@ export class ChoristerAssistant {
 
     private users: Map<string, IAssistant> = new Map();
 
-    constructor(private documents_fetcher: DocumentsFetcher)
+    constructor(
+        private documents_fetcher: DocumentsFetcher,
+        private readonly logger: pino.Logger)
     {
         if (Config.Assistant().openai_api === "assistant") {
             ModernAssistant.init(this.get_instructions(), "json");
@@ -148,11 +152,11 @@ export class ChoristerAssistant {
         }
 
         if (Config.Assistant().openai_api === "vanilla") {
-            user = new VanillaAssistant(this.get_instructions(), "json");
+            user = new VanillaAssistant(this.get_instructions(), this.logger, "json");
         } else if (Config.Assistant().openai_api === "assistant") {
             user = new ModernAssistant();
         } else {
-            return Status.fail("unknown assistant type");
+            return return_fail("unknown assistant type", this.logger);
         }
         this.users.set(username, user);
         return Status.ok().with(user);
@@ -164,14 +168,11 @@ export class ChoristerAssistant {
             return fails_instruction;
         }
 
-        console.log(this.get_scores_table_csv());
-
         const message = [
             instruction.replace("%%scores%%", this.get_scores_table_csv())
         ].join("\n\n");
 
-        console.log(message);
-
+        this.logger.debug("assistant instructions:\n", message);
         return message;
     }
 
@@ -194,10 +195,12 @@ export class ChoristerAssistant {
 class VanillaAssistant implements IAssistant {
     private chat: ChatWithHistory;
 
-    constructor(instructions: string, private response_format: "text" | "json" = "text")
+    constructor(instructions: string,
+        private readonly logger: pino.Logger,
+        private response_format: "text" | "json" = "text")
     {
         const model = Config.Assistant().model;
-        this.chat = new ChatWithHistory(model, this.response_format);
+        this.chat = new ChatWithHistory(model, this.response_format, this.logger);
         this.chat.set_system_message(instructions);
     }
 

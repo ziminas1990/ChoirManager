@@ -8,6 +8,8 @@ import { MainActivity } from '../activities/main.js';
 import { BotAPI } from '../api/telegram.js';
 import { Status, StatusWith } from '../../status.js';
 import { GuestActivity } from '../activities/guest_activity.js';
+import pino from 'pino';
+import { return_exception, return_fail } from '../utils.js';
 
 type Input = {
     what: "message",
@@ -24,8 +26,11 @@ export class Dialog extends Logic<void> {
     // activities stack
     private activity: BaseActivity;
 
-    static async Start(user: UserLogic, chat_id: number): Promise<StatusWith<Dialog>> {
-        const dialog = new Dialog(user, chat_id);
+    static async Start(user: UserLogic, chat_id: number, parent_logger: pino.Logger)
+    : Promise<StatusWith<Dialog>>
+    {
+        const logger = parent_logger.child({ "chat_id": chat_id });
+        const dialog = new Dialog(user, chat_id, logger);
         const status = await dialog.start();
         if (!status.done()) {
             return status.wrap("failed to start dialog");
@@ -36,10 +41,13 @@ export class Dialog extends Logic<void> {
     private constructor(
         public readonly user: UserLogic,
         public readonly chat_id: number,
+        private readonly logger: pino.Logger,
     ) {
         super(100);
         assert(chat_id);
-        this.activity = user.is_guest() ? new GuestActivity(this) : new MainActivity(this);
+        this.activity = user.is_guest()
+            ? new GuestActivity(this, this.logger)
+            : new MainActivity(this, this.logger);
     }
 
     private async start(): Promise<Status> {
@@ -47,20 +55,18 @@ export class Dialog extends Logic<void> {
     }
 
     async proceed_impl(now: Date): Promise<Status> {
-        const error_prefix = `${this.user.data.tgid} in dialog ${this.chat_id}:`;
-
         if (this.activity != undefined) {
             this.activity.proceed(now);
             for (const input of this.input_queue) {
                 if (input.what == "message") {
                     const status = await this.activity.on_message(input.message);
                     if (!status.done()) {
-                        console.error(`${error_prefix} ${status.what()}`);
+                        this.logger.error(status.what());
                     }
                 } else if (input.what == "callback") {
                     const status = await this.activity.on_callback(input.callback);
                     if (!status.done()) {
-                        console.error(`${error_prefix} ${status.what()}`);
+                        this.logger.error(status.what());
                     }
                 }
             }
@@ -81,11 +87,15 @@ export class Dialog extends Logic<void> {
 
     async send_message(msg: string): Promise<Status> {
         if (this.chat_id) {
-            console.log(`Sending to ${this.chat_id}: ${msg}`);
-            await BotAPI.instance().sendMessage(this.chat_id, msg);
-            return Status.ok();
+            this.logger.info(`sending: ${msg}`);
+            try {
+                await BotAPI.instance().sendMessage(this.chat_id, msg);
+                return Status.ok();
+            } catch (error) {
+                return return_exception(error, this.logger);
+            }
         } else {
-            return Status.fail("Chag id is NOT set")
+            return return_fail("Chat id is NOT set", this.logger);
         }
     }
 
@@ -94,6 +104,8 @@ export class Dialog extends Logic<void> {
     }
 
     static unpack(user: UserLogic, packed: ReturnType<typeof Dialog.pack>): StatusWith<Dialog> {
-        return StatusWith.ok().with(new Dialog(user, packed[0]));
+        const dialot_id = packed[0];
+        const logger = user.get_logger().child({ chat_id: dialot_id });
+        return StatusWith.ok().with(new Dialog(user, dialot_id, logger));
     }
 }
