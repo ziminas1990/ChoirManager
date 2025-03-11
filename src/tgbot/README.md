@@ -41,7 +41,9 @@ touch ./config/tgbot_token
 # Update local image (optional)
 docker pull ziminas1990/ursa-major-agent:latest
 # Run the bot
-docker run -ti --network=host -v $(pwd)/config:/mnt/config \
+docker run -ti --network=host \
+       -v $(pwd)/config:/mnt/config \
+       -v $(pwd)/logs:/mnt/logs \
        -d --name ursa-major-agent --restart unless-stopped \
        ziminas1990/ursa-major-agent:latest
 ```
@@ -50,14 +52,16 @@ To restart (without update):
 ```bash
 docker kill ursa-major-agent
 docker rm ursa-major-agent
-docker run -ti --network=host -v $(pwd)/config:/mnt/config \
+docker run -ti --network=host \
+       -v $(pwd)/config:/mnt/config \
+       -v $(pwd)/logs:/mnt/logs \
        -d --name ursa-major-agent --restart unless-stopped \
        ziminas1990/ursa-major-agent:latest
 ```
 
 For local run:
 ```bash
-docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config --name ursa-major-agent ziminas1990/ursa-major-agent:latest
+docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config -v $(pwd)/logs:/mnt/logs --name ursa-major-agent ziminas1990/ursa-major-agent:latest
 ```
 
 ## Things to be done:
