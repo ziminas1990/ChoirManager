@@ -13,7 +13,7 @@ export class OpenaiAPI {
         if (!Config.HasOpenAI()) {
             return Status.fail("OpenAI API key is not specified");
         }
-        const api_key = fs.readFileSync(Config.data.openai_api_key_file!, "utf-8");
+        const api_key = fs.readFileSync(Config.data.openai_api_key_file!, "utf-8").trim();
         this._instance = new OpenAI({ apiKey: api_key, });
         return Status.ok();
     }
@@ -70,7 +70,7 @@ export class ChatWithHistory {
         messages.push(...this.history);
 
         try {
-            this.logger.info("sending message:", messages);
+            this.logger.info(`sending message: ${message}`);
             const completion = await instance.chat.completions.create({
                 model: this.model,
                 store: true,

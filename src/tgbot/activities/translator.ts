@@ -40,7 +40,7 @@ export class AnnounceTranslator {
                 "",
             ].join("\n"));
             if (!status.ok()) {
-                this.logger.warn("failed to send announce:", status.what());
+                this.logger.warn(`failed to send announce: ${status.what()}`);
             }
         }
         return Status.ok();

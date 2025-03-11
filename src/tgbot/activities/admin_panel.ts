@@ -16,7 +16,7 @@ export class AdminPanel {
     }
 
     async handle_message(msg: TelegramBot.Message): Promise<Status> {
-        this.logger.info("Admin panel message:", msg.text);
+        this.logger.info(`Admin panel message: ${msg.text}`);
         if (msg.text?.includes("this is announces thread")) {
             return (await this.set_announce_thread(msg))
                 .wrap("failed to set announces thread");

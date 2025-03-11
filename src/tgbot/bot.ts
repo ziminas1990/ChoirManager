@@ -27,7 +27,7 @@ function load_config() {
         process.exit(1);
     }
     if (status.has_warnings()) {
-        root_logger.warn("Warnings while loading configuration:", status.what());
+        root_logger.warn(`Warnings while loading configuration: ${status.what()}`);
     }
 }
 

@@ -290,7 +290,7 @@ export class Runtime {
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
 
         if (runtime_hash != this.runtime_hash) {
-            this.logger.info("Updating runtime, hash:", runtime_hash);
+            this.logger.info(`Updating runtime, hash: ${runtime_hash}`);
             fs.writeFileSync(this.cfg.filename, runtime_data);
             this.runtime_hash = runtime_hash;
         }
@@ -362,7 +362,7 @@ export class Runtime {
         const runtime_data = JSON.stringify(Runtime.pack(this));
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
 
-        this.logger.info("Sending runtime backup, hash:", runtime_hash);
+        this.logger.info(`Sending runtime backup, hash: ${runtime_hash}`);
         this.last_backup = {
             hash: runtime_hash,
             time: new Date(),
@@ -377,10 +377,8 @@ function log_message(logger: pino.Logger, msg: TelegramBot.Message) {
             logger.info(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
         } else {
             logger.info([
-                "-".repeat(40),
                 `Message from ${msg.from?.username} in ${msg.chat.id}:`,
                 msg.text,
-                "=".repeat(40),
             ].join("\n"));
         }
     } else {
