@@ -36,7 +36,6 @@ To run:
 mkdir -p config
 touch ./config/botcfg.json
 touch ./config/runtime.json
-touch ./config/users.json
 touch ./config/google_cloud_key.json
 touch ./config/tgbot_token
 # Update local image (optional)

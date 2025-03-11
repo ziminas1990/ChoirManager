@@ -3,7 +3,7 @@ import fs from "fs";
 import crypto from "crypto";
 
 import { Status, StatusWith } from "../status.js";
-import { Database, Role, User } from "./database.js";
+import { Database, Language, Role, User, Voice } from "./database.js";
 import { UserLogic } from "./logic/user.js";
 import { pack_map, unpack_map } from "./utils.js";
 import { AnnounceTranslator } from "./activities/translator.js";
@@ -13,6 +13,7 @@ import { Config } from "./config.js";
 import { Proceeder } from "./logic/abstracts.js";
 import { DocumentsFetcher } from "./fetchers/document_fetcher.js";
 import { ChoristerAssistant } from "./ai_assistants/chorister_assistant.js";
+import { UsersFetcher } from "./fetchers/users_fetcher.js";
 
 
 class RuntimeCfg {
@@ -45,7 +46,8 @@ export class Runtime {
             const packed = JSON.parse(fs.readFileSync(filename, "utf8"));
             return Runtime.unpack(filename, database, packed);
         } catch (e) {
-            return StatusWith.ok().with(new Runtime(database, new RuntimeCfg(filename)));
+            const empty_runtime = new Runtime(database, new RuntimeCfg(filename), "", new Map());
+            return StatusWith.ok().with(empty_runtime);
         }
     }
 
@@ -53,10 +55,9 @@ export class Runtime {
     private update_interval_sec: number = 0;
     private translator: AnnounceTranslator;
     private admin_panel: AdminPanel;
+    private users_fetcher?: UsersFetcher;
     private deposits_fetcher?: DepositsFetcher;
     private documents_fetcher?: DocumentsFetcher;
-
-    private runtime_hash?: string;
 
     // We need a separate proceeder for each user to guarantee that all users will
     // be proceeded independently, so that if some user stuck in it's proceed() due to
@@ -71,11 +72,16 @@ export class Runtime {
     private constructor(
         private database: Database,
         private cfg: RuntimeCfg,
-        private users: Map<number, UserLogic> = new Map(),
+        private runtime_hash: string,
+        private users: Map<string, UserLogic>,
         private guest_users: Map<string, UserLogic> = new Map())
     {
         this.translator = new AnnounceTranslator(this);
         this.admin_panel = new AdminPanel(this);
+        this.last_backup = {
+            hash: runtime_hash,
+            time: new Date(),
+        };
     }
 
     async start(): Promise<Status> {
@@ -116,6 +122,10 @@ export class Runtime {
         }
 
         return Status.ok();
+    }
+
+    attach_users_fetcher(fetcher: UsersFetcher): void {
+        this.users_fetcher = fetcher;
     }
 
     handle_private_message(msg: TelegramBot.Message): Status {
@@ -171,12 +181,12 @@ export class Runtime {
     }
 
     get_user(tg_id: string): UserLogic | undefined {
-        const user = this.database.get_user_by_tg_id(tg_id);
+        const user = this.database.get_user(tg_id);
         if (user) {
-            let user_logic = this.users.get(user.id);
+            let user_logic = this.users.get(user.tgid);
             if (!user_logic) {
                 user_logic = new UserLogic(user, 100);
-                this.users.set(user.id, user_logic);
+                this.users.set(user.tgid, user_logic);
                 this.on_user_added(user_logic, false);
             }
             return user_logic;
@@ -188,7 +198,7 @@ export class Runtime {
         let user = this.guest_users.get(tg_id);
         if (user == undefined) {
             user = new UserLogic(
-                new User(0, "guest", "", [Role.Guest], tg_id, "ru"),
+                new User(tg_id, "guest", "", Language.RU, Voice.Unknown, [Role.Guest]),
                 500);
             this.guest_users.set(tg_id, user);
             this.on_user_added(user, false);
@@ -210,6 +220,13 @@ export class Runtime {
     }
 
     async proceed(now: Date): Promise<Status> {
+        if (this.users_fetcher) {
+            const users_status = await this.users_fetcher.proceed();
+            if (!users_status.ok()) {
+                console.error(users_status.what());
+            }
+        }
+
         if (this.deposits_fetcher) {
             const deposits_status = await this.deposits_fetcher.proceed();
             if (!deposits_status.ok()) {
@@ -238,25 +255,16 @@ export class Runtime {
         const runtime_data = JSON.stringify(Runtime.pack(this));
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
 
-        if (this.runtime_hash == undefined) {
-            this.runtime_hash = runtime_hash;
-            this.last_backup = {
-                hash: runtime_hash,
-                time: new Date(),
-            };
-            return;
-        }
-
         if (runtime_hash != this.runtime_hash) {
             console.log("Updating runtime, hash:", runtime_hash);
-            fs.writeFileSync(this.cfg.filename, JSON.stringify(Runtime.pack(this)));
+            fs.writeFileSync(this.cfg.filename, runtime_data);
             this.runtime_hash = runtime_hash;
         }
 
         if (this.last_backup && this.last_backup.hash != runtime_hash) {
             const time_diff = new Date().getTime() - this.last_backup.time.getTime();
             // Do backup once a day
-            if (time_diff > 24 * 60 * 60 * 1000) {
+            if (time_diff > 10 * 1000) {
                 this.send_backup_to_admins();
             }
         }
@@ -264,7 +272,7 @@ export class Runtime {
 
     static pack(runtime: Runtime) {
         return {
-            version: "1.0",
+            version: 2,
             cfg: RuntimeCfg.pack(runtime.cfg),
             users: pack_map(runtime.users, UserLogic.pack)
         } as const;
@@ -273,12 +281,23 @@ export class Runtime {
     static unpack(filename: string, database: Database, packed: ReturnType<typeof Runtime.pack>)
     : StatusWith<Runtime>
     {
+        const runtime_hash = crypto.createHash("sha256").update(JSON.stringify(packed)).digest("hex");
+
+        if (packed.version != 2) {
+            const old_version: number = packed.version == "1.0" ? 1 : packed.version;
+
+            try {
+                packed = update_packed_runtime(old_version, database, packed);
+            } catch (e) {
+                return Status.exception(e).wrap("failed to update runtime data");
+            }
+        }
+
         const config = RuntimeCfg.unpack(packed.cfg);
         config.filename = filename;
-        const runtime = new Runtime(database, config);
 
         const load_users_problems: Status[] = [];
-        runtime.users = unpack_map(packed.users, (packed) => {
+        const users = unpack_map(packed.users, (packed) => {
             const status = UserLogic.unpack(database, packed);
             if (!status.ok()) {
                 load_users_problems.push(status);
@@ -286,6 +305,7 @@ export class Runtime {
             return status.value;
         });
 
+        const runtime = new Runtime(database, config, runtime_hash, users);
         return Status.ok_and_warnings("loading users", load_users_problems)
                      .with(runtime);
     }
@@ -333,3 +353,40 @@ function log_message(msg: TelegramBot.Message) {
         console.log(`Empty message from ${msg.from?.username} in ${msg.chat.id}`);
     }
 }
+
+
+function update_packed_runtime(old_version: number, database: Database, data: any): ReturnType<typeof Runtime.pack> {
+    switch (old_version) {
+        case 1:
+            const status = update_runtime_v1(database, data);
+            if (!status.ok()) {
+                throw status;
+            }
+            data = status.value;
+            // no break!
+    }
+    return data;
+}
+
+// Update from v1 to v2
+function update_runtime_v1(database: Database, data: any): StatusWith<any> {
+    try {
+        // in version 1 users were stored as map of user_id: number -> user_logic
+        // in version 2 key was replaced with tgid: string
+        const users = unpack_map(data.users, (packed) => {
+            const status = UserLogic.unpack(database, packed as any);
+            if (!status.ok()) {
+                throw status;
+            }
+            return status.value;
+        }) as Map<number, UserLogic>;
+
+        const new_users = new Map([...users.values()].map(user => [user.data.tgid, user]));
+        data.users = pack_map(new_users, UserLogic.pack);
+        data.version = 2;
+        return Status.ok().with(data);
+    } catch (e) {
+        return Status.exception(e).wrap("Failed to unpack users");
+    }
+}
+

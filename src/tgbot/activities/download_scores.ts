@@ -27,12 +27,10 @@ function split_to_columns(list: string[], columns: number): string[][] {
 }
 
 export class DownloadScoresActivity extends BaseActivity {
-    private messages: Messages;
 
     constructor(private dialog: Dialog)
     {
         super();
-        this.messages = new Messages(dialog.user.data.lang);
     }
 
     async start(): Promise<Status> {
@@ -65,7 +63,7 @@ export class DownloadScoresActivity extends BaseActivity {
             }
         ).catch((err: Error) => {
             BotAPI.instance().sendMessage(
-                this.dialog.chat_id, this.messages.fail_to_send_file());
+                this.dialog.chat_id, Messages.fail_to_send_file(this.dialog.user.data.lang));
             return Status.fail(`failed to send file: ${err.message}`);
         });
         return Status.ok();
@@ -82,7 +80,7 @@ export class DownloadScoresActivity extends BaseActivity {
 
         if (files.value!.length == 0) {
             BotAPI.instance().sendMessage(
-                this.dialog.chat_id, this.messages.no_scores_available());
+                this.dialog.chat_id, Messages.no_scores_available(this.dialog.user.data.lang));
             this.set_done();
             return Status.ok();
         }
@@ -102,7 +100,7 @@ export class DownloadScoresActivity extends BaseActivity {
 
         BotAPI.instance().sendMessage(
             this.dialog.chat_id,
-            this.messages.get_scores_list(),
+            Messages.get_scores_list(this.dialog.user.data.lang),
             {
                 reply_markup: keyboard,
             });
@@ -112,46 +110,44 @@ export class DownloadScoresActivity extends BaseActivity {
     private send_fail_to_get_scores(): void {
         BotAPI.instance().sendMessage(
             this.dialog.chat_id,
-            this.messages.fail_to_get_scores());
+            Messages.fail_to_get_scores(this.dialog.user.data.lang));
     }
 
 }
 
 class Messages {
-    constructor(private lang: Language)
-    {}
 
-    get_scores_list(): string {
-        switch (this.lang) {
-            case "ru": return "Какие ноты тебе нужны?";
-            case "en":
+    static get_scores_list(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Какие ноты тебе нужны?";
+            case Language.EN:
             default:
                 return "Which scores do you need?";
         }
     }
 
-    fail_to_get_scores(): string {
-        switch (this.lang) {
-            case "ru": return "Почему-то не могу получить список доступных нот";
-            case "en":
+    static fail_to_get_scores(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Почему-то не могу получить список доступных нот";
+            case Language.EN:
             default:
                 return "Can't get the list of available scores for some reason";
         }
     }
 
-    no_scores_available(): string {
-        switch (this.lang) {
-            case "ru": return "Нет доступных файлов";
-            case "en":
+    static no_scores_available(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Нет доступных файлов";
+            case Language.EN:
             default:
                 return "No available scores";
         }
     }
 
-    fail_to_send_file(): string {
-        switch (this.lang) {
-            case "ru": return "Сори, что-то пошло не так...";
-            case "en":
+    static fail_to_send_file(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Сори, что-то пошло не так...";
+            case Language.EN:
             default:
                 return "Sorry, something went wrong...";
         }

@@ -2,6 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { Status } from "../../status.js";
 import { GoogleTranslate } from "../api/google_translate.js";
 import { Runtime } from "../runtime.js";
+import { Language } from "../database.js";
 
 // Not a ragular activity but a global activity, that is why it doesn't inherit
 // from BaseActivity
@@ -18,7 +19,7 @@ export class AnnounceTranslator {
             return Status.ok();
         }
 
-        const users = [...this.runtime.all_users()].filter(logic => logic.data.lang !== "ru");
+        const users = [...this.runtime.all_users()].filter(logic => logic.data.lang !== Language.RU);
         if (users.length == 0) {
             return Status.ok();
         }

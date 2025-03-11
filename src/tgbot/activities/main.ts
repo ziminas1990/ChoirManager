@@ -9,14 +9,12 @@ import { seconds_since } from "../utils.js";
 import { Action, ChoristerAssistant } from "../ai_assistants/chorister_assistant.js";
 
 export class MainActivity extends BaseActivity {
-    private messages: Messages;
     private last_welcome: Date = new Date(0);
     private child_activity?: BaseActivity;
 
     constructor(private dialog: Dialog)
     {
         super();
-        this.messages = new Messages(dialog.user.data.lang);
     }
 
     async start(): Promise<Status> {
@@ -46,14 +44,16 @@ export class MainActivity extends BaseActivity {
             return this.on_service_message(text);
         }
 
+        const lang = this.dialog.user.data.lang;
+
         // First of all check if user hit any of the buttons
-        if (text === this.messages.again()) {
+        if (text === Messages.again()) {
             this.start();
             return Status.ok();
-        } else if (text === this.messages.download_scores()) {
+        } else if (text === Messages.download_scores(lang)) {
             this.on_download_scores();
             return Status.ok();
-        } else if (text == this.messages.get_deposit_info()) {
+        } else if (text == Messages.get_deposit_info(lang)) {
             return await this.on_deposit_request();
         }
 
@@ -82,7 +82,7 @@ export class MainActivity extends BaseActivity {
 
         BotAPI.instance().sendMessage(
             this.dialog.chat_id,
-            this.messages.greet(user_name),
+            Messages.greet(user_name, this.dialog.user.data.lang),
             {
                 reply_markup: this.get_keyboard(),
             }
@@ -150,7 +150,7 @@ export class MainActivity extends BaseActivity {
     }
 
     private async on_deposit_request(): Promise<Status> {
-        return await this.dialog.user.send_deposit_info()
+        return await this.dialog.user.send_deposit_info();
     }
 
     private async on_service_message(command: string): Promise<Status> {
@@ -161,10 +161,12 @@ export class MainActivity extends BaseActivity {
     }
 
     private get_keyboard(): TelegramBot.ReplyKeyboardMarkup {
-        const msg = this.messages;
+        const lang = this.dialog.user.data.lang;
         return {
             keyboard: [
-                [{ text: msg.again() }, { text: msg.download_scores() }, { text: msg.get_deposit_info()}]
+                [{ text: Messages.again() },
+                 { text: Messages.download_scores(lang) },
+                 { text: Messages.get_deposit_info(lang)}]
             ],
             is_persistent: true,
             resize_keyboard: true,
@@ -173,38 +175,36 @@ export class MainActivity extends BaseActivity {
 }
 
 class Messages {
-    constructor(private lang: Language)
-    {}
 
-    again(): string {
+    static again(): string {
         return "🔄";
     }
 
-    download_scores(): string {
-        switch (this.lang) {
-            case "ru": return "Скачать ноты";
-            case "en":
+    static download_scores(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Скачать ноты";
+            case Language.EN:
             default:
                 return "Download scores";
         }
     }
 
-    get_deposit_info(): string {
-        switch (this.lang) {
-            case "ru": return "Мой депозит";
-            case "en":
+    static get_deposit_info(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Мой депозит";
+            case Language.EN:
             default:
                 return "My deposit";
         }
     }
 
-    greet(username: string): string {
-        switch (this.lang) {
-            case "ru": return [
+    static greet(username: string, lang: Language): string {
+        switch (lang) {
+            case Language.RU: return [
                 `Привет, ${username}!`,
                 "Как я могу помочь?"
             ].join("\n");
-            case "en":
+            case Language.EN:
             default:
                 return [
                     `Hello, ${username}!`,

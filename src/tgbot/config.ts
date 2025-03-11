@@ -4,12 +4,15 @@ import fs from "fs"
 export class Config {
 
     public static data: {
-        database_filename: string;
         runtime_cache_filename: string;
         google_cloud_key_file: string;
         tgbot_token_file: string;
         runtime_dump_interval_sec: number;
         openai_api_key_file?: string;
+        users_fetcher: {
+            google_sheet_id: string
+            fetch_interval_sec: number,
+        },
         deposit_tracking?: {
             google_sheet_id: string
             fetch_interval_sec: number,  // not less than 5 seconds
@@ -55,6 +58,14 @@ export class Config {
         return this.data.deposit_tracking!;
     }
 
+
+    static UsersFetcher() {
+        if (!this.data.users_fetcher) {
+            throw new Error("users_fetcher is not specified!")
+        }
+        return this.data.users_fetcher!;
+    }
+
     static Assistant() {
         if (!this.data.assistant) {
             throw new Error("assistant is not specified!")
@@ -71,9 +82,6 @@ export class Config {
         }
 
         // Required files
-        if (!this.data.database_filename) {
-            return Status.fail("'database_filename' MUST be specified");
-        }
         if (!this.data.runtime_cache_filename) {
             return Status.fail("'runtime_cache_filename' MUST be specified");
         }
@@ -90,6 +98,21 @@ export class Config {
         }
         if (this.data.runtime_dump_interval_sec < 0) {
             return Status.fail("'runtime_dump_interval_sec' MUST be positive");
+        }
+
+        // Users fetcher configuration
+        if (this.data.users_fetcher == undefined) {
+            return Status.fail("'users_fetcher' MUST be specified");
+        }
+        const cfg = this.data.users_fetcher;
+        if (!cfg.google_sheet_id) {
+            return Status.fail("'users_fetcher.google_sheet_id' MUST be specified");
+        }
+        if (!cfg.fetch_interval_sec) {
+            return Status.fail("'users_fetcher.fetch_interval_sec' MUST be specified");
+        }
+        if (cfg.fetch_interval_sec < 10) {
+            return Status.fail("'users_fetcher.fetch_interval_sec' MUST be at least 10 seconds");
         }
 
         // Deposit tracking configuration

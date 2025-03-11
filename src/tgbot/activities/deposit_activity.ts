@@ -14,14 +14,6 @@ export class DepositActivity extends BaseActivity {
     // To duplicate all notifications to them
     static accountants: UserLogic[] = []
 
-    private messages: Messages
-
-    constructor(user: UserLogic)
-    {
-        super();
-        this.messages = new Messages(user.data.lang)
-    }
-
     static add_accountant(accountant: UserLogic) {
         this.accountants.push(accountant);
     }
@@ -43,12 +35,12 @@ export class DepositActivity extends BaseActivity {
     }
 
     async send_deposit_info(info: Deposit, dialog: Dialog): Promise<Status> {
-        return await dialog.send_message(this.messages.deposit_info(info));
+        return await dialog.send_message(Messages.deposit_info(info, dialog.user.data.lang));
     }
 
     async on_deposit_event(event: DepositsTrackerEvent, dialog: Dialog): Promise<Status> {
         if (event.what == "deposit_change") {
-            const message = this.messages.deposit_change(event.deposit, event.changes);
+            const message = Messages.deposit_change(event.deposit, event.changes, dialog.user.data.lang);
             const status = await dialog.send_message(message);
             await this.notify_accountants(dialog, message);
             return status;
@@ -68,7 +60,7 @@ export class DepositActivity extends BaseActivity {
     }
 }
 
-const monthes: {[key: string]: string[]} = {
+const monthes: {[key in Language]: string[]} = {
     "ru": ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
            "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
     "en": ["January", "February", "March", "April", "May", "June",
@@ -76,102 +68,101 @@ const monthes: {[key: string]: string[]} = {
 }
 
 class Messages {
-    constructor(public readonly lang: Language) {}
 
-    deposit_change(deposit: Deposit, change: DepositChange): string {
+    static deposit_change(deposit: Deposit, change: DepositChange, lang: Language): string {
         const lines: string[] = [];
-        lines.push(this.deposit_changes_test());
+        lines.push(Messages.deposit_changes_test(lang));
         lines.push("");
 
         if (change.balance) {
-            lines.push(this.balance_changed(change.balance))
+            lines.push(Messages.balance_changed(change.balance, lang))
         } else {
-            lines.push(this.balance(deposit.balance));
+            lines.push(Messages.balance(deposit.balance, lang));
         }
 
         for (const membership_change of change.membership ?? []) {
             const [date, before, after] = membership_change;
-            lines.push(this.membership_change(date, before, after));
+            lines.push(Messages.membership_change(date, before, after, lang));
         }
 
         lines.push("");
-        lines.push(this.waiting_membership(deposit));
+        lines.push(Messages.waiting_membership(deposit, lang));
 
         return lines.join("\n")
     }
 
-    deposit_changes_test(): string {
-        return this.lang == "ru" ? "Изменения на твоём депозите" : "Deposit changes";
+    static deposit_changes_test(lang: Language): string {
+        return lang == Language.RU ? "Изменения на твоём депозите" : "Deposit changes";
     }
 
-    credited(amount: number): string {
-        return this.lang == "ru" ? `начислено ${amount} GEL` : `credited ${amount} GEL`;
+    static credited(amount: number, lang: Language): string {
+        return lang == Language.RU ? `начислено ${amount} GEL` : `credited ${amount} GEL`;
     }
 
-    withdrawn(amount: number): string {
-        return this.lang == "ru" ? `списано ${amount} GEL` : `withdrawn ${amount} GEL`;
+    static withdrawn(amount: number, lang: Language): string {
+        return lang == Language.RU ? `списано ${amount} GEL` : `withdrawn ${amount} GEL`;
     }
 
-    balance(amount: number): string {
-        return (this.lang == "ru" ? "Средств на депозите:" : "Funds on deposit:") + ` ${amount} GEL`;
+    static balance(amount: number, lang: Language): string {
+        return (lang == Language.RU ? "Средств на депозите:" : "Funds on deposit:") + ` ${amount} GEL`;
     }
 
-    balance_changed(change: [number, number]): string {
+    static balance_changed(change: [number, number], lang: Language): string {
         const diff = change[1] - change[0];
-        const diff_str = diff > 0 ? this.credited(diff) : this.withdrawn(diff);
+        const diff_str = diff > 0 ? Messages.credited(diff, lang) : Messages.withdrawn(diff, lang);
 
         return [
-            this.lang == "ru" ? "Средств на депозите:" : "Funds on deposit:",
+            lang == Language.RU ? "Средств на депозите:" : "Funds on deposit:",
             `${change[0]} -> ${change[1]}`,
             `(${diff_str})`
         ].join(" ");
     }
 
-    membership_change(date: Date, before: number, after: number): string {
-        const month = monthes[this.lang][date.getMonth()]
+    static membership_change(date: Date, before: number, after: number, lang: Language): string {
+        const month = monthes[lang][date.getMonth()]
 
         return [
-            this.lang == "ru" ? "Членский взнос за" : "Membership for",
+            lang == Language.RU ? "Членский взнос за" : "Membership for",
             `${month}: ${before} -> ${after}`
         ].join(" ");
     }
 
-    deposit_info(deposit: Deposit): string {
+    static deposit_info(deposit: Deposit, lang: Language): string {
         const lines = [
-            this.lang == "ru" ? "Информация о твоём депозите:" : "You deposit:",
+            lang == Language.RU ? "Информация о твоём депозите:" : "You deposit:",
             "",
-            this.balance(deposit.balance)
+            Messages.balance(deposit.balance, lang)
         ];
 
         const now = new Date();
         const this_month = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-        const month = monthes[this.lang][this_month.getMonth()];
+        const month = monthes[lang][this_month.getMonth()];
         const paid = deposit.membership.get(this_month.getTime()) ?? 0;
 
-        lines.push((this.lang == "ru" ? "Внесено за" : "Paid for") + ` ${month}: ${paid} GEL`)
+        lines.push((lang == Language.RU ? "Внесено за" : "Paid for") + ` ${month}: ${paid} GEL`)
         lines.push("")
-        lines.push(this.waiting_membership(deposit));
+        lines.push(Messages.waiting_membership(deposit, lang));
         return lines.join("\n")
     }
 
-    waiting_membership(deposit: Deposit): string {
+    static waiting_membership(deposit: Deposit, lang: Language): string {
         const now = new Date();
         const this_month = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-        const month = monthes[this.lang][this_month.getMonth()];
+        const month = monthes[lang][this_month.getMonth()];
         const paid = deposit.membership.get(this_month.getTime()) ?? 0;
 
         const total = paid + deposit.balance;
 
         if (total < 70) {
             const diff = 70 - total;
-            if (this.lang == "ru") {
+            if (lang == Language.RU) {
                 return `За ${month} нужно внести ещё ${diff} GEL`;
             } else {
                 return `You are expected to pay another ${diff} GEL for ${month}`;
             }
         }
 
-        if (this.lang == "ru") {
+        if (lang == Language.RU) {
             return `За ${month} ничего платить не нужно`;
         } else {
             return `Membership fee for ${month} is paid `;

@@ -27,7 +27,7 @@ export class UserLogic extends Logic<void> {
     constructor(public readonly data: User, proceed_interval_ms: number) {
         super(proceed_interval_ms);
         this.last_activity = new Date();
-        this.deposit_activity = new DepositActivity(this);
+        this.deposit_activity = new DepositActivity();
 
         if (this.is_accountant()) {
             DepositActivity.add_accountant(this);
@@ -165,7 +165,7 @@ export class UserLogic extends Logic<void> {
     : StatusWith<UserLogic> {
         const [tgid, dialog] = [packed.tgid, packed.dlg];
 
-        const user = tgid ? database.get_user_by_tg_id(tgid) : database.get_guest_user();
+        const user = tgid ? database.get_user(tgid) : undefined;
         if (!user) {
             return StatusWith.fail(`User @${tgid} not found`);
         }

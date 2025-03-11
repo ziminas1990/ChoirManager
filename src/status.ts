@@ -21,9 +21,13 @@ export class Status {
         return status;
     }
 
-    static exception(error: unknown): Status {
+    static exception(error: Error | Status | unknown): Status {
         const status = new Status();
-        status.error = { details: error instanceof Error ? error.message : String(error) };
+        status.error = {
+            details: error instanceof Error ? error.message :
+                     error instanceof Status ? error.what() :
+                     String(error)
+        };
         return status;
     }
 
