@@ -11,6 +11,12 @@ export class Config {
         openai_api_key_file?: string;
         users_fetcher: {
             google_sheet_id: string
+            range: string,
+            fetch_interval_sec: number,
+        },
+        scores_fetcher?: {
+            google_sheet_id: string
+            range: string,
             fetch_interval_sec: number,
         },
         deposit_tracking?: {
@@ -51,6 +57,10 @@ export class Config {
         return this.data.assistant != undefined;
     }
 
+    static HasScoresFetcher(): boolean {
+        return this.data.scores_fetcher != undefined;
+    }
+
     static DepositTracker() {
         if (!this.data.deposit_tracking) {
             throw new Error("deposit_tracking is not specified!")
@@ -64,6 +74,13 @@ export class Config {
             throw new Error("users_fetcher is not specified!")
         }
         return this.data.users_fetcher!;
+    }
+
+    static ScoresFetcher() {
+        if (!this.data.scores_fetcher) {
+            throw new Error("scores_fetcher is not specified!")
+        }
+        return this.data.scores_fetcher!;
     }
 
     static Assistant() {
@@ -108,11 +125,31 @@ export class Config {
         if (!cfg.google_sheet_id) {
             return Status.fail("'users_fetcher.google_sheet_id' MUST be specified");
         }
+        if (!cfg.range) {
+            return Status.fail("'users_fetcher.range' MUST be specified");
+        }
         if (!cfg.fetch_interval_sec) {
             return Status.fail("'users_fetcher.fetch_interval_sec' MUST be specified");
         }
         if (cfg.fetch_interval_sec < 10) {
             return Status.fail("'users_fetcher.fetch_interval_sec' MUST be at least 10 seconds");
+        }
+
+        // Scores fetcher configuration
+        if (this.data.scores_fetcher) {
+            const cfg = this.data.scores_fetcher;
+            if (!cfg.google_sheet_id) {
+                return Status.fail("'scores_fetcher.google_sheet_id' MUST be specified");
+            }
+            if (!cfg.range) {
+                return Status.fail("'scores_fetcher.range' MUST be specified");
+            }
+            if (!cfg.fetch_interval_sec) {
+                return Status.fail("'scores_fetcher.fetch_interval_sec' MUST be specified");
+            }
+            if (cfg.fetch_interval_sec < 60) {
+                return Status.fail("'scores_fetcher.fetch_interval_sec' MUST be at least 60 seconds");
+            }
         }
 
         // Deposit tracking configuration

@@ -14,6 +14,7 @@ import { Proceeder } from "./logic/abstracts.js";
 import { DocumentsFetcher } from "./fetchers/document_fetcher.js";
 import { ChoristerAssistant } from "./ai_assistants/chorister_assistant.js";
 import { UsersFetcher } from "./fetchers/users_fetcher.js";
+import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
 
 
 class RuntimeCfg {
@@ -41,6 +42,8 @@ class RuntimeCfg {
 
 export class Runtime {
 
+    private static instance?: Runtime;
+
     static Load(filename: string, database: Database): StatusWith<Runtime> {
         try {
             const packed = JSON.parse(fs.readFileSync(filename, "utf8"));
@@ -58,6 +61,7 @@ export class Runtime {
     private users_fetcher?: UsersFetcher;
     private deposits_fetcher?: DepositsFetcher;
     private documents_fetcher?: DocumentsFetcher;
+    private scores_fetcher?: ScoresFetcher;
 
     // We need a separate proceeder for each user to guarantee that all users will
     // be proceeded independently, so that if some user stuck in it's proceed() due to
@@ -69,6 +73,13 @@ export class Runtime {
         time: Date;
     };
 
+    static get_instance(): Runtime {
+        if (!Runtime.instance) {
+            throw new Error("Runtime is not initialized");
+        }
+        return Runtime.instance;
+    }
+
     private constructor(
         private database: Database,
         private cfg: RuntimeCfg,
@@ -76,8 +87,13 @@ export class Runtime {
         private users: Map<string, UserLogic>,
         private guest_users: Map<string, UserLogic> = new Map())
     {
-        this.translator = new AnnounceTranslator(this);
-        this.admin_panel = new AdminPanel(this);
+        if (Runtime.instance) {
+            throw new Error("Runtime is already initialized");
+        }
+        Runtime.instance = this;
+
+        this.translator = new AnnounceTranslator();
+        this.admin_panel = new AdminPanel();
         this.last_backup = {
             hash: runtime_hash,
             time: new Date(),
@@ -85,11 +101,6 @@ export class Runtime {
     }
 
     async start(): Promise<Status> {
-        const admin_panel_status = await this.admin_panel.start();
-        if (!admin_panel_status.ok()) {
-            return admin_panel_status.wrap("Failed to start admin panel");
-        }
-
         const translator_status = await this.translator.start();
         if (!translator_status.ok()) {
             return translator_status.wrap("Failed to start translator");
@@ -112,6 +123,14 @@ export class Runtime {
             ChoristerAssistant.init(this.documents_fetcher);
         }
 
+        if (Config.HasScoresFetcher()) {
+            this.scores_fetcher = new ScoresFetcher(this.database);
+            const scores_status = await this.scores_fetcher.start();
+            if (!scores_status.ok()) {
+                return scores_status.wrap("Failed to start scores fetcher");
+            }
+        }
+
         this.update_interval_sec = Config.data.runtime_dump_interval_sec;
         if (this.update_interval_sec > 0) {
             this.next_dump = new Date();
@@ -121,7 +140,17 @@ export class Runtime {
             this.on_user_added(user, true);
         }
 
+        const admin_panel_status = await this.admin_panel.start();
+        if (!admin_panel_status.ok()) {
+            return admin_panel_status.wrap("Failed to start admin panel");
+        }
+
         return Status.ok();
+    }
+
+
+    get_database(): Database {
+        return this.database;
     }
 
     attach_users_fetcher(fetcher: UsersFetcher): void {

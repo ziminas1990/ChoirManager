@@ -4,22 +4,14 @@ import { BaseActivity } from "./base_activity.js";
 import { BotAPI } from "../api/telegram.js";
 import fs from "fs";
 import path from "path";
-import { StatusWith, Status } from "../../status.js";
+import { Status } from "../../status.js";
 import { Language } from "../database.js";
+import { Runtime } from "../runtime.js";
 
 const SCORES_DIR = path.join(process.cwd(), 'files/scores');
 
-function get_scores_list(): StatusWith<string[]> {
-    try {
-        const files = fs.readdirSync(SCORES_DIR);
-        return StatusWith.ok().with(files.filter(file => file.endsWith(".pdf")));
-    } catch (error) {
-        return StatusWith.fail(`Failed to read scores directory: ${error}`);
-    }
-}
-
-function split_to_columns(list: string[], columns: number): string[][] {
-    const result: string[][] = [];
+function split_to_columns<T>(list: T[], columns: number): T[][] {
+    const result: T[][] = [];
     for (let i = 0; i < list.length; i += columns) {
         result.push(list.slice(i, i + columns));
     }
@@ -47,7 +39,7 @@ export class DownloadScoresActivity extends BaseActivity {
     }
 
     async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
-        const file_name = query.data?.replace("get_", "") + ".pdf";
+        const file_name = query.data?.replace("get_", "");
         if (file_name == undefined) {
             return Status.fail(`unexpected callback: ${query.data}`);
         }
@@ -70,31 +62,28 @@ export class DownloadScoresActivity extends BaseActivity {
     }
 
     private async send_scores_list(): Promise<Status> {
-        const files = get_scores_list();
+        const runtime = Runtime.get_instance();
+        const database = runtime.get_database();
 
-        if (!files.done() || files.value == undefined) {
-            this.send_fail_to_get_scores();
-            this.set_done();
-            return Status.fail("failed to get scores list");
-        }
+        const scores = [...database.all_scores()]
+            .filter(score => score.file)
+            .sort((a, b) => a.name.localeCompare(b.name));
 
-        if (files.value!.length == 0) {
+        if (scores.length == 0) {
             BotAPI.instance().sendMessage(
                 this.dialog.chat_id, Messages.no_scores_available(this.dialog.user.data.lang));
             this.set_done();
             return Status.ok();
         }
 
-        files.value = files.value.map(file => file.replace(".pdf", "")).sort();
-
         const keyboard: TelegramBot.InlineKeyboardMarkup = {
             inline_keyboard: []
         };
 
-        split_to_columns(files.value, 2).forEach((files) => {
-            keyboard.inline_keyboard.push(files.map(file => ({
-                text: file,
-                callback_data: `get_${file}`
+        split_to_columns(scores, 2).forEach((scores) => {
+            keyboard.inline_keyboard.push(scores.map(score => ({
+                text: score.name,
+                callback_data: `get_${score.file}`
             })));
         });
 
@@ -106,13 +95,6 @@ export class DownloadScoresActivity extends BaseActivity {
             });
         return Status.ok();
     }
-
-    private send_fail_to_get_scores(): void {
-        BotAPI.instance().sendMessage(
-            this.dialog.chat_id,
-            Messages.fail_to_get_scores(this.dialog.user.data.lang));
-    }
-
 }
 
 class Messages {

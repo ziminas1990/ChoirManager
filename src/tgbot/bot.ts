@@ -133,13 +133,14 @@ async function main() {
     }
     bind_telegram_events(runtime);
 
-    console.log("Runnning...");
+    console.log("Starting runtime...");
     const status = await runtime.start();
     if (!status.ok()) {
         console.error(`${status.what()}`);
         await wait_and_exit(10000, 1);
     }
 
+    console.log("Runnning...");
     while (true) {
         await runtime.proceed(new Date());
         await new Promise(resolve => setTimeout(resolve, 50));

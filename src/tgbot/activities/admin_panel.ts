@@ -4,7 +4,7 @@ import { Runtime } from "../runtime.js";
 import { BotAPI } from "../api/telegram.js";
 
 export class AdminPanel {
-    constructor(private runtime: Runtime)
+    constructor()
     {}
 
     async start(): Promise<Status> {
@@ -24,7 +24,8 @@ export class AdminPanel {
     }
 
     async send_runtime_backup_to_admins(): Promise<Status> {
-        const admins = [...this.runtime.all_users()].filter(logic => logic.is_admin());
+        const runtime = Runtime.get_instance();
+        const admins = [...runtime.all_users()].filter(logic => logic.is_admin());
         const problems: Status[] = [];
         for (const admin of admins) {
             const status = await admin.send_runtime_backup();
@@ -36,7 +37,8 @@ export class AdminPanel {
     }
 
     send_notification(notification: string): Status {
-        const admins = [...this.runtime.all_users()].filter(logic => logic.is_admin());
+        const runtime = Runtime.get_instance();
+        const admins = [...runtime.all_users()].filter(logic => logic.is_admin());
         const problems: Status[] = [];
         for (const admin of admins) {
             const dialog = admin.main_dialog();
@@ -51,7 +53,8 @@ export class AdminPanel {
         if (msg.message_thread_id == undefined) {
             return Status.fail("message thread id is undefined");
         }
-        this.runtime.set_announce_thread(msg.chat.id, msg.message_thread_id);
+        const runtime = Runtime.get_instance();
+        runtime.set_announce_thread(msg.chat.id, msg.message_thread_id);
         BotAPI.instance().sendMessage(
             msg.chat.id,
             "Got it! This will be announces thread now.",
@@ -68,7 +71,8 @@ export class AdminPanel {
     }
 
     private set_manager_chat_id(msg: TelegramBot.Message): Status {
-        this.runtime.set_manager_chat_id(msg.chat.id);
+        const runtime = Runtime.get_instance();
+        runtime.set_manager_chat_id(msg.chat.id);
         BotAPI.instance().sendMessage(
             msg.chat.id,
             "Got it! This will be managers chat now.",
@@ -83,7 +87,8 @@ export class AdminPanel {
     private async send_all_admins(message: string): Promise<Status> {
         // TODO: add admins cache
 
-        const admins = [...this.runtime.all_users()].filter(logic => logic.is_admin());
+        const runtime = Runtime.get_instance();
+        const admins = [...runtime.all_users()].filter(logic => logic.is_admin());
         const promises: Promise<any>[] = [];
         for (const admin of admins) {
             const dialog = admin.main_dialog();

@@ -7,7 +7,7 @@ import { Language } from "../database.js";
 // Not a ragular activity but a global activity, that is why it doesn't inherit
 // from BaseActivity
 export class AnnounceTranslator {
-    constructor(private runtime: Runtime)
+    constructor()
     {}
 
     async start(): Promise<Status> {
@@ -19,7 +19,8 @@ export class AnnounceTranslator {
             return Status.ok();
         }
 
-        const users = [...this.runtime.all_users()].filter(logic => logic.data.lang !== Language.RU);
+        const runtime = Runtime.get_instance();
+        const users = [...runtime.all_users()].filter(logic => logic.data.lang !== Language.RU);
         if (users.length == 0) {
             return Status.ok();
         }

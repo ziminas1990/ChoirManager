@@ -23,6 +23,16 @@ export enum Language {
     EN = "en",
 }
 
+function find<T>(array: Iterable<T>, what: Partial<T>): T | undefined {
+    for (const item of array) {
+        const keys = Object.keys(what) as (keyof T)[];
+        if (keys.every(key => item[key] == what[key])) {
+            return item;
+        }
+    }
+    return undefined;
+}
+
 export class User {
     constructor(
         public tgid: string,
@@ -78,19 +88,69 @@ export class User {
     }
 }
 
+export class Scores {
+    constructor(
+        public name: string,
+        public author: string,
+        public hints: string,
+        public duration: number,
+        public file: string,
+    ) {}
+
+    public to_csv(separator: string = ";"): string {
+        return [this.author, this.hints, this.duration, this.file]
+            .map(s => s.toString())
+            .map(s => s.replace(separator, separator == ";" ? "," : ";"))
+            .join(separator);
+    }
+
+    public get_key(): string {
+        return `${this.author} by ${this.name}`;
+    }
+
+    public update(scores: Scores): string[] {
+        if (this.author != scores.author) {
+            return [`author: "${this.author}" -> "${scores.author}"`];
+        }
+        if (this.hints != scores.hints) {
+            return [`hits: "${this.hints}" -> "${scores.hints}"`];
+        }
+        if (this.duration != scores.duration) {
+            return [`duration: ${this.duration} -> ${scores.duration}`];
+        }
+        if (this.file != scores.file) {
+            return [`file: "${this.file}" -> "${scores.file}"`];
+        }
+        return [];
+    }
+}
+
 export class Database {
     private users: Map<string, User> = new Map();
+    private scores: Map<string, Scores> = new Map();
 
     public add_user(user: User): void {
         this.users.set(user.tgid, user);
+    }
+
+    public add_scores(scores: Scores): void {
+        this.scores.set(scores.get_key(), scores);
     }
 
     public get_user(tg_id: string): User | undefined {
         return this.users.get(tg_id);
     }
 
+    public find_scores(what: Partial<Scores>): Scores | undefined {
+        return find(this.scores.values(), what);
+    }
+
     public all_users(): IterableIterator<User> {
         return this.users.values();
+    }
+
+    public all_scores(): IterableIterator<Scores> {
+        return this.scores.values();
     }
 
     public verify(): Status {

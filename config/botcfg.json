@@ -6,7 +6,13 @@
     "runtime_dump_interval_sec": 10,
     "users_fetcher": {
         "google_sheet_id": "1gvVUsCn3xTyav2xMBvaFqs-uBtIL68ucvu2km9A1wMs",
+        "range": "Users!A:Z",
         "fetch_interval_sec": 60
+    },
+    "scores_fetcher": {
+        "google_sheet_id": "1gvVUsCn3xTyav2xMBvaFqs-uBtIL68ucvu2km9A1wMs",
+        "range": "Scores!A:Z",
+        "fetch_interval_sec": 3600
     },
     "deposit_tracking": {
         "google_sheet_id": "1F-ZlOD8ags8A-r40V700qBCbJrXTG07Dbet9wFmWtYc",
