@@ -5,7 +5,7 @@ import { ChatWithHistory } from "../api/openai.js";
 import { Config } from "../config.js";
 import { Runtime } from "../runtime.js";
 import { Scores } from "../database.js";
-import pino from "pino";
+import { Journal } from "../journal.js";
 import { return_fail } from "../utils.js";
 
 const fails_instruction = `
@@ -104,9 +104,9 @@ abstract class IAssistant {
 export class ChoristerAssistant {
     private static instance: ChoristerAssistant;
 
-    static init(documents_fetcher: DocumentsFetcher, logger: pino.Logger) {
+    static init(documents_fetcher: DocumentsFetcher, journal: Journal) {
         if (!ChoristerAssistant.instance) {
-            ChoristerAssistant.instance = new ChoristerAssistant(documents_fetcher, logger);
+            ChoristerAssistant.instance = new ChoristerAssistant(documents_fetcher, journal);
         }
     }
 
@@ -125,7 +125,7 @@ export class ChoristerAssistant {
 
     constructor(
         private documents_fetcher: DocumentsFetcher,
-        private readonly logger: pino.Logger)
+        private readonly journal: Journal)
     {
         if (Config.Assistant().openai_api === "assistant") {
             ModernAssistant.init(this.get_instructions(), "json");
@@ -152,11 +152,11 @@ export class ChoristerAssistant {
         }
 
         if (Config.Assistant().openai_api === "vanilla") {
-            user = new VanillaAssistant(this.get_instructions(), this.logger, "json");
+            user = new VanillaAssistant(this.get_instructions(), this.journal, "json");
         } else if (Config.Assistant().openai_api === "assistant") {
             user = new ModernAssistant();
         } else {
-            return return_fail("unknown assistant type", this.logger);
+            return return_fail("unknown assistant type", this.journal.log());
         }
         this.users.set(username, user);
         return Status.ok().with(user);
@@ -172,7 +172,7 @@ export class ChoristerAssistant {
             instruction.replace("%%scores%%", this.get_scores_table_csv())
         ].join("\n\n");
 
-        this.logger.debug("assistant instructions:\n", message);
+        this.journal.log().debug("assistant instructions:\n", message);
         return message;
     }
 
@@ -196,11 +196,11 @@ class VanillaAssistant implements IAssistant {
     private chat: ChatWithHistory;
 
     constructor(instructions: string,
-        private readonly logger: pino.Logger,
+        private readonly journal: Journal,
         private response_format: "text" | "json" = "text")
     {
         const model = Config.Assistant().model;
-        this.chat = new ChatWithHistory(model, this.response_format, this.logger);
+        this.chat = new ChatWithHistory(model, this.response_format, this.journal);
         this.chat.set_system_message(instructions);
     }
 

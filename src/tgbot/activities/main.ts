@@ -1,5 +1,4 @@
 import TelegramBot from "node-telegram-bot-api";
-import pino from "pino";
 
 import { Dialog } from "../logic/dialog.js";
 import { BaseActivity } from "./base_activity.js";
@@ -9,16 +8,17 @@ import { Status } from "../../status.js";
 import { Language } from "../database.js";
 import { return_exception, return_fail, seconds_since } from "../utils.js";
 import { Action, ChoristerAssistant } from "../ai_assistants/chorister_assistant.js";
+import { Journal } from "../journal.js";
 
 export class MainActivity extends BaseActivity {
     private last_welcome: Date = new Date(0);
     private child_activity?: BaseActivity;
-    private logger: pino.Logger;
+    private journal: Journal;
 
-    constructor(private dialog: Dialog, parent_logger: pino.Logger)
+    constructor(private dialog: Dialog, parent_journal: Journal)
     {
         super();
-        this.logger = parent_logger.child({ activity: "main" });
+        this.journal = parent_journal.child("main_activity");
     }
 
     async start(): Promise<Status> {
@@ -26,7 +26,7 @@ export class MainActivity extends BaseActivity {
         if (!user.is_guest()) {
             return await this.send_welcome();
         } else {
-            return return_fail(`User ${this.dialog.user.data.tgid} is a guest`, this.logger);
+            return return_fail(`User ${this.dialog.user.data.tgid} is a guest`, this.journal.log());
         }
     }
 
@@ -72,7 +72,7 @@ export class MainActivity extends BaseActivity {
         if (this.child_activity) {
             return (await this.child_activity.on_callback(query)).wrap("child activity failed");
         }
-        return return_fail(`no child activity for callback: ${query.data}`, this.logger);
+        return return_fail(`no child activity for callback: ${query.data}`, this.journal.log());
     }
 
     private async send_welcome(): Promise<Status> {
@@ -92,7 +92,7 @@ export class MainActivity extends BaseActivity {
                 });
             return Status.ok();
         } catch (err) {
-            return return_exception(err, this.logger);
+            return return_exception(err, this.journal.log());
         }
     }
 
@@ -109,7 +109,7 @@ export class MainActivity extends BaseActivity {
             return send_status.wrap(`assistant failure`);
         }
 
-        this.logger.info(`assistant response: ${JSON.stringify(send_status.value)}`);
+        this.journal.log().info({ response: send_status.value }, `assistant response`);
 
         for (const msg of send_status.value!) {
             if (msg.message) {
@@ -121,7 +121,7 @@ export class MainActivity extends BaseActivity {
                         reply_markup: this.get_keyboard(),
                         });
                 } catch (err) {
-                    this.logger.error(`failed to send assistant response: ${Status.exception(err).what()}`);
+                    this.journal.log().error(`failed to send assistant response: ${Status.exception(err).what()}`);
                 }
             }
             if (msg.actions && msg.actions.length > 0) {
@@ -145,7 +145,7 @@ export class MainActivity extends BaseActivity {
             case "get_deposit_info":
                 return await this.on_deposit_request();
             default:
-                return return_fail(`unknown action: ${action.what}`, this.logger);
+                return return_fail(`unknown action: ${action.what}`, this.journal.log());
         }
     }
 
@@ -155,13 +155,11 @@ export class MainActivity extends BaseActivity {
         }
 
         if (filename) {
-            return (await DownloadScoresActivity.send_scores(this.dialog, filename, this.logger))
+            return (await DownloadScoresActivity.send_scores(this.dialog, filename, this.journal))
                 .wrap(`failed to download scores "${filename}"`);
         }
 
-        const activity_logger = this.logger.child({ activity: "download_scores" });
-
-        this.child_activity = new DownloadScoresActivity(this.dialog, activity_logger);
+        this.child_activity = new DownloadScoresActivity(this.dialog, this.journal);
         return (await this.child_activity.start())
             .wrap("failed to start download scores activity");
     }
@@ -176,7 +174,7 @@ export class MainActivity extends BaseActivity {
             return (await this.dialog.user.send_runtime_backup())
                 .wrap("failed to send runtime backup");
         } else {
-            return return_fail(`unknown service command: ${command}`, this.logger);
+            return return_fail(`unknown service command: ${command}`, this.journal.log());
         }
     }
 

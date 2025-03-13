@@ -34,10 +34,12 @@ apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker
 To run:
 ```bash
 mkdir -p config
+mkdir -p logs
 touch ./config/botcfg.json
 touch ./config/runtime.json
 touch ./config/google_cloud_key.json
 touch ./config/tgbot_token
+touch ./config/openai_api_key
 # Update local image (optional)
 docker pull ziminas1990/ursa-major-agent:latest
 # Run the bot
@@ -61,7 +63,7 @@ docker run -ti --network=host \
 
 For local run:
 ```bash
-docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config -v $(pwd)/logs:/mnt/logs --name ursa-major-agent ziminas1990/ursa-major-agent:latest
+docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config -v $(pwd)/logs:/mnt/logs --name ursa-major-agent ursa-major-agent:latest
 ```
 
 ## Things to be done:
@@ -72,3 +74,4 @@ docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config -v $(pwd)/logs:/
 * use webpack to pack bot into a single js-file and publish docker image with this single file
 * BUG: adding to memberships table
 * configure logs rotation
+* add loading of logs file by admin's request

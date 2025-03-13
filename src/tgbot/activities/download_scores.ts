@@ -8,7 +8,7 @@ import { BotAPI } from "../api/telegram.js";
 import { Status } from "../../status.js";
 import { Language } from "../database.js";
 import { Runtime } from "../runtime.js";
-import pino from "pino";
+import { Journal } from "../journal.js";
 import { return_exception, return_fail } from "../utils.js";
 
 const SCORES_DIR = path.join(process.cwd(), 'files/scores');
@@ -23,9 +23,12 @@ function split_to_columns<T>(list: T[], columns: number): T[][] {
 
 export class DownloadScoresActivity extends BaseActivity {
 
-    constructor(private dialog: Dialog, private readonly logger: pino.Logger)
+    private journal: Journal;
+
+    constructor(private dialog: Dialog, parent_journal: Journal)
     {
         super();
+        this.journal = parent_journal.child("download_scores");
     }
 
     async start(): Promise<Status> {
@@ -42,16 +45,16 @@ export class DownloadScoresActivity extends BaseActivity {
     }
 
     async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
-        this.logger.info(`callback: ${query.data}`);
+        this.journal.log().info(`callback: ${query.data}`);
         const file_name = query.data?.replace("get_", "");
         if (file_name == undefined) {
-            return return_fail(`unexpected callback: ${query.data}`, this.logger);
+            return return_fail(`unexpected callback: ${query.data}`, this.journal.log());
         }
-        return (await DownloadScoresActivity.send_scores(this.dialog, file_name, this.logger))
+        return (await DownloadScoresActivity.send_scores(this.dialog, file_name, this.journal))
             .wrap(`failed to send scores: ${file_name}`);
     }
 
-    static async send_scores(dialog: Dialog, filename: string, logger: pino.Logger): Promise<Status> {
+    static async send_scores(dialog: Dialog, filename: string, journal: Journal): Promise<Status> {
         try {
             const filePath = path.join(SCORES_DIR, filename);
             await BotAPI.instance().sendDocument(
@@ -65,13 +68,13 @@ export class DownloadScoresActivity extends BaseActivity {
         } catch (err) {
             BotAPI.instance().sendMessage(
                 dialog.chat_id, Messages.fail_to_send_file(dialog.user.data.lang));
-            return return_exception(err, logger);
+            return return_exception(err, journal.log());
         }
         return Status.ok();
     }
 
     private async send_scores_list(): Promise<Status> {
-        this.logger.info("sending scores list");
+        this.journal.log().info("sending scores list");
 
         const runtime = Runtime.get_instance();
         const database = runtime.get_database();
@@ -107,7 +110,7 @@ export class DownloadScoresActivity extends BaseActivity {
                 });
             return Status.ok();
         } catch (err) {
-            return return_exception(err, this.logger);
+            return return_exception(err, this.journal.log());
         }
     }
 }

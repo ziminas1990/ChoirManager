@@ -1,4 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
+import { Journal } from "../journal.js";
 
 import { Status } from "../../status.js";
 import { Language } from "../database.js";
@@ -7,14 +8,16 @@ import { DepositsTrackerEvent } from "../logic/deposits_tracker.js";
 import { BaseActivity } from "./base_activity.js";
 import { UserLogic } from "../logic/user.js";
 import { Dialog } from "../logic/dialog.js";
-import pino from "pino";
+import { current_month } from "../utils.js";
+import { Config } from "../config.js";
 
 
 export class DepositActivity extends BaseActivity {
-    private logger: pino.Logger;
-    constructor(parent_logger: pino.Logger) {
+    private journal: Journal;
+
+    constructor(parent_journal: Journal) {
         super();
-        this.logger = parent_logger.child({ activity: "deposit" });
+        this.journal = parent_journal.child("deposit_activity");
     }
 
     // To duplicate all notifications to them
@@ -45,13 +48,40 @@ export class DepositActivity extends BaseActivity {
     }
 
     async on_deposit_event(event: DepositsTrackerEvent, dialog: Dialog): Promise<Status> {
-        if (event.what == "deposit_change") {
-            const message = Messages.deposit_change(event.deposit, event.changes, dialog.user.data.lang);
-            const status = await dialog.send_message(message);
-            await this.notify_accountants(dialog, message);
-            return status;
+        switch (event.what) {
+            case "update":
+                return await this.handle_update_event(event.deposit, event.changes, dialog);
+            case "reminder":
+                return await this.handle_reminder_event(event.amount, dialog);
+            default:
+                return Status.fail(`Unknown event type: ${(event as any).what}`);
         }
-        return Status.ok();
+    }
+
+    private async handle_update_event(deposit: Deposit, changes: DepositChange, dialog: Dialog): Promise<Status> {
+        const message = Messages.deposit_change(deposit, changes, dialog.user.data.lang);
+        const status = await dialog.send_message(message);
+        if (status.ok()) {
+            await this.notify_accountants(dialog, message);
+        }
+        return status;
+    }
+
+    private async handle_reminder_event(amount: number, dialog: Dialog): Promise<Status> {
+        if (!dialog.user.is_chorister() || dialog.user.is_ex_chorister()) {
+            return Status.ok();
+        }
+        if (amount < 10) {
+            // It's okay to move it to the next month
+            return Status.ok();
+        }
+
+        const message = Messages.deposit_reminder(amount, dialog.user.data.lang);
+        const status = await dialog.send_message(message);
+        if (status.ok()) {
+            await this.notify_accountants(dialog, message);
+        }
+        return status;
     }
 
     async notify_accountants(user_dialog: Dialog, message: string) {
@@ -62,7 +92,7 @@ export class DepositActivity extends BaseActivity {
                 const status = await dialog.send_message(
                     `Notification for ${who.name} ${who.surname} (@${who.tgid}):\n\n${message}`);
                 if (!status.ok()) {
-                    this.logger.warn(`failed to send notification to (@${accountant.data.tgid}): ${status.what()}`);
+                    this.journal.log().warn(`failed to send notification to (@${accountant.data.tgid}): ${status.what()}`);
                 }
             }
         }
@@ -143,8 +173,7 @@ class Messages {
             Messages.balance(deposit.balance, lang)
         ];
 
-        const now = new Date();
-        const this_month = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+        const this_month = current_month();
         const month = monthes[lang][this_month.getMonth()];
         const paid = deposit.membership.get(this_month.getTime()) ?? 0;
 
@@ -155,15 +184,15 @@ class Messages {
     }
 
     static waiting_membership(deposit: Deposit, lang: Language): string {
-        const now = new Date();
-        const this_month = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+        const this_month = current_month();
         const month = monthes[lang][this_month.getMonth()];
         const paid = deposit.membership.get(this_month.getTime()) ?? 0;
 
         const total = paid + deposit.balance;
+        const membership_fee = Config.DepositTracker().membership_fee;
 
-        if (total < 70) {
-            const diff = 70 - total;
+        if (total < membership_fee) {
+            const diff = membership_fee - total;
             if (lang == Language.RU) {
                 return `За ${month} нужно внести ещё ${diff} GEL`;
             } else {
@@ -176,6 +205,15 @@ class Messages {
         } else {
             return `Membership fee for ${month} is paid `;
         }
+    }
 
+    static deposit_reminder(amount: number, lang: Language): string {
+        switch (lang) {
+            case Language.RU:
+                return `Привет! Напоминаню что в этом месяце нужно внести ещё ${amount} GEL в качестве членского взноса.`;
+            case Language.EN:
+            default:
+                return `Hi! Just a reminder that this month you need to deposit another ${amount} GEL as a membership fee.`;
+        }
     }
 }

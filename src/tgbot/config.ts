@@ -22,7 +22,12 @@ export class Config {
         deposit_tracking?: {
             google_sheet_id: string
             fetch_interval_sec: number,  // not less than 5 seconds
-            collect_interval_sec: number  // not less than 10 seconds
+            collect_interval_sec: number,  // not less than 10 seconds
+            membership_fee: number,      // in GEL
+            reminders: Array<{
+                day_of_month: number,    // 1-31
+                hour: number            // 0-23
+            }>
         },
         assistant?: {
             openai_api: "vanilla" | "assistant"
@@ -170,6 +175,12 @@ export class Config {
             }
             if (cfg.collect_interval_sec < 5) {
                 return Status.fail(`${fail_prefix}: 'collect_interval_sec' MUST be at least 5 seconds`);
+            }
+            if (!cfg.membership_fee) {
+                return Status.fail(`${fail_prefix}: 'membership_fee' MUST be specified`);
+            }
+            if (cfg.membership_fee <= 0) {
+                return Status.fail(`${fail_prefix}: 'membership_fee' MUST be positive`);
             }
             if (cfg.fetch_interval_sec >= cfg.collect_interval_sec) {
                 return Status.fail([

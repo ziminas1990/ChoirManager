@@ -1,12 +1,12 @@
 import TelegramBot from "node-telegram-bot-api";
-import pino from "pino";
 import { Status } from "../../status.js";
 import { Runtime } from "../runtime.js";
 import { BotAPI } from "../api/telegram.js";
 import { return_exception, return_fail } from "../utils.js";
+import { Journal } from "../journal.js";
 
 export class AdminPanel {
-    constructor(private readonly logger: pino.Logger)
+    constructor(private readonly journal: Journal)
     {}
 
     async start(): Promise<Status> {
@@ -16,7 +16,7 @@ export class AdminPanel {
     }
 
     async handle_message(msg: TelegramBot.Message): Promise<Status> {
-        this.logger.info(`Admin panel message: ${msg.text}`);
+        this.journal.log().info(`Admin panel message: ${msg.text}`);
         if (msg.text?.includes("this is announces thread")) {
             return (await this.set_announce_thread(msg))
                 .wrap("failed to set announces thread");
@@ -25,18 +25,18 @@ export class AdminPanel {
             return (await this.set_manager_chat_id(msg))
                 .wrap("failed to set managers chat");
         }
-        return return_fail("unexpected message", this.logger);
+        return return_fail("unexpected message", this.journal.log());
     }
 
     async send_runtime_backup_to_admins(): Promise<Status> {
-        this.logger.info("Sending runtime backup to admins");
+        this.journal.log().info("Sending runtime backup to admins");
         const runtime = Runtime.get_instance();
         const admins = [...runtime.all_users()].filter(logic => logic.is_admin());
         const problems: Status[] = [];
         for (const admin of admins) {
             const status = await admin.send_runtime_backup();
             if (!status.ok()) {
-                this.logger.warn(status.what());
+                this.journal.log().warn(status.what());
                 problems.push(status);
             }
         }
@@ -52,7 +52,7 @@ export class AdminPanel {
             if (dialog) {
                 const status = await dialog.send_message(notification);
                 if (!status.ok()) {
-                    this.logger.warn(status.what());
+                    this.journal.log().warn(status.what());
                     problems.push(status);
                 }
             }
@@ -62,7 +62,7 @@ export class AdminPanel {
 
     private async set_announce_thread(msg: TelegramBot.Message): Promise<Status> {
         if (msg.message_thread_id == undefined) {
-            return return_fail("message thread id is undefined", this.logger);
+            return return_fail("message thread id is undefined", this.journal.log());
         }
         const runtime = Runtime.get_instance();
         runtime.set_announce_thread(msg.chat.id, msg.message_thread_id);
@@ -111,7 +111,7 @@ export class AdminPanel {
             await Promise.all(promises);
             return Status.ok();
         } catch (error) {
-            return return_exception(error, this.logger);
+            return return_exception(error, this.journal.log());
         }
     }
 }

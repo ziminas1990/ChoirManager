@@ -15,7 +15,7 @@ import { DocumentsFetcher } from "./fetchers/document_fetcher.js";
 import { ChoristerAssistant } from "./ai_assistants/chorister_assistant.js";
 import { UsersFetcher } from "./fetchers/users_fetcher.js";
 import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
-import pino from "pino";
+import { Journal } from "./journal.js";
 
 
 class RuntimeCfg {
@@ -45,12 +45,13 @@ export class Runtime {
 
     private static instance?: Runtime;
 
-    static Load(filename: string, database: Database, logger: pino.Logger): StatusWith<Runtime> {
+    static Load(filename: string, database: Database, parent_journal: Journal): StatusWith<Runtime> {
+        const journal = parent_journal.child("rt");
         try {
             const packed = JSON.parse(fs.readFileSync(filename, "utf8"));
-            return Runtime.unpack(filename, database, packed, logger);
+            return Runtime.unpack(filename, database, packed, journal);
         } catch (e) {
-            const empty_runtime = new Runtime(database, new RuntimeCfg(filename), "", new Map(), logger);
+            const empty_runtime = new Runtime(database, new RuntimeCfg(filename), "", new Map(), journal);
             return StatusWith.ok().with(empty_runtime);
         }
     }
@@ -86,7 +87,7 @@ export class Runtime {
         private cfg: RuntimeCfg,
         private runtime_hash: string,
         private users: Map<string, UserLogic>,
-        private logger: pino.Logger,
+        private journal: Journal,
         private guest_users: Map<string, UserLogic> = new Map())
     {
         if (Runtime.instance) {
@@ -94,8 +95,8 @@ export class Runtime {
         }
         Runtime.instance = this;
 
-        this.translator = new AnnounceTranslator(logger.child({ "activity": "translator" }));
-        this.admin_panel = new AdminPanel(logger.child({ "activity": "admin_panel" }));
+        this.translator = new AnnounceTranslator(this.journal.child("translator"));
+        this.admin_panel = new AdminPanel(this.journal.child("admin_panel"));
         this.last_backup = {
             hash: runtime_hash,
             time: new Date(),
@@ -103,12 +104,14 @@ export class Runtime {
     }
 
     async start(): Promise<Status> {
+        this.journal.log().info("Starting runtime");
         const translator_status = await this.translator.start();
         if (!translator_status.ok()) {
             return translator_status.wrap("Failed to start translator");
         }
 
         if (Config.HasDepoditTracker()) {
+            this.journal.log().info("Starting deposits fetcher");
             this.deposits_fetcher = new DepositsFetcher();
             const deposits_status = await this.deposits_fetcher.start();
             if (!deposits_status.ok()) {
@@ -117,15 +120,17 @@ export class Runtime {
         }
 
         if (Config.HasAssistant()) {
+            this.journal.log().info("Starting AI assistant");
             this.documents_fetcher = new DocumentsFetcher(Config.Assistant().fetch_interval_sec);
             const documents_status = await this.documents_fetcher.start();
             if (!documents_status.ok()) {
                 return documents_status.wrap("Failed to start documents fetcher");
             }
-            ChoristerAssistant.init(this.documents_fetcher, this.logger.child({ "assistant": "chorister" }));
+            ChoristerAssistant.init(this.documents_fetcher, this.journal.child("assistant"));
         }
 
         if (Config.HasScoresFetcher()) {
+            this.journal.log().info("Starting scores fetcher");
             this.scores_fetcher = new ScoresFetcher(this.database);
             const scores_status = await this.scores_fetcher.start();
             if (!scores_status.ok()) {
@@ -142,6 +147,7 @@ export class Runtime {
             this.on_user_added(user, true);
         }
 
+        this.journal.log().info("Starting admin panel");
         const admin_panel_status = await this.admin_panel.start();
         if (!admin_panel_status.ok()) {
             return admin_panel_status.wrap("Failed to start admin panel");
@@ -160,7 +166,7 @@ export class Runtime {
     }
 
     handle_private_message(msg: TelegramBot.Message): Status {
-        log_message(this.logger, msg);
+        log_message(this.journal, msg);
 
         const username = msg.from?.username;
         if (username == undefined) {
@@ -172,11 +178,11 @@ export class Runtime {
     }
 
     async handle_group_message(msg: TelegramBot.Message): Promise<Status> {
-        log_message(this.logger, msg);
+        log_message(this.journal, msg);
 
         const username = msg.from?.username;
         if (username == undefined) {
-            return return_fail("username is undefined", this.logger);
+            return return_fail("username is undefined", this.journal.log());
         }
         const user = this.get_user(username);
         if (user == undefined) {
@@ -202,9 +208,9 @@ export class Runtime {
 
     handle_callback(query: TelegramBot.CallbackQuery): Status {
         const username = query.from?.username
-        this.logger.info(`Callback query from ${username} in ${query.message?.chat.id}: ${query.data}`);
+        this.journal.log().info(`Callback query from ${username} in ${query.message?.chat.id}: ${query.data}`);
         if (username == undefined) {
-            return return_fail("username is undefined", this.logger);
+            return return_fail("username is undefined", this.journal.log());
         }
 
         let user = this.get_user(username) ?? this.get_guest_user(username);
@@ -216,8 +222,7 @@ export class Runtime {
         if (user) {
             let user_logic = this.users.get(user.tgid);
             if (!user_logic) {
-                const user_logger = this.logger.child({ user: user.tgid });
-                user_logic = new UserLogic(user, 100, user_logger);
+                user_logic = new UserLogic(user, 100, this.journal);
                 this.users.set(user.tgid, user_logic);
                 this.on_user_added(user_logic, false);
             }
@@ -229,11 +234,10 @@ export class Runtime {
     get_guest_user(tg_id: string): UserLogic {
         let user = this.guest_users.get(tg_id);
         if (user == undefined) {
-            const user_logger = this.logger.child({ user: tg_id, role: "guest" });
             user = new UserLogic(
                 new User(tg_id, "guest", "", Language.RU, Voice.Unknown, [Role.Guest]),
                 500,
-                user_logger);
+                this.journal);
             this.guest_users.set(tg_id, user);
             this.on_user_added(user, false);
         }
@@ -257,14 +261,14 @@ export class Runtime {
         if (this.users_fetcher) {
             const users_status = await this.users_fetcher.proceed();
             if (!users_status.ok()) {
-                this.logger.error(users_status.what());
+                this.journal.log().error(users_status.what());
             }
         }
 
         if (this.deposits_fetcher) {
             const deposits_status = await this.deposits_fetcher.proceed();
             if (!deposits_status.ok()) {
-                this.logger.error(deposits_status.what());
+                this.journal.log().error(deposits_status.what());
             }
         }
 
@@ -290,7 +294,7 @@ export class Runtime {
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
 
         if (runtime_hash != this.runtime_hash) {
-            this.logger.info(`Updating runtime, hash: ${runtime_hash}`);
+            this.journal.log().info(`Updating runtime, hash: ${runtime_hash}`);
             fs.writeFileSync(this.cfg.filename, runtime_data);
             this.runtime_hash = runtime_hash;
         }
@@ -312,7 +316,7 @@ export class Runtime {
         } as const;
     }
 
-    static unpack(filename: string, database: Database, packed: ReturnType<typeof Runtime.pack>, logger: pino.Logger)
+    static unpack(filename: string, database: Database, packed: ReturnType<typeof Runtime.pack>, journal: Journal)
     : StatusWith<Runtime>
     {
         const runtime_hash = crypto.createHash("sha256").update(JSON.stringify(packed)).digest("hex");
@@ -321,9 +325,9 @@ export class Runtime {
             const old_version: number = packed.version == "1.0" ? 1 : packed.version;
 
             try {
-                packed = update_packed_runtime(old_version, database, packed, logger);
+                packed = update_packed_runtime(old_version, database, packed, journal);
             } catch (e) {
-                return return_exception(e, logger, "failed to update runtime data");
+                return return_exception(e, journal.log(), "failed to update runtime data");
             }
         }
 
@@ -332,14 +336,14 @@ export class Runtime {
 
         const load_users_problems: Status[] = [];
         const users = unpack_map(packed.users, (packed) => {
-            const status = UserLogic.unpack(database, packed, logger);
+            const status = UserLogic.unpack(database, packed, journal);
             if (!status.ok()) {
                 load_users_problems.push(status);
             }
             return status.value;
         });
 
-        const runtime = new Runtime(database, config, runtime_hash, users, logger);
+        const runtime = new Runtime(database, config, runtime_hash, users, journal);
         return Status.ok_and_warnings("loading users", load_users_problems)
                      .with(runtime);
     }
@@ -362,7 +366,7 @@ export class Runtime {
         const runtime_data = JSON.stringify(Runtime.pack(this));
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
 
-        this.logger.info(`Sending runtime backup, hash: ${runtime_hash}`);
+        this.journal.log().info(`Sending runtime backup, hash: ${runtime_hash}`);
         this.last_backup = {
             hash: runtime_hash,
             time: new Date(),
@@ -371,26 +375,26 @@ export class Runtime {
     }
 }
 
-function log_message(logger: pino.Logger, msg: TelegramBot.Message) {
+function log_message(journal: Journal, msg: TelegramBot.Message) {
     if (msg.text) {
         if (!msg.text.includes("\n")) {
-            logger.info(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
+            journal.log().info(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
         } else {
-            logger.info([
+            journal.log().info([
                 `Message from ${msg.from?.username} in ${msg.chat.id}:`,
                 msg.text,
             ].join("\n"));
         }
     } else {
-        logger.info(`Empty message from ${msg.from?.username} in ${msg.chat.id}`);
+        journal.log().info(`Empty message from ${msg.from?.username} in ${msg.chat.id}`);
     }
 }
 
 
-function update_packed_runtime(old_version: number, database: Database, data: any, logger: pino.Logger): ReturnType<typeof Runtime.pack> {
+function update_packed_runtime(old_version: number, database: Database, data: any, journal: Journal): ReturnType<typeof Runtime.pack> {
     switch (old_version) {
         case 1:
-            const status = update_runtime_v1(database, data, logger);
+            const status = update_runtime_v1(database, data, journal);
             if (!status.ok()) {
                 throw status;
             }
@@ -401,12 +405,12 @@ function update_packed_runtime(old_version: number, database: Database, data: an
 }
 
 // Update from v1 to v2
-function update_runtime_v1(database: Database, data: any, logger: pino.Logger): StatusWith<any> {
+function update_runtime_v1(database: Database, data: any, journal: Journal): StatusWith<any> {
     try {
         // in version 1 users were stored as map of user_id: number -> user_logic
         // in version 2 key was replaced with tgid: string
         const users = unpack_map(data.users, (packed) => {
-            const status = UserLogic.unpack(database, packed as any, logger);
+            const status = UserLogic.unpack(database, packed as any, journal);
             if (!status.ok()) {
                 throw status;
             }
@@ -418,7 +422,7 @@ function update_runtime_v1(database: Database, data: any, logger: pino.Logger): 
         data.version = 2;
         return Status.ok().with(data);
     } catch (e) {
-        return return_exception(e, logger, "Failed to unpack users");
+        return return_exception(e, journal.log(), "Failed to unpack users");
     }
 }
 

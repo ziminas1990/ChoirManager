@@ -13,7 +13,8 @@ import { Config } from '../config.js';
 import { ChoristerAssistant } from '../ai_assistants/chorister_assistant.js';
 import { DocumentsFetcher } from '../fetchers/document_fetcher.js';
 import { OpenaiAPI } from '../api/openai.js';
-import pino from 'pino';
+import { Journal } from "../journal.js";
+import { return_exception, return_fail } from '../utils.js';
 
 export class UserLogic extends Logic<void> {
     private dialog?: Dialog;
@@ -21,35 +22,43 @@ export class UserLogic extends Logic<void> {
     private last_activity?: Date;
     private deposit_tracker?: DepositsTracker;
     private deposit_activity: DepositActivity;
+    private journal: Journal;
 
     private chorister_assustant?: ChoristerAssistant
 
     constructor(
         public readonly data: User,
         proceed_interval_ms: number,
-        private readonly logger: pino.Logger)
+        parent_journal: Journal)
     {
         super(proceed_interval_ms);
         this.last_activity = new Date();
-        this.deposit_activity = new DepositActivity(this.logger);
+
+        const additional_tags: Record<string, any> = {};
+        if (this.is_guest()) {
+            additional_tags.role = "guest";
+        }
+
+        this.journal = parent_journal.child(`@${data.tgid}`, additional_tags);
+        this.deposit_activity = new DepositActivity(this.journal);
 
         if (this.is_accountant()) {
             DepositActivity.add_accountant(this);
         }
     }
 
-    get_logger(): pino.Logger {
-        return this.logger;
+    get_journal(): Journal {
+        return this.journal;
     }
 
     attach_deposit_fetcher(fetcher: DepositsFetcher): void {
-        this.deposit_tracker = new DepositsTracker(this.data.tgid, fetcher);
+        this.deposit_tracker = new DepositsTracker(this.data.tgid, fetcher, this.journal);
     }
 
     attach_documents_fetcher(fetcher: DocumentsFetcher) {
         if (OpenaiAPI.is_available()) {
-            const logger = this.logger.child({ "assistant": "chorister" });
-            this.chorister_assustant = new ChoristerAssistant(fetcher, logger);
+            const journal = this.journal.child("chorister");
+            this.chorister_assustant = new ChoristerAssistant(fetcher, journal);
         }
     }
 
@@ -69,6 +78,14 @@ export class UserLogic extends Logic<void> {
         return this.data.is(Role.Chorister) || this.data.is(Role.Conductor);
     }
 
+    is_chorister(): boolean {
+        return this.data.is(Role.Chorister);
+    }
+
+    is_ex_chorister(): boolean {
+        return this.data.is(Role.ExChorister);
+    }
+
     main_dialog(): Dialog | undefined {
         return this.dialog;
     }
@@ -76,7 +93,7 @@ export class UserLogic extends Logic<void> {
     on_message(msg: TelegramBot.Message): Status {
         this.last_activity = new Date();
         if (msg.chat.type !== "private") {
-            return this.return_fail("Message is not from a private chat");
+            return return_fail("Message is not from a private chat", this.journal.log());
         }
         this.messages_queue.push(msg);
         return Status.ok();
@@ -86,10 +103,10 @@ export class UserLogic extends Logic<void> {
         this.last_activity = new Date();
         const chat_id = query.message?.chat.id;
         if (!chat_id) {
-            return this.return_fail("chat_id is undefined");
+            return return_fail("chat_id is undefined", this.journal.log());
         }
         if (!this.dialog) {
-            return this.return_fail("dialog is undefined");
+            return return_fail("dialog is undefined", this.journal.log());
         }
         return this.dialog.on_callback(query);
     }
@@ -104,7 +121,7 @@ export class UserLogic extends Logic<void> {
 
     async send_deposit_info(): Promise<Status> {
         if (!this.dialog) {
-            return this.return_fail("no active dialog");
+            return return_fail("no active dialog", this.journal.log());
         }
 
         const deposit_info = this.deposit_tracker?.get_deposit()
@@ -112,7 +129,7 @@ export class UserLogic extends Logic<void> {
             return await this.deposit_activity.send_deposit_info(deposit_info, this.dialog);
         } else {
             this.dialog?.send_message("Error: no deposit info available")
-            return this.return_fail("no deposit info available");
+            return return_fail("no deposit info available", this.journal.log());
         }
     }
 
@@ -146,10 +163,10 @@ export class UserLogic extends Logic<void> {
 
     async send_runtime_backup(): Promise<Status> {
         if (!this.dialog) {
-            return this.return_fail("no active dialog");
+            return return_fail("no active dialog", this.journal.log());
         }
         if (!this.is_admin()) {
-            return this.return_fail("not an admin");
+            return return_fail("not an admin", this.journal.log());
         }
 
         try {
@@ -160,7 +177,7 @@ export class UserLogic extends Logic<void> {
                 { contentType: "application/json" }
             );
         } catch (error) {
-            return this.return_exception(error);
+            return return_exception(error, this.journal.log(), "failed to send runtime backup");
         }
         return Status.ok();
     }
@@ -175,7 +192,7 @@ export class UserLogic extends Logic<void> {
     static unpack(
         database: Database,
         packed: ReturnType<typeof UserLogic.pack>,
-        parent_logger: pino.Logger
+        parent_journal: Journal
     ): StatusWith<UserLogic> {
         const [tgid, dialog] = [packed.tgid, packed.dlg];
 
@@ -183,8 +200,7 @@ export class UserLogic extends Logic<void> {
         if (!user) {
             return StatusWith.fail(`User @${tgid} not found`);
         }
-        const user_logger = parent_logger.child({ user: tgid });
-        const logic = new UserLogic(user, 100, user_logger);
+        const logic = new UserLogic(user, 100, parent_journal);
 
         // Load dialogs
         const unpack_dialog_status: StatusWith<Dialog> =
@@ -213,7 +229,7 @@ export class UserLogic extends Logic<void> {
 
         if (!this.dialog || this.dialog.chat_id !== msg.chat.id || is_start) {
             this.dialog = undefined;
-            const status = await Dialog.Start(this, msg.chat.id, this.logger);
+            const status = await Dialog.Start(this, msg.chat.id, this.journal);
             if (!status.ok()) {
                 return status.wrap("can't start dialog");
             }
@@ -228,15 +244,5 @@ export class UserLogic extends Logic<void> {
             return Status.fail("no active dialog");
         }
         return await this.deposit_activity.on_deposit_event(event, this.dialog)
-    }
-
-    private return_fail(what: string): Status {
-        this.logger.error(what);
-        return Status.fail(what);
-    }
-
-    private return_exception(error: unknown): Status {
-        this.logger.error(error);
-        return Status.exception(error);
     }
 }

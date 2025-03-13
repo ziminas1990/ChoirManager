@@ -1,5 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
-import pino from "pino";
+import { Journal } from "../journal.js";
 import { Dialog } from "../logic/dialog.js";
 import { BaseActivity } from "./base_activity.js";
 import { BotAPI } from "../api/telegram.js";
@@ -8,12 +8,12 @@ import { return_exception, return_fail, seconds_since } from "../utils.js";
 
 export class GuestActivity extends BaseActivity {
     private last_welcome: Date = new Date(0);
-    private logger: pino.Logger;
+    private journal: Journal;
 
-    constructor(private dialog: Dialog, parent_logger: pino.Logger)
+    constructor(private dialog: Dialog, parent_journal: Journal)
     {
         super();
-        this.logger = parent_logger.child({ activity: "guest" });
+        this.journal = parent_journal.child("guest");
     }
 
     async start(): Promise<Status> {
@@ -26,13 +26,13 @@ export class GuestActivity extends BaseActivity {
     }
 
     async on_message(msg: TelegramBot.Message): Promise<Status> {
-        this.logger.info(`message: ${msg.text}`);
+        this.journal.log().info(`message: ${msg.text}`);
         return await this.maybe_send_welcome();
     }
 
     async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
-        this.logger.info(`callback: ${query.data}`);
-        return return_fail(`no child activity for callback: ${query.data}`, this.logger);
+        this.journal.log().info(`callback: ${query.data}`);
+        return return_fail(`no child activity for callback: ${query.data}`, this.journal.log());
     }
 
     private async maybe_send_welcome(): Promise<Status> {
@@ -63,7 +63,7 @@ export class GuestActivity extends BaseActivity {
                 });
             return Status.ok();
         } catch (err) {
-            return return_exception(err, this.logger);
+            return return_exception(err, this.journal.log());
         }
     }
 }

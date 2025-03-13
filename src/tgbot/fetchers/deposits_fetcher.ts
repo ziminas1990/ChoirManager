@@ -1,6 +1,7 @@
 import { Status, StatusWith } from '../../status.js';
 import { Config } from '../config.js';
 import { GoogleSpreadsheet } from '../api/google_docs.js';
+import { current_month, only_month } from '../utils.js';
 
 // Assuming the date format is DD.MM.YY
 function try_parse_date(date: string): Date | undefined {
@@ -44,9 +45,13 @@ export class Deposit {
         public readonly tgid: string,
         public readonly chorister: string,
         public readonly balance: number,
-        public readonly membership: Map<number, number>,
-        public readonly last_fetch_date: Date)
+        public readonly membership: Map<number, number>)
     {}
+
+    // Balance + paid membership for current month
+    current_month_balance(): number {
+        return (this.membership.get(current_month().getTime()) ?? 0) + this.balance;
+    }
 
     static diff(prev: Deposit, next: Deposit): DepositChange | undefined {
         const changes: DepositChange = {};
@@ -108,9 +113,10 @@ function try_parse_header(header: string[]): StatusWith<TableColumns> {
             case "":
                 break;  // ignoring the column
             default: {
-                const month = try_parse_date(name);
-                if (month) {
-                    months.set(month.getTime(), idx);
+                const date = try_parse_date(name);
+                if (date) {
+                    const month_date = only_month(date);
+                    months.set(month_date.getTime(), idx);
                 }
             }
         }
@@ -161,13 +167,7 @@ function try_parse_row(row: string[], columns: TableColumns): Deposit | undefine
         membership_map.set(date, parseInt(amount) || 0);
     }
 
-    return {
-        tgid,
-        chorister,
-        balance,
-        membership: membership_map,
-        last_fetch_date: new Date(),
-    };
+    return new Deposit(tgid, chorister, balance, membership_map);
 }
 
 export class DepositsFetcher {

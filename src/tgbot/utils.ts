@@ -20,8 +20,12 @@ export function seconds_since(date: Date): number {
 // Applies the specified 'interval' to the specified 'date' inplace(!). Return 'date'
 // object.
 export function apply_interval(
-    date: Date, interval: { milliseconds?: number; seconds?: number }): Date
+    date: Date, interval: { months?: number; milliseconds?: number; seconds?: number }): Date
 {
+    if (interval.months) {
+        date.setMonth(date.getMonth() + interval.months);
+    }
+
     if (interval.milliseconds) {
         date.setMilliseconds(date.getMilliseconds() + interval.milliseconds);
     }
@@ -44,4 +48,17 @@ export function return_exception(error: unknown, logger: pino.Logger, wrap?: str
         return Status.exception(error).wrap(wrap);
     }
     return Status.exception(error);
+}
+
+export function only_month(date: Date): Date {
+    return new Date(Date.UTC(date.getFullYear(), date.getMonth()));
+}
+
+export function current_month(): Date {
+    return only_month(new Date());
+}
+
+export function next_month(): Date {
+    const current = current_month();
+    return new Date(Date.UTC(current.getFullYear(), current.getMonth() + 1));
 }

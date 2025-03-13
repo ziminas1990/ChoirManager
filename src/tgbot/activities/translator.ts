@@ -3,12 +3,12 @@ import { Status } from "../../status.js";
 import { GoogleTranslate } from "../api/google_translate.js";
 import { Runtime } from "../runtime.js";
 import { Language } from "../database.js";
-import pino from "pino";
+import { Journal } from "../journal.js";
 
 // Not a ragular activity but a global activity, that is why it doesn't inherit
 // from BaseActivity
 export class AnnounceTranslator {
-    constructor(private readonly logger: pino.Logger)
+    constructor(private readonly journal: Journal)
     {}
 
     async start(): Promise<Status> {
@@ -40,7 +40,7 @@ export class AnnounceTranslator {
                 "",
             ].join("\n"));
             if (!status.ok()) {
-                this.logger.warn(`failed to send announce: ${status.what()}`);
+                this.journal.log().warn(`failed to send announce: ${status.what()}`);
             }
         }
         return Status.ok();
