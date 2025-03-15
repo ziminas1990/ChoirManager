@@ -30,6 +30,7 @@ export class Config {
                 day_of_month: number,    // 1-31
                 hour_utc: number            // 0-23
             }>
+            reminder_cooldown_hours: number,
             accounts: Array<{
                 title: string,
                 account: string,
@@ -199,6 +200,29 @@ export class Config {
                     `fetch_interval (${cfg.fetch_interval_sec})`,
                     `MUST be less than collect_interval_sec (${cfg.collect_interval_sec})`
                 ].join(" "))
+            }
+
+            if (cfg.reminders && cfg.reminders.length > 0) {
+                for (const reminder of cfg.reminders) {
+                    if (!reminder.day_of_month) {
+                        return Status.fail(`${fail_prefix}: 'day_of_month' MUST be specified`);
+                    }
+                    if (!reminder.hour_utc) {
+                        return Status.fail(`${fail_prefix}: 'hour_utc' MUST be specified`);
+                    }
+                    if (reminder.day_of_month < 1 || reminder.day_of_month > 31) {
+                        return Status.fail(`${fail_prefix}: 'day_of_month' MUST be between 1 and 31`);
+                    }
+                    if (reminder.hour_utc < 0 || reminder.hour_utc > 23) {
+                        return Status.fail(`${fail_prefix}: 'hour_utc' MUST be between 0 and 23`);
+                    }
+                }
+                if (cfg.reminder_cooldown_hours == undefined) {
+                    return Status.fail(`${fail_prefix}: 'reminder_cooldown_hours' MUST be specified`);
+                }
+                if (cfg.reminder_cooldown_hours < 1) {
+                    return Status.fail(`${fail_prefix}: 'reminder_cooldown_hours' MUST be at least 1 hour`);
+                }
             }
 
             if (cfg.accounts && cfg.accounts.length > 0) {

@@ -2,14 +2,15 @@ import TelegramBot from "node-telegram-bot-api";
 import { Journal } from "../journal.js";
 
 import { Status } from "../../status.js";
-import { Language } from "../database.js";
+import { Language, User } from "../database.js";
 import { Deposit, DepositChange } from "../fetchers/deposits_fetcher.js";
 import { DepositsTrackerEvent } from "../logic/deposits_tracker.js";
 import { BaseActivity } from "./base_activity.js";
 import { UserLogic } from "../logic/user.js";
 import { Dialog } from "../logic/dialog.js";
-import { current_month, Formatter, GlobalFormatter } from "../utils.js";
+import { current_month, Formatter, GlobalFormatter, return_exception } from "../utils.js";
 import { Config } from "../config.js";
+import { BotAPI } from "../api/telegram.js";
 
 
 export class DepositActivity extends BaseActivity {
@@ -61,7 +62,7 @@ export class DepositActivity extends BaseActivity {
         const message = Messages.deposit_change(deposit, changes, dialog.user.data.lang);
         const status = await dialog.send_message(message);
         if (status.ok()) {
-            await this.notify_accountants(dialog, message);
+            await this.notify_accountants(message, dialog.user.data);
         }
         return status;
     }
@@ -80,20 +81,60 @@ export class DepositActivity extends BaseActivity {
             "",
             Messages.account_info(dialog.user.data.lang)
         ].join("\n");
-        const status = await dialog.send_message(message);
-        if (status.ok()) {
-            await this.notify_accountants(dialog, message);
+
+        const callbacks = dialog.user.callbacks_registry();
+
+        const callback_params = { dialog };
+        const have_paid_callback_id = callbacks.add_callback({
+            fn: async () => { return await this.already_paid_callback(dialog); },
+            journal: this.journal.child("callback"),
+            params: callback_params,
+            debug_name: `already paid by @${dialog.user.data.tgid}`,
+            single_shot: true
+        });
+
+        const keyboard: TelegramBot.InlineKeyboardMarkup = {
+            inline_keyboard: [
+                [{
+                    text: Messages.have_paid_already(dialog.user.data.lang),
+                    callback_data: have_paid_callback_id
+                }]
+            ]
+        };
+
+        try {
+            await BotAPI.instance().sendMessage(
+                dialog.chat_id,
+                message,
+                {
+                    reply_markup: keyboard,
+                    parse_mode: "HTML"
+                });
+            await this.notify_accountants(message, dialog.user.data);
+        } catch (err) {
+            return return_exception(err, this.journal.log());
         }
-        return status;
+
+        return Status.ok();
     }
 
-    async notify_accountants(user_dialog: Dialog, message: string) {
-        const who = user_dialog.user.data;
+    async already_paid_callback(dialog: Dialog): Promise<Status> {
+        await this.notify_accountants(
+            Messages.user_already_paid(dialog.user.data, dialog.user.data.lang));
+        await dialog.send_message(
+            Messages.already_paid_response(dialog.user.data.lang)
+        );
+        return Status.ok();
+    }
+
+    async notify_accountants(message: string, who?: User) {
+        const prefix = who ? `Notification for ${who.name} ${who.surname} (@${who.tgid}):\n` : "";
+        const full_message = [prefix, message].filter(line => line.trim().length > 0).join("\n");
+
         for (const accountant of DepositActivity.accountants) {
             const dialog = accountant.main_dialog();
             if (dialog) {
-                const status = await dialog.send_message(
-                    `Notification for ${who.name} ${who.surname} (@${who.tgid}):\n\n${message}`);
+                const status = await dialog.send_message(full_message);
                 if (!status.ok()) {
                     this.journal.log().warn(`failed to send notification to (@${accountant.data.tgid}): ${status.what()}`);
                 }
@@ -115,7 +156,7 @@ class Messages {
 
     static deposit_change(deposit: Deposit, change: DepositChange, lang: Language): string {
         const lines: string[] = [];
-        lines.push(Messages.deposit_changes_test(lang));
+        lines.push(this.formatter.bold(Messages.deposit_changes_test(change.total_change, lang)));
         lines.push("");
 
         if (change.balance) {
@@ -135,8 +176,12 @@ class Messages {
         return lines.join("\n")
     }
 
-    static deposit_changes_test(lang: Language): string {
-        return lang == Language.RU ? "Изменения на твоём депозите" : "Deposit changes";
+    static deposit_changes_test(amount: number, lang: Language): string {
+        let message = lang == Language.RU ? "Изменения на твоём депозите" : "Deposit changes"
+        if (amount != 0) {
+            message += ": " + Messages.amount_changed(amount, lang);
+        }
+        return message;
     }
 
     static credited(amount: number, lang: Language): string {
@@ -147,13 +192,17 @@ class Messages {
         return lang == Language.RU ? `списано ${amount} GEL` : `withdrawn ${amount} GEL`;
     }
 
+    static amount_changed(amount: number, lang: Language): string {
+        return amount > 0 ? Messages.credited(amount, lang) : Messages.withdrawn(-amount, lang);
+    }
+
     static balance(amount: number, lang: Language): string {
         return (lang == Language.RU ? "Средств на депозите:" : "Funds on deposit:") + ` ${amount} GEL`;
     }
 
     static balance_changed(change: [number, number], lang: Language): string {
         const diff = change[1] - change[0];
-        const diff_str = diff > 0 ? Messages.credited(diff, lang) : Messages.withdrawn(diff, lang);
+        const diff_str = Messages.amount_changed(diff, lang);
 
         return [
             lang == Language.RU ? "Средств на депозите:" : "Funds on deposit:",
@@ -165,9 +214,13 @@ class Messages {
     static membership_change(date: Date, before: number, after: number, lang: Language): string {
         const month = monthes[lang][date.getMonth()]
 
+        const diff = after - before;
+        const diff_str = Messages.amount_changed(diff, lang);
+
         return [
             lang == Language.RU ? "Членский взнос за" : "Membership for",
-            `${month}: ${before} -> ${after}`
+            `${month}: ${before} -> ${after}`,
+            `(${diff_str})`
         ].join(" ");
     }
 
@@ -223,7 +276,7 @@ class Messages {
     static deposit_reminder(amount: number, lang: Language): string {
         switch (lang) {
             case Language.RU:
-                return `Привет! Напоминаню что в этом месяце нужно внести ещё ${amount} GEL в качестве членского взноса.`;
+                return `Привет! Напоминаю что в этом месяце нужно внести ещё ${amount} GEL в качестве членского взноса.`;
             case Language.EN:
             default:
                 return `Hi! Just a reminder that this month you need to deposit another ${amount} GEL as a membership fee.`;
@@ -235,12 +288,12 @@ class Messages {
 
         const langs: {[key in Language]: {title: string, account: string, receiver: string}} = {
             "ru": {
-                title: "Начислить членский взнос можно по следующим реквизитам:",
+                title: "Перечислить членский взнос можно по следующим реквизитам:",
                 account: "Счёт",
                 receiver: "Получатель",
             },
             "en": {
-                title: "You can deposit membership fee by the following account(s):",
+                title: "The membership fee can be transferred to the following details:",
                 account: "Account",
                 receiver: "Receiver",
             }
@@ -263,5 +316,26 @@ class Messages {
         }
 
         return lines.join("\n");
+    }
+
+    static have_paid_already(lang: Language): string {
+        return lang == Language.RU ? "Я уже платил 🤷" : "I have paid already 🤷";
+    }
+
+    static already_paid_response(lang: Language): string {
+        return lang == Language.RU ?
+            "Упс, наверное не заметили. Попрошу проверить." :
+            "Oops, probably they missed it. Will ask them to check.";
+    }
+
+    static user_already_paid(user: User, lang: Language): string {
+        const name = `${user.name} ${user.surname ?? ""} (@${user.tgid})`;
+        switch (lang) {
+            case Language.RU:
+                return `${name} говорит что уже оплатил членский взнос`;
+            case Language.EN:
+            default:
+                return `${name} says that membership fee is already paid`;
+        }
     }
 }

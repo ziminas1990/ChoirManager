@@ -19,8 +19,11 @@ export type DepositsTrackerEvent = {
 export class DepositsTracker extends Logic<DepositsTrackerEvent> {
     private last_deposit: Deposit | undefined;  // the most recent fetched deposit
     private journal: Journal;
-    private last_change_date: Date | undefined;
-    private stashed_deposit: Deposit | undefined;
+    private pending_change?: {
+        before: Deposit,
+        last_update: Date,
+    }
+
     private deposit_fetcher?: DepositsFetcher;
 
     private collect_interval_ms = Config.DepositTracker().collect_interval_sec * 1000;
@@ -60,11 +63,8 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         }
         events.push(...reminder_status.value!);
 
-        if (events.length) {
-            this.journal.log().info(`Produced ${events.length} events:`);
-            for (const event of events) {
-                this.journal.log().info({ event });
-            }
+        for (const event of events) {
+            this.journal.log().info({ event });
         }
 
         return StatusWith.ok().with(events);
@@ -85,39 +85,35 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         }
 
         const changes = Deposit.diff(this.last_deposit, deposit);
-        if (!changes) {
-            // No changes since last fetch but probably we are waiting to send
-            // notification about changes made during the last minute.
-            return this.maybe_produce_change_event(now);
+        if (changes) {
+            if (this.pending_change == undefined) {
+                this.pending_change = {
+                    before: this.last_deposit,
+                    last_update: now,
+                };
+            }
+            this.pending_change.last_update = now;
         }
 
-        // Changes are detected but we shouldn't notify user immediatelly. We need to
-        // wait at least 1 minute after the last change before notifying.
-        // Will send notification once (now - last_change_date) > 1 minute
-        this.last_change_date = now;
-        // Save deposit before (there MAY be more changes during the next minute)
-        this.stashed_deposit = this.last_deposit;
         this.last_deposit = deposit;
-        return Status.ok().with([]);
+        return this.maybe_produce_change_event(now);
     }
 
     private maybe_produce_change_event(now: Date): StatusWith<DepositsTrackerEvent[]> {
-        if (!this.stashed_deposit || !this.last_change_date || !this.last_deposit) {
+        if (!this.pending_change || !this.last_deposit) {
             return Status.ok().with([]);
         }
 
-        const time_since_last_change = now.getTime() - this.last_change_date.getTime();
+        const time_since_last_change = now.getTime() - this.pending_change.last_update.getTime();
         if (time_since_last_change < this.collect_interval_ms) {
             return Status.ok().with([]);
         }
 
-        const changes = Deposit.diff(this.stashed_deposit, this.last_deposit);
+        const changes = Deposit.diff(this.pending_change.before, this.last_deposit);
         if (!changes) {
             return Status.ok().with([]);
         }
-
-        this.stashed_deposit = undefined;
-        this.last_change_date = undefined;
+        this.pending_change = undefined;
 
         return Status.ok().with([{
             what: "update",
@@ -127,13 +123,13 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
     }
 
     private should_send_reminders(now: Date): boolean {
-        const reminders_cfg = Config.DepositTracker().reminders;
-        if (!reminders_cfg?.length) {
+        const cfg = Config.DepositTracker();
+        if (!cfg.reminders?.length) {
             return false;
         }
 
         // Find if there's a reminder configured for current day/hour
-        const reminder = reminders_cfg.find(reminder =>
+        const reminder = cfg.reminders.find(reminder =>
             reminder.day_of_month === now.getUTCDate() &&
             reminder.hour_utc === now.getUTCHours()
         );
@@ -142,11 +138,11 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
             return false;
         }
 
-        if (this.last_reminder_date && seconds_since(this.last_reminder_date) <= 3600) {
-            return false;
+        if (this.last_reminder_date) {
+            const seconds_since_last_reminder = seconds_since(this.last_reminder_date);
+            const reminder_cooldown_sec = 3600 * cfg.reminder_cooldown_hours;
+            return seconds_since_last_reminder > reminder_cooldown_sec;
         }
-
-        this.last_reminder_date = now;
         return true;
     }
 
@@ -169,6 +165,7 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
 
         const diff = Config.DepositTracker().membership_fee - deposit.current_month_balance();
         if (diff > 0) {
+            this.last_reminder_date = now;
             events.push({
                 what: "reminder",
                 tgid: this.tgid,

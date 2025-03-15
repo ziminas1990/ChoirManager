@@ -23,6 +23,7 @@
             { "day_of_month": 15, "hour_utc": 12 },
             { "day_of_month": 25, "hour_utc": 12 }
         ],
+        "reminder_cooldown_hours": 24,
         "membership_fee": 70,
         "accounts": [
             {
