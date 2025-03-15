@@ -90,7 +90,7 @@ export class Dialog extends Logic<void> {
         if (this.chat_id) {
             this.journal.log().info(`sending: ${msg}`);
             try {
-                await BotAPI.instance().sendMessage(this.chat_id, msg);
+                await BotAPI.instance().sendMessage(this.chat_id, msg, { parse_mode: "HTML" });
                 return Status.ok();
             } catch (error) {
                 return return_exception(error, this.journal.log());

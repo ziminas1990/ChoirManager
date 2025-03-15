@@ -4,6 +4,7 @@
     "tgbot_token_file": "./config/tgbot_token",
     "openai_api_key_file": "./config/openai_api_key",
     "runtime_dump_interval_sec": 10,
+    "formatting": "html",
     "users_fetcher": {
         "google_sheet_id": "1gvVUsCn3xTyav2xMBvaFqs-uBtIL68ucvu2km9A1wMs",
         "range": "Users!A:Z",
@@ -16,13 +17,25 @@
     },
     "deposit_tracking": {
         "google_sheet_id": "1F-ZlOD8ags8A-r40V700qBCbJrXTG07Dbet9wFmWtYc",
-        "fetch_interval_sec": 5,
-        "collect_interval_sec": 10,
+        "fetch_interval_sec": 30,
+        "collect_interval_sec": 60,
         "reminders": [
             { "day_of_month": 15, "hour": 16 },
             { "day_of_month": 25, "hour": 16 }
         ],
-        "membership_fee": 70
+        "membership_fee": 70,
+        "accounts": [
+            {
+                "title": "Bank of Georgia (GEL)",
+                "account": "GE57BG0000000592526515",
+                "receiver": "ALEKSANDR ZIMIN"
+            },
+            {
+                "title": "VTB or T-Bank (rubles)",
+                "account": "+79817591744",
+                "comment": "Only T-Bank or VTB please, no other banks!"
+            }
+        ]
     },
     "assistant": {
         "openai_api": "vanilla",

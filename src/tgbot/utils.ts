@@ -62,3 +62,60 @@ export function next_month(): Date {
     const current = current_month();
     return new Date(Date.UTC(current.getFullYear(), current.getMonth() + 1));
 }
+
+export type Formatting = "markdown" | "html" | "plain";
+
+export class Formatter {
+
+    private static formatting: Formatting = "plain";
+
+    constructor(formatting: Formatting) {
+        Formatter.formatting = formatting;
+    }
+
+    bold(text: string): string {
+        switch (Formatter.formatting) {
+            case "markdown": return `**${text}**`;
+            case "html": return `<b>${text}</b>`;
+            default: return text;
+        }
+    }
+
+    italic(text: string): string {
+        switch (Formatter.formatting) {
+            case "markdown": return `*${text}*`;
+            case "html": return `<i>${text}</i>`;
+            default: return text;
+        }
+    }
+
+    copiable(text: string): string {
+        switch (Formatter.formatting) {
+            case "markdown": return `\`\`\`${text}\`\`\``;
+            case "html": return `<code>${text}</code>`;
+            default: return text;
+        }
+    }
+}
+
+export class GlobalFormatter extends Formatter {
+    static _instance: GlobalFormatter;
+
+    private constructor(formatting: Formatting) {
+        super(formatting);
+    }
+
+    static init(formatting: Formatting): void {
+        if (GlobalFormatter._instance) {
+            throw new Error("GlobalFormatter already initialized");
+        }
+        GlobalFormatter._instance = new GlobalFormatter(formatting);
+    }
+
+    static instance(): GlobalFormatter {
+        if (!GlobalFormatter._instance) {
+            throw new Error("GlobalFormatter not initialized");
+        }
+        return GlobalFormatter._instance;
+    }
+}

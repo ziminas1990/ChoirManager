@@ -1,5 +1,6 @@
 import { Status } from "../status.js";
 import fs from "fs"
+import { Formatting } from "./utils.js";
 
 export class Config {
 
@@ -9,6 +10,7 @@ export class Config {
         tgbot_token_file: string;
         runtime_dump_interval_sec: number;
         openai_api_key_file?: string;
+        formatting: Formatting;
         users_fetcher: {
             google_sheet_id: string
             range: string,
@@ -27,6 +29,12 @@ export class Config {
             reminders: Array<{
                 day_of_month: number,    // 1-31
                 hour: number            // 0-23
+            }>
+            accounts: Array<{
+                title: string,
+                account: string,
+                receiver: string,
+                comment: string
             }>
         },
         assistant?: {
@@ -113,6 +121,9 @@ export class Config {
         if (!this.data.tgbot_token_file) {
             return Status.fail("'tgbot_token_file' MUST be specified");
         }
+        if (!this.data.formatting || !["markdown", "html", "plain"].includes(this.data.formatting)) {
+            return Status.fail("'formatting' MUST be specified (markdown, html, plain)");
+        }
 
         // Runtime configuration
         if (!this.data.runtime_dump_interval_sec) {
@@ -189,6 +200,18 @@ export class Config {
                     `MUST be less than collect_interval_sec (${cfg.collect_interval_sec})`
                 ].join(" "))
             }
+
+            if (cfg.accounts && cfg.accounts.length > 0) {
+                for (const account of cfg.accounts) {
+                    if (!account.title) {
+                        return Status.fail(`${fail_prefix}: account's 'title' MUST be specified`);
+                    }
+                    if (!account.account) {
+                        return Status.fail(`${fail_prefix}: account's 'account' MUST be specified`);
+                    }
+                }
+            }
+
         } else {
             warnings.push(Status.warning("'deposit_tracking' is not specifed, feature will be DISABLED"));
         }

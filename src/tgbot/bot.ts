@@ -10,6 +10,7 @@ import { OpenaiAPI } from "./api/openai.js";
 import { UsersFetcher } from './fetchers/users_fetcher.js';
 import { Database } from './database.js';
 import { Journal } from './journal.js';
+import { GlobalFormatter } from './utils.js';
 
 const root_logger = Journal.Root();
 
@@ -90,6 +91,8 @@ async function wait_and_exit(wait_ms: number, exit_code: number) {
 async function main() {
     root_logger.log().info("Preparing...");
     load_config();
+
+    GlobalFormatter.init(Config.data.formatting);
 
     root_logger.log().info("Initializing Google Docs API...");
     {

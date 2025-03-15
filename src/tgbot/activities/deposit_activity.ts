@@ -8,7 +8,7 @@ import { DepositsTrackerEvent } from "../logic/deposits_tracker.js";
 import { BaseActivity } from "./base_activity.js";
 import { UserLogic } from "../logic/user.js";
 import { Dialog } from "../logic/dialog.js";
-import { current_month } from "../utils.js";
+import { current_month, Formatter, GlobalFormatter } from "../utils.js";
 import { Config } from "../config.js";
 
 
@@ -18,6 +18,9 @@ export class DepositActivity extends BaseActivity {
     constructor(parent_journal: Journal) {
         super();
         this.journal = parent_journal.child("deposit_activity");
+        if (!Messages.formatter) {
+            Messages.formatter = GlobalFormatter.instance();
+        }
     }
 
     // To duplicate all notifications to them
@@ -76,7 +79,11 @@ export class DepositActivity extends BaseActivity {
             return Status.ok();
         }
 
-        const message = Messages.deposit_reminder(amount, dialog.user.data.lang);
+        const message = [
+            Messages.deposit_reminder(amount, dialog.user.data.lang),
+            "",
+            Messages.account_info(dialog.user.data.lang)
+        ].join("\n");
         const status = await dialog.send_message(message);
         if (status.ok()) {
             await this.notify_accountants(dialog, message);
@@ -107,6 +114,8 @@ const monthes: {[key in Language]: string[]} = {
 }
 
 class Messages {
+
+    static formatter: Formatter;
 
     static deposit_change(deposit: Deposit, change: DepositChange, lang: Language): string {
         const lines: string[] = [];
@@ -194,9 +203,17 @@ class Messages {
         if (total < membership_fee) {
             const diff = membership_fee - total;
             if (lang == Language.RU) {
-                return `За ${month} нужно внести ещё ${diff} GEL`;
+                return [
+                    `За ${month} нужно внести ещё ${diff} GEL`,
+                    "",
+                    Messages.account_info(lang)
+                ].join("\n");
             } else {
-                return `You are expected to pay another ${diff} GEL for ${month}`;
+                return [
+                    `You are expected to pay another ${diff} GEL for ${month}`,
+                    "",
+                    Messages.account_info(lang)
+                ].join("\n");
             }
         }
 
@@ -215,5 +232,40 @@ class Messages {
             default:
                 return `Hi! Just a reminder that this month you need to deposit another ${amount} GEL as a membership fee.`;
         }
+    }
+
+    static account_info(lang: Language): string {
+        const lines: string[] = [];
+
+        const langs: {[key in Language]: {title: string, account: string, receiver: string}} = {
+            "ru": {
+                title: "Начислить членский взнос можно по следующим реквизитам:",
+                account: "Счёт",
+                receiver: "Получатель",
+            },
+            "en": {
+                title: "You can deposit membership fee by the following account(s):",
+                account: "Account",
+                receiver: "Receiver",
+            }
+        };
+        const words = langs[lang] ?? langs["en"];
+
+        lines.push(words.title);
+        lines.push("");
+
+        for (const account of Config.DepositTracker().accounts) {
+            lines.push(this.formatter.bold(account.title) + ":");
+            lines.push(`${words.account}: ${this.formatter.copiable(account.account)}`)
+            if (account.receiver) {
+                lines.push(`${words.receiver}: ${this.formatter.copiable(account.receiver)}`)
+            }
+            if (account.comment) {
+                lines.push(Messages.formatter.italic(`(${account.comment})`))
+            }
+            lines.push("");
+        }
+
+        return lines.join("\n");
     }
 }
