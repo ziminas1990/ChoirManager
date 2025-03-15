@@ -28,7 +28,7 @@ export class Config {
             membership_fee: number,      // in GEL
             reminders: Array<{
                 day_of_month: number,    // 1-31
-                hour: number            // 0-23
+                hour_utc: number            // 0-23
             }>
             accounts: Array<{
                 title: string,

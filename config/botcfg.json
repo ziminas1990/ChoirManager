@@ -20,8 +20,8 @@
         "fetch_interval_sec": 30,
         "collect_interval_sec": 60,
         "reminders": [
-            { "day_of_month": 15, "hour": 16 },
-            { "day_of_month": 25, "hour": 16 }
+            { "day_of_month": 15, "hour_utc": 12 },
+            { "day_of_month": 25, "hour_utc": 12 }
         ],
         "membership_fee": 70,
         "accounts": [

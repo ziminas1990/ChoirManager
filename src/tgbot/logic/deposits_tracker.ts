@@ -134,8 +134,8 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
 
         // Find if there's a reminder configured for current day/hour
         const reminder = reminders_cfg.find(reminder =>
-            reminder.day_of_month === now.getDate() &&
-            reminder.hour === now.getHours()
+            reminder.day_of_month === now.getUTCDate() &&
+            reminder.hour_utc === now.getUTCHours()
         );
 
         if (!reminder) {
