@@ -53,7 +53,7 @@ function bind_telegram_events(runtime: Runtime) {
 
     bot.on("message", async (msg) => {
         const status = msg.chat.type == "private" ?
-            await runtime.handle_private_message(msg) :
+            runtime.handle_private_message(msg) :
             await runtime.handle_group_message(msg);
 
         if (!status.ok()) {

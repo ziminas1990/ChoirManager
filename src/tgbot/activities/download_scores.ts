@@ -9,7 +9,8 @@ import { Status } from "../../status.js";
 import { Language } from "../database.js";
 import { Runtime } from "../runtime.js";
 import { Journal } from "../journal.js";
-import { return_exception, return_fail } from "../utils.js";
+import { return_exception } from "../utils.js";
+import assert from "assert";
 
 const SCORES_DIR = path.join(process.cwd(), 'files/scores');
 
@@ -42,16 +43,6 @@ export class DownloadScoresActivity extends BaseActivity {
 
     async on_message(_: TelegramBot.Message): Promise<Status> {
         return Status.ok();
-    }
-
-    async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
-        this.journal.log().info(`callback: ${query.data}`);
-        const file_name = query.data?.replace("get_", "");
-        if (file_name == undefined) {
-            return return_fail(`unexpected callback: ${query.data}`, this.journal.log());
-        }
-        return (await DownloadScoresActivity.send_scores(this.dialog, file_name, this.journal))
-            .wrap(`failed to send scores: ${file_name}`);
     }
 
     static async send_scores(dialog: Dialog, filename: string, journal: Journal): Promise<Status> {
@@ -94,10 +85,24 @@ export class DownloadScoresActivity extends BaseActivity {
             inline_keyboard: []
         };
 
+        const callbacks = this.dialog.user.callbacks_registry();
+
         split_to_columns(scores, 2).forEach((scores) => {
+            assert(scores[0].file, "score file is undefined");
+            const callback_params = { file: scores[0].file };
+            const callback_id = callbacks.add_callback({
+                fn: async (params: typeof callback_params) => {
+                    return await DownloadScoresActivity.send_scores(
+                        this.dialog, params.file, this.journal);
+                },
+                journal: this.journal.child("callback"),
+                params: callback_params,
+                debug_name: `download ${scores[0].name} scores`,
+            });
+
             keyboard.inline_keyboard.push(scores.map(score => ({
                 text: score.name,
-                callback_data: `get_${score.file}`
+                callback_data: callback_id
             })));
         });
 

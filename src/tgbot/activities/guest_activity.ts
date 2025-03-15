@@ -4,7 +4,7 @@ import { Dialog } from "../logic/dialog.js";
 import { BaseActivity } from "./base_activity.js";
 import { BotAPI } from "../api/telegram.js";
 import { Status } from "../../status.js";
-import { return_exception, return_fail, seconds_since } from "../utils.js";
+import { return_exception, seconds_since } from "../utils.js";
 
 export class GuestActivity extends BaseActivity {
     private last_welcome: Date = new Date(0);
@@ -28,11 +28,6 @@ export class GuestActivity extends BaseActivity {
     async on_message(msg: TelegramBot.Message): Promise<Status> {
         this.journal.log().info(`message: ${msg.text}`);
         return await this.maybe_send_welcome();
-    }
-
-    async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
-        this.journal.log().info(`callback: ${query.data}`);
-        return return_fail(`no child activity for callback: ${query.data}`, this.journal.log());
     }
 
     private async maybe_send_welcome(): Promise<Status> {

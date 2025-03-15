@@ -302,7 +302,7 @@ export class Runtime {
         if (this.last_backup && this.last_backup.hash != runtime_hash) {
             const time_diff = new Date().getTime() - this.last_backup.time.getTime();
             // Do backup once a day
-            if (time_diff > 10 * 1000) {
+            if (time_diff > 24 * 60 * 60 * 1000) {
                 this.send_backup_to_admins();
             }
         }

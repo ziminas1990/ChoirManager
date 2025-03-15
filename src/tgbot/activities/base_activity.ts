@@ -20,10 +20,6 @@ export class BaseActivity {
         throw new Error("Not implemented");
     }
 
-    async on_callback(_: TelegramBot.CallbackQuery): Promise<Status> {
-        throw new Error("Not implemented");
-    }
-
     done(): boolean {
         return this.is_done;
     }

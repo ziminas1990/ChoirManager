@@ -42,10 +42,6 @@ export class DepositActivity extends BaseActivity {
         throw new Error("Not implemented");
     }
 
-    async on_callback(_: TelegramBot.CallbackQuery): Promise<Status> {
-        throw new Error("Not implemented");
-    }
-
     async send_deposit_info(info: Deposit, dialog: Dialog): Promise<Status> {
         return await dialog.send_message(Messages.deposit_info(info, dialog.user.data.lang));
     }

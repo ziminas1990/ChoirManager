@@ -14,9 +14,6 @@ import { Journal } from '../journal.js';
 type Input = {
     what: "message",
     message: TelegramBot.Message;
-} | {
-    what: "callback",
-    callback: TelegramBot.CallbackQuery;
 }
 
 export class Dialog extends Logic<void> {
@@ -64,11 +61,6 @@ export class Dialog extends Logic<void> {
                     if (!status.done()) {
                         this.journal.log().error(status.what());
                     }
-                } else if (input.what == "callback") {
-                    const status = await this.activity.on_callback(input.callback);
-                    if (!status.done()) {
-                        this.journal.log().error(status.what());
-                    }
                 }
             }
         }
@@ -78,11 +70,6 @@ export class Dialog extends Logic<void> {
 
     on_message(msg: TelegramBot.Message): Status {
         this.input_queue.push({ what: "message", message: msg });
-        return Status.ok();
-    }
-
-    on_callback(query: TelegramBot.CallbackQuery): Status {
-        this.input_queue.push({ what: "callback", callback: query });
         return Status.ok();
     }
 

@@ -15,6 +15,7 @@ import { DocumentsFetcher } from '../fetchers/document_fetcher.js';
 import { OpenaiAPI } from '../api/openai.js';
 import { Journal } from "../journal.js";
 import { return_exception, return_fail } from '../utils.js';
+import { TelegramCallbacks } from '../api/tg_callbacks.js';
 
 export class UserLogic extends Logic<void> {
     private dialog?: Dialog;
@@ -23,6 +24,8 @@ export class UserLogic extends Logic<void> {
     private deposit_tracker?: DepositsTracker;
     private deposit_activity: DepositActivity;
     private journal: Journal;
+
+    private callbacks: TelegramCallbacks;
 
     private chorister_assustant?: ChoristerAssistant
 
@@ -42,6 +45,8 @@ export class UserLogic extends Logic<void> {
         this.journal = parent_journal.child(`@${data.tgid}`, additional_tags);
         this.deposit_activity = new DepositActivity(this.journal);
 
+        this.callbacks = new TelegramCallbacks(this.journal.child("callbacks"));
+
         if (this.is_accountant()) {
             DepositActivity.add_accountant(this);
         }
@@ -49,6 +54,10 @@ export class UserLogic extends Logic<void> {
 
     get_journal(): Journal {
         return this.journal;
+    }
+
+    callbacks_registry(): TelegramCallbacks {
+        return this.callbacks;
     }
 
     attach_deposit_fetcher(fetcher: DepositsFetcher): void {
@@ -101,14 +110,11 @@ export class UserLogic extends Logic<void> {
 
     on_callback(query: TelegramBot.CallbackQuery): Status {
         this.last_activity = new Date();
-        const chat_id = query.message?.chat.id;
-        if (!chat_id) {
-            return return_fail("chat_id is undefined", this.journal.log());
+        const callback_id = query.data;
+        if (!callback_id) {
+            return return_fail("callback_id is undefined", this.journal.log());
         }
-        if (!this.dialog) {
-            return return_fail("dialog is undefined", this.journal.log());
-        }
-        return this.dialog.on_callback(query);
+        return this.callbacks.on_callback(query);
     }
 
     get_last_activity() {
@@ -134,7 +140,7 @@ export class UserLogic extends Logic<void> {
     }
 
     async proceed_impl(now: Date): Promise<Status> {
-        const status = await this.proceed_messages_queue();
+        let status = await this.proceed_messages_queue();
         if (!status.ok()) {
             return status.wrap("can't proceed messages queue");
         }
@@ -156,6 +162,11 @@ export class UserLogic extends Logic<void> {
             for (const event of events.value ?? []) {
                 await this.handle_deposit_tracker_event(event);
             }
+        }
+
+        status = await this.callbacks.proceed(now);
+        if (!status.ok()) {
+            warnings.push(status.wrap("callbacks"));
         }
 
         return Status.ok_and_warnings("dialog proceed", warnings);

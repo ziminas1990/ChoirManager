@@ -68,13 +68,6 @@ export class MainActivity extends BaseActivity {
         return (await this.dialog_with_assistant(msg.text)).wrap("assistant failure");
     }
 
-    async on_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
-        if (this.child_activity) {
-            return (await this.child_activity.on_callback(query)).wrap("child activity failed");
-        }
-        return return_fail(`no child activity for callback: ${query.data}`, this.journal.log());
-    }
-
     private async send_welcome(): Promise<Status> {
         const user_name = this.dialog.user!.data.name;
 
