@@ -166,6 +166,9 @@ export class MainActivity extends BaseActivity {
         if (command == "/backup") {
             return (await this.dialog.user.send_runtime_backup())
                 .wrap("failed to send runtime backup");
+        } else if (command == "/get_logs") {
+            return (await this.dialog.user.send_logs())
+                .wrap("failed to send logs");
         } else {
             return return_fail(`unknown service command: ${command}`, this.journal.log());
         }

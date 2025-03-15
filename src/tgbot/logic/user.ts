@@ -195,6 +195,27 @@ export class UserLogic extends Logic<void> {
         return Status.ok();
     }
 
+    async send_logs(): Promise<Status> {
+        if (!this.dialog) {
+            return return_fail("no active dialog", this.journal.log());
+        }
+        if (!this.is_admin()) {
+            return return_fail("not an admin", this.journal.log());
+        }
+
+        try {
+            await BotAPI.instance().sendDocument(
+                this.dialog.chat_id,
+                fs.createReadStream("./logs/bot.log"),
+                undefined,
+                { contentType: "text/plain" }
+            );
+        } catch (error) {
+            return return_exception(error, this.journal.log(), "failed to send logs");
+        }
+        return Status.ok();
+    }
+
     static pack(user: UserLogic) {
         return {
             "tgid": user.data.tgid,
