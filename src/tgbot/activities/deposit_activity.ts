@@ -48,6 +48,7 @@ export class DepositActivity extends BaseActivity {
     }
 
     async on_deposit_event(event: DepositsTrackerEvent, dialog: Dialog): Promise<Status> {
+        this.journal.log().info({ event }, `got event`);
         switch (event.what) {
             case "update":
                 return await this.handle_update_event(event.deposit, event.changes, dialog);
@@ -69,9 +70,11 @@ export class DepositActivity extends BaseActivity {
 
     private async handle_reminder_event(amount: number, dialog: Dialog): Promise<Status> {
         if (!dialog.user.is_chorister() || dialog.user.is_ex_chorister()) {
+            this.journal.log().info(`skipping reminder for ${dialog.user.data.tgid} because they are not chorister`);
             return Status.ok();
         }
         if (amount < 10) {
+            this.journal.log().info(`skipping reminder for ${dialog.user.data.tgid} because amount is too small: ${amount}`);
             // It's okay to move it to the next month
             return Status.ok();
         }

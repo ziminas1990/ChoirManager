@@ -259,7 +259,7 @@ export class UserLogic extends Logic<void> {
 
     private async handle_deposit_tracker_event(event: DepositsTrackerEvent): Promise<Status> {
         if (!this.dialog) {
-            return Status.fail("no active dialog");
+            return return_fail("no active dialog", this.journal.log());
         }
         return await this.deposit_activity.on_deposit_event(event, this.dialog)
     }
