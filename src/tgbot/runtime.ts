@@ -156,6 +156,14 @@ export class Runtime {
         return Status.ok();
     }
 
+    verify(){
+        [...this.users.values()].forEach(user => {
+            if (!user.main_dialog()) {
+                this.journal.log().warn(`User ${user.data.tgid} has no active dialog, removing`);
+                this.users.delete(user.data.tgid);
+            }
+        });
+    }
 
     get_database(): Database {
         return this.database;
@@ -178,13 +186,11 @@ export class Runtime {
     }
 
     async handle_group_message(msg: TelegramBot.Message): Promise<Status> {
-        log_message(this.journal, msg);
-
         const username = msg.from?.username;
         if (username == undefined) {
             return return_fail("username is undefined", this.journal.log());
         }
-        const user = this.get_user(username);
+        const user = this.get_user(username, false);
         if (user == undefined) {
             // Ignore guest users in group chats
             return Status.ok();
@@ -195,6 +201,10 @@ export class Runtime {
         const is_announce     = msg.chat.id == this.cfg.choir_chat_id &&
                                 msg.message_thread_id == this.cfg.announce_chat_id;
         const sent_by_manager = user.data.roles.includes(Role.Manager);
+
+        if (sent_to_bot || is_announce) {
+            log_message(this.journal, msg);
+        }
 
         if (sent_by_admin && sent_to_bot) {
             return await this.admin_panel.handle_message(msg);
@@ -217,18 +227,21 @@ export class Runtime {
         return user.on_callback(query);
     }
 
-    get_user(tg_id: string): UserLogic | undefined {
+    get_user(tg_id: string, create_if_not_found: boolean = true): UserLogic | undefined {
         const user = this.database.get_user(tg_id);
         if (user) {
             let user_logic = this.users.get(user.tgid);
-            if (!user_logic) {
+            if (!user_logic && create_if_not_found) {
                 user_logic = new UserLogic(user, 100, this.journal);
                 this.users.set(user.tgid, user_logic);
                 this.on_user_added(user_logic, false);
             }
             return user_logic;
         }
-        return this.get_guest_user(tg_id);
+        if (create_if_not_found) {
+            return this.get_guest_user(tg_id);
+        }
+        return undefined;
     }
 
     get_guest_user(tg_id: string): UserLogic {
@@ -290,7 +303,7 @@ export class Runtime {
     }
 
     dump(): void {
-        const runtime_data = JSON.stringify(Runtime.pack(this));
+        const runtime_data = JSON.stringify(Runtime.pack(this), null, 2);
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
 
         if (runtime_hash != this.runtime_hash) {

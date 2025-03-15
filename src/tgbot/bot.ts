@@ -146,6 +146,9 @@ async function main() {
         await wait_and_exit(10000, 1);
     }
 
+    root_logger.log().info("Verifying runtime...");
+    runtime.verify();
+
     root_logger.log().info("Runnning...");
     while (true) {
         await runtime.proceed(new Date());
