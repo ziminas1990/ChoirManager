@@ -3,7 +3,7 @@ import { Status, StatusWith } from "../../status.js";
 import { Config } from "../config.js";
 import { Deposit, DepositChange, DepositsFetcher } from "../fetchers/deposits_fetcher.js";
 import { Logic } from "./abstracts.js";
-import { apply_interval } from "../utils.js";
+import { seconds_since } from "../utils.js";
 
 export type DepositsTrackerEvent = {
     what: "update",
@@ -21,22 +21,22 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
     private journal: Journal;
     private last_change_date: Date | undefined;
     private stashed_deposit: Deposit | undefined;
+    private deposit_fetcher?: DepositsFetcher;
 
     private collect_interval_ms = Config.DepositTracker().collect_interval_sec * 1000;
 
-    private next_reminder_date?: Date;
+    private last_reminder_date?: Date;
 
     constructor(
         private readonly tgid: string,
-        private readonly deposit_fetcher: DepositsFetcher,
         parent_journal: Journal)
     {
         super(1000);
         this.journal = parent_journal.child("deposit_tracker");
+    }
 
-        // next reminder date should be at least 1 hour from now in order to avoid
-        // reminder spamming if bot is restarting
-        this.next_reminder_date = new Date(Date.now() + 1 * 60 * 60 * 1000);
+    attach_deposit_fetcher(deposit_fetcher: DepositsFetcher): void {
+        this.deposit_fetcher = deposit_fetcher;
     }
 
     get_deposit(): Deposit | undefined {
@@ -71,6 +71,10 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
     }
 
     private async check_updates(now: Date): Promise<StatusWith<DepositsTrackerEvent[]>> {
+        if (!this.deposit_fetcher) {
+            return Status.ok().with([]);
+        }
+
         const deposit = this.deposit_fetcher.get_user_deposit(this.tgid);
         if (!deposit) {
             return Status.ok().with([]);
@@ -138,26 +142,19 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
             return false;
         }
 
-        if (this.next_reminder_date && this.next_reminder_date > now) {
+        if (this.last_reminder_date && seconds_since(this.last_reminder_date) <= 3600) {
             return false;
         }
 
-        const next_reminders = this.get_next_reminders(now);
-
-        // find next reminder
-        let next_reminder = next_reminders[0];
-        if (!next_reminder) {
-            // This should never happen, but just to be safe need to set next reminder
-            // to the next month
-            next_reminder = apply_interval(now, { months: 1 });
-            this.journal.log().warn(`Can't get next reminder, setting to next month`);
-        }
-        this.journal.log().info(`Next reminder is ${next_reminder.toISOString()}`);
-        this.next_reminder_date = next_reminder;
+        this.last_reminder_date = now;
         return true;
     }
 
     private async check_reminders(now: Date): Promise<StatusWith<DepositsTrackerEvent[]>> {
+        if (!this.deposit_fetcher) {
+            return StatusWith.ok().with([]);
+        }
+
         if (!this.should_send_reminders(now)) {
             return StatusWith.ok().with([]);
         }
@@ -183,28 +180,21 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         return StatusWith.ok().with(events);
     }
 
-    // Return reminders for current and next month sorted by date
-    private get_next_reminders(now: Date): Date[] {
-        const reminders_cfg = Config.DepositTracker().reminders;
-        if (!reminders_cfg?.length) {
-            return [];
-        }
+    static pack(user: DepositsTracker) {
+        return {
+            "last_reminder": user.last_reminder_date?.getTime(),
+        } as const;
+    }
 
-        const year = now.getFullYear();
-        const month = now.getMonth();
-
-        // build reminders for this and next month
-        const planned_reminders: Date[] = [];
-        reminders_cfg.forEach(reminder => {
-            planned_reminders.push(
-                new Date(year, month, reminder.day_of_month, reminder.hour),
-                new Date(year, month + 1, reminder.day_of_month, reminder.hour)
-            );
-        });
-
-        return planned_reminders
-            .filter(reminder => reminder > now)
-            .sort((a, b) => a.getTime() - b.getTime());
+    static unpack(
+        tgid: string,
+        packed: ReturnType<typeof DepositsTracker.pack>,
+        parent_journal: Journal
+    ): DepositsTracker {
+        const [last_reminder] = [packed.last_reminder];
+        const logic = new DepositsTracker(tgid, parent_journal);
+        logic.last_reminder_date = last_reminder ? new Date(last_reminder) : undefined;
+        return logic;
     }
 }
 

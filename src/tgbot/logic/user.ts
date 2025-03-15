@@ -21,7 +21,7 @@ export class UserLogic extends Logic<void> {
     private dialog?: Dialog;
     private messages_queue: TelegramBot.Message[] = [];
     private last_activity?: Date;
-    private deposit_tracker?: DepositsTracker;
+    private deposit_tracker: DepositsTracker;
     private deposit_activity: DepositActivity;
     private journal: Journal;
 
@@ -47,6 +47,8 @@ export class UserLogic extends Logic<void> {
 
         this.callbacks = new TelegramCallbacks(this.journal.child("callbacks"));
 
+        this.deposit_tracker = new DepositsTracker(this.data.tgid, this.journal);
+
         if (this.is_accountant()) {
             DepositActivity.add_accountant(this);
         }
@@ -61,7 +63,7 @@ export class UserLogic extends Logic<void> {
     }
 
     attach_deposit_fetcher(fetcher: DepositsFetcher): void {
-        this.deposit_tracker = new DepositsTracker(this.data.tgid, fetcher, this.journal);
+        this.deposit_tracker.attach_deposit_fetcher(fetcher);
     }
 
     attach_documents_fetcher(fetcher: DocumentsFetcher) {
@@ -130,7 +132,7 @@ export class UserLogic extends Logic<void> {
             return return_fail("no active dialog", this.journal.log());
         }
 
-        const deposit_info = this.deposit_tracker?.get_deposit()
+        const deposit_info = this.deposit_tracker.get_deposit()
         if (deposit_info) {
             return await this.deposit_activity.send_deposit_info(deposit_info, this.dialog);
         } else {
@@ -154,7 +156,7 @@ export class UserLogic extends Logic<void> {
             }
         }
 
-        if (this.deposit_tracker) {
+        {
             const events = await this.deposit_tracker.proceed(now);
             if (!events.ok()) {
                 warnings.push(events.wrap("deposit_tracker"));
@@ -196,7 +198,8 @@ export class UserLogic extends Logic<void> {
     static pack(user: UserLogic) {
         return {
             "tgid": user.data.tgid,
-            "dlg": user.dialog ? Dialog.pack(user.dialog) : undefined
+            "dlg": user.dialog ? Dialog.pack(user.dialog) : undefined,
+            "deposit_tracker": DepositsTracker.pack(user.deposit_tracker)
         } as const;
     }
 
@@ -218,6 +221,10 @@ export class UserLogic extends Logic<void> {
             dialog ? Dialog.unpack(logic, dialog) : Status.ok();
         if (unpack_dialog_status.ok()) {
             logic.dialog = unpack_dialog_status.value!;
+        }
+
+        if (packed.deposit_tracker) {
+            logic.deposit_tracker = DepositsTracker.unpack(tgid, packed.deposit_tracker, parent_journal);
         }
 
         return Status.ok_and_warnings("unpacking", [unpack_dialog_status]).with(logic);
