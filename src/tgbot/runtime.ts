@@ -156,6 +156,10 @@ export class Runtime {
         return Status.ok();
     }
 
+    get_users(): Map<string, UserLogic> {
+        return this.users;
+    }
+
     verify(){
         [...this.users.values()].forEach(user => {
             if (!user.main_dialog()) {

@@ -31,7 +31,9 @@ type Action =
   | { what: "download_scores", filename: string }
   | { what: "scores_list" }
   | { what: "get_deposit_info" }
-  | { what: "complaint", message: string, who?: string, voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone" };
+  | { what: "already_paid" }
+  | { what: "top_up", amount: number, original_message: string }
+  | { what: "complaint", message: string, who?: string, voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone" }
 
 Use 'message' field to provide a message to the user. If you return an action, omit the message field.
 Do NOT end your messages with an offer to answer more questions or your readiness to help with other questions.
@@ -43,7 +45,9 @@ Use 'actions' field to provide a list of actions to be done. It MUST be an array
 Action MUST have a 'what' field with one of the following values:
   - "download_scores": use when user requests specific scores (filename array must be non-empty)
   - "scores_list": use when user asks for scores without specifying which ones
-  - "get_deposit_info": use when user asks about deposit/membership/money info
+  - "get_deposit_info": use when user asks for deposit/membership info
+  - "already_paid": use when user tells that they already paid membership fee
+  - "top-up": use when user says that they has deposited the money
   - "complaint": use for complaints
 
 More details about each action will be provided below.
@@ -65,6 +69,20 @@ Action MUST be emitted if user asks to download scores without specifying which 
 ## get_deposit_info
 Action MUST be emitted if user asks about deposit/membership/money info.
 
+## top_up
+Action MUST be emitted if user says that they has deposited the money. The following fields MUST be provided:
+- "amount": number of money that user has deposited. If they hadn't specified, try to clarify it.
+- "original_message": original message from user that triggered this action.
+Examples:
+1. User: "Закинул 100 лари". Action: { what: "top_up", amount: 100, original_message: "Закинул 100 лари" }
+
+## already_paid
+Action MUST be emitted if user says that they already paid membership fee.
+Usually user reacts with this message on reminder that they should pay membership fee.
+NOTE: that this action is less priority than "top_up" action. If user specifies the amount, use "top_up" action instead.
+Examples:
+1. User: "Я уже пополнял". Action: { what: "already_paid" }
+
 ## complaint
 If user is trying to complain OR want to report something follow the following steps:
 1. Confirm if the complaint should be forwarded to the org group (орг. группе)
@@ -72,13 +90,16 @@ If user is trying to complain OR want to report something follow the following s
 3. Clarify if user wants to report anonymously or may provide name and/or voice.
 4. Once clarified, output a complaint action without a message field.
 
-Use 'who' field to specify the name of the person who is complaining. If name is not provided,
-omit the 'who' field.
-Use 'voice' field to specify the voice of the person who is complaining. If voice is not provided,
-omit the 'voice' field. Use ONLY values specified in type definition.
+Use 'who' field to specify the name of the person who is complaining.
+If name is not provided, omit the 'who' field.
+Use 'voice' field to specify the voice of the person who is complaining.
+If voice is not provided, omit the 'voice' field.
+Use ONLY values specified in type definition.
 
 ## Other questions
-You are allowed to provide consultation about choir music, composers and so on.
+You are allowed to:
+1. provide consultation about choir music, composers and so on.
+2. speak about everything said before in the conversation.
 Politely refuse to answer any other questions.
 `
 
@@ -91,6 +112,8 @@ export type Action =
   | { what: "download_scores", filename: string }
   | { what: "scores_list" }
   | { what: "get_deposit_info" }
+  | { what: "already_paid" }
+  | { what: "top_up", amount: number, original_message: string }
   | {
         what: "complaint",
         message: string, who?: string,
@@ -98,7 +121,11 @@ export type Action =
     };
 
 abstract class IAssistant {
+    // Send message to assistant and waits for answer
     abstract send_message(message: string): Promise<StatusWith<Response[]>>;
+
+    // Add message to the context as a response or notification, previously sent to the user
+    abstract add_response(message: string): Promise<Status>;
 }
 
 export class ChoristerAssistant {
@@ -145,6 +172,15 @@ export class ChoristerAssistant {
         }
     }
 
+    public async add_response(username: string, message: string): Promise<Status> {
+        const status = await this.get_or_create_api(username);
+        if (!status.ok()) {
+            return status.wrap("can't get api for user");
+        }
+        const assistant = status.value!;
+        return assistant.add_response(message);
+    }
+
     private async get_or_create_api(username: string): Promise<StatusWith<IAssistant>> {
         let user = this.users.get(username);
         if (user) {
@@ -154,7 +190,7 @@ export class ChoristerAssistant {
         if (Config.Assistant().openai_api === "vanilla") {
             user = new VanillaAssistant(this.get_instructions(), this.journal, "json");
         } else if (Config.Assistant().openai_api === "assistant") {
-            user = new ModernAssistant();
+            user = new ModernAssistant(this.journal);
         } else {
             return return_fail("unknown assistant type", this.journal.log());
         }
@@ -205,13 +241,23 @@ class VanillaAssistant implements IAssistant {
     }
 
     public async send_message(message: string): Promise<StatusWith<Response[]>> {
-        const send_status = await this.chat.send_message(message);
+        const send_status = await this.chat.send_message(message, false);
         if (!send_status.ok()) {
             return send_status.wrap("vanilla: failed to send message");
         }
         const response = send_status.value!;
         const response_obj: Response = JSON.parse(response);
+        if (response_obj.message) {
+            const add_status = await this.add_response(response_obj.message);
+            if (!add_status.ok()) {
+                this.journal.log().warn(`vanilla: failed to add response: ${add_status.what()}`);
+            }
+        }
         return Status.ok().with([response_obj]);
+    }
+
+    public async add_response(message: string): Promise<Status> {
+        return this.chat.add_response(message, "bot to user");
     }
 }
 
@@ -231,6 +277,12 @@ class ModernAssistant implements IAssistant {
         }
     }
 
+    constructor(private readonly journal: Journal) {
+        if (!ModernAssistant.assistant) {
+            throw new Error("ModernAssistant is not initialized");
+        }
+    }
+
     public async send_message(message: string): Promise<StatusWith<Response[]>> {
         if (!this.thread) {
             const status = await this.new_thread();
@@ -246,6 +298,13 @@ class ModernAssistant implements IAssistant {
         const response = status.value!;
         const response_obj: Response[] = response.map(r => JSON.parse(r));
         return Status.ok().with(response_obj);
+    }
+
+    public async add_response(message: string): Promise<Status> {
+        if (!this.thread) {
+            return return_fail("thread is not initialized", this.journal.log());
+        }
+        return this.thread.add_response(message, "bot to user");
     }
 
     static get_api(): Assistant {

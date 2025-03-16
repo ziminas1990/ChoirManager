@@ -8,24 +8,27 @@ import { DepositsTrackerEvent } from "../logic/deposits_tracker.js";
 import { BaseActivity } from "./base_activity.js";
 import { UserLogic } from "../logic/user.js";
 import { Dialog } from "../logic/dialog.js";
-import { current_month, Formatter, GlobalFormatter, return_exception } from "../utils.js";
+import { current_month, Formatter, GlobalFormatter, return_exception, return_fail } from "../utils.js";
 import { Config } from "../config.js";
 import { BotAPI } from "../api/telegram.js";
+import { Runtime } from "../runtime.js";
+import { DepositActions } from "../use_cases/deposit_actions.js";
 
 
 export class DepositActivity extends BaseActivity {
+    // To duplicate all notifications to them
+    // TODO: get rid of this
+    static accountants: UserLogic[] = []
+
     private journal: Journal;
 
-    constructor(parent_journal: Journal) {
+    constructor(private user: UserLogic, parent_journal: Journal) {
         super();
         this.journal = parent_journal.child("deposit_activity");
         if (!Messages.formatter) {
             Messages.formatter = GlobalFormatter.instance();
         }
     }
-
-    // To duplicate all notifications to them
-    static accountants: UserLogic[] = []
 
     static add_accountant(accountant: UserLogic) {
         this.accountants.push(accountant);
@@ -59,6 +62,52 @@ export class DepositActivity extends BaseActivity {
         }
     }
 
+    async send_top_up_notification(userid: string, amount: number, original_message: string)
+    : Promise<Status>
+    {
+        const dialog = this.user.main_dialog();
+        if (!dialog) {
+            return return_fail(`no active dialog`, this.journal.log());
+        }
+
+        const user = Runtime.get_instance().get_user(userid);
+        if (!user) {
+            return return_fail(`User ${userid} not found`, this.journal.log());
+        }
+        const message = Messages.top_up_notification(user.data.lang, user.data, amount, original_message);
+        return await dialog.send_message(message);
+    }
+
+    async send_already_paid_notification(userid: string, dialog?: Dialog): Promise<Status> {
+        if (!dialog) {
+            dialog = this.user.main_dialog();
+        }
+        if (!dialog) {
+            return return_fail(`no active dialog`, this.journal.log());
+        }
+        const user = Runtime.get_instance().get_user(userid);
+        if (!user) {
+            return return_fail(`user ${userid} not found`, this.journal.log());
+        }
+        return await dialog.send_message(Messages.user_already_paid(user.data, dialog.user.data.lang));
+    }
+
+    async send_already_paid_response(): Promise<Status> {
+        const dialog = this.user.main_dialog();
+        if (!dialog) {
+            return return_fail(`no active dialog`, this.journal.log());
+        }
+        return await dialog.send_message(Messages.already_paid_response(this.user.data.lang));
+    }
+
+    async send_thanks_for_information(): Promise<Status> {
+        const dialog = this.user.main_dialog();
+        if (!dialog) {
+            return return_fail(`no active dialog`, this.journal.log());
+        }
+        return await dialog.send_message(Messages.thanks_for_information(this.user.data.lang));
+    }
+
     private async handle_update_event(deposit: Deposit, changes: DepositChange, dialog: Dialog): Promise<Status> {
         const message = Messages.deposit_change(deposit, changes, dialog.user.data.lang);
         const status = await dialog.send_message(message);
@@ -89,7 +138,10 @@ export class DepositActivity extends BaseActivity {
 
         const callback_params = { dialog };
         const have_paid_callback_id = callbacks.add_callback({
-            fn: async () => { return await this.already_paid_callback(dialog); },
+            fn: async () => {
+                return await DepositActions.already_paid(
+                    Runtime.get_instance(), dialog.user.data.tgid, this.journal);
+            },
             journal: this.journal.child("callback"),
             params: callback_params,
             debug_name: `already paid by @${dialog.user.data.tgid}`,
@@ -118,15 +170,6 @@ export class DepositActivity extends BaseActivity {
             return return_exception(err, this.journal.log());
         }
 
-        return Status.ok();
-    }
-
-    async already_paid_callback(dialog: Dialog): Promise<Status> {
-        await this.notify_accountants(
-            Messages.user_already_paid(dialog.user.data, dialog.user.data.lang));
-        await dialog.send_message(
-            Messages.already_paid_response(dialog.user.data.lang)
-        );
         return Status.ok();
     }
 
@@ -291,12 +334,12 @@ class Messages {
 
         const langs: {[key in Language]: {title: string, account: string, receiver: string}} = {
             "ru": {
-                title: "Перечислить членский взнос можно по следующим реквизитам:",
+                title: "Перечислить членский взнос можно по следующим реквизитам (тапни чтобы скопировать):",
                 account: "Счёт",
                 receiver: "Получатель",
             },
             "en": {
-                title: "The membership fee can be transferred to the following details:",
+                title: "The membership fee can be transferred to the following details (tap to copy):",
                 account: "Account",
                 receiver: "Receiver",
             }
@@ -339,6 +382,34 @@ class Messages {
             case Language.EN:
             default:
                 return `${name} says that membership fee is already paid`;
+        }
+    }
+
+    static top_up_notification(lang: Language, user: User, amount: number, original_message: string): string {
+        const name = `${user.name} ${user.surname ?? ""} (@${user.tgid})`;
+        const lines: string[] = [];
+        switch (lang) {
+            case Language.RU:
+                lines.push(`${name} говорит что внёс ${amount} GEL на депозит`);
+                break;
+            case Language.EN:
+            default:
+                lines.push(`${name} says deposited ${amount} GEL`);
+                break;
+        }
+
+        lines.push("");
+        lines.push(Messages.formatter.quote(original_message));
+        return lines.join("\n");
+    }
+
+    static thanks_for_information(lang: Language): string {
+        switch (lang) {
+            case Language.RU:
+                return "Спасибо за информацию! Я передам её ответственному.";
+            case Language.EN:
+            default:
+                return "Thank you for the information! I will pass it to the responsible person.";
         }
     }
 }

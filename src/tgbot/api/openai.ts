@@ -51,7 +51,9 @@ export class ChatWithHistory {
         this.system_message = { role: "system", content: message };
     }
 
-    public async send_message(message: string): Promise<StatusWith<string>> {
+    public async send_message(message: string, add_response_to_history: boolean = true)
+    : Promise<StatusWith<string>>
+    {
         const instance = OpenaiAPI.get_instance();
         if (!instance) {
             return return_fail("OpenAI API is not initialized", this.journal.log());
@@ -79,7 +81,9 @@ export class ChatWithHistory {
                     ? { type: "json_object" }
                     : undefined,
             });
-            this.history.push(completion.choices[0].message);
+            if (add_response_to_history) {
+                this.history.push(completion.choices[0].message);
+            }
             const response = completion.choices[0].message.content;
             if (!response) {
                 return return_fail("no response", this.journal.log());
@@ -88,6 +92,13 @@ export class ChatWithHistory {
         } catch (error) {
             return return_exception(error, this.journal.log());
         }
+    }
+
+    // Add the specified message to the history as a response from bot to user
+    public async add_response(message: string, prefix: string = ""): Promise<Status> {
+        const content = (prefix ? `[${prefix}]\n` : "") + message;
+        this.history.push({ role: "assistant", content });
+        return Status.ok();
     }
 
     private push_to_history(message: ChatCompletionMessageParam) {

@@ -9,6 +9,8 @@ import { Language } from "../database.js";
 import { return_exception, return_fail, seconds_since } from "../utils.js";
 import { Action, ChoristerAssistant } from "../ai_assistants/chorister_assistant.js";
 import { Journal } from "../journal.js";
+import { DepositActions } from "../use_cases/deposit_actions.js";
+import { Runtime } from "../runtime.js";
 
 export class MainActivity extends BaseActivity {
     private last_welcome: Date = new Date(0);
@@ -137,6 +139,16 @@ export class MainActivity extends BaseActivity {
                 return await this.on_download_scores(action.filename);
             case "get_deposit_info":
                 return await this.on_deposit_request();
+            case "already_paid":
+                return DepositActions.already_paid(
+                    Runtime.get_instance(), this.dialog.user.data.tgid, this.journal);
+            case "top_up":
+                return DepositActions.top_up(
+                    Runtime.get_instance(),
+                    this.dialog.user.data.tgid,
+                    action.amount,
+                    action.original_message,
+                    this.journal);
             default:
                 return return_fail(`unknown action: ${action.what}`, this.journal.log());
         }

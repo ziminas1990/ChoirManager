@@ -96,6 +96,14 @@ export class Formatter {
             default: return text;
         }
     }
+
+    quote(text: string): string {
+        switch (Formatter.formatting) {
+            case "markdown": return `> ${text}`;
+            case "html": return `<blockquote>${text}</blockquote>`;
+            default: return text;
+        }
+    }
 }
 
 export class GlobalFormatter extends Formatter {

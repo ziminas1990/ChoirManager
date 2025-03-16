@@ -10,6 +10,7 @@ import { Status, StatusWith } from '../../status.js';
 import { GuestActivity } from '../activities/guest_activity.js';
 import { return_exception, return_fail } from '../utils.js';
 import { Journal } from '../journal.js';
+import { ChoristerAssistant } from '../ai_assistants/chorister_assistant.js';
 
 type Input = {
     what: "message",
@@ -78,6 +79,7 @@ export class Dialog extends Logic<void> {
             this.journal.log().info(`sending: ${msg}`);
             try {
                 await BotAPI.instance().sendMessage(this.chat_id, msg, { parse_mode: "HTML" });
+                ChoristerAssistant.get_instance().add_response(this.user.data.tgid, msg);
                 return Status.ok();
             } catch (error) {
                 return return_exception(error, this.journal.log());

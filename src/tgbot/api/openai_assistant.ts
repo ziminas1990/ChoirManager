@@ -17,7 +17,7 @@ export class AssistantThread {
         if (!instance) {
             return Status.fail("OpenAI API is not initialized");
         }
-        const status = await this.add_message(message);
+        const status = await this.add_message(message, "user");
         if (!status.ok()) {
             return status;
         }
@@ -45,14 +45,19 @@ export class AssistantThread {
         }
     }
 
-    public async add_message(message: string): Promise<Status> {
+    public async add_response(message: string, prefix: string = ""): Promise<Status> {
+        const content = (prefix ? `[${prefix}]\n` : "") + message;
+        return this.add_message(content, "assistant");
+    }
+
+    private async add_message(message: string, role: "user" | "assistant"): Promise<Status> {
         const instance = OpenaiAPI.get_instance();
         if (!instance) {
             return Status.fail("OpenAI API is not initialized");
         }
         try {
             await instance.beta.threads.messages.create(this.thread.id, {
-                role: "user",
+                role,
                 content: message,
             });
             return Status.ok();

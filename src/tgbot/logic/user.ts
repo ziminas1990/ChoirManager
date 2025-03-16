@@ -43,7 +43,7 @@ export class UserLogic extends Logic<void> {
         }
 
         this.journal = parent_journal.child(`@${data.tgid}`, additional_tags);
-        this.deposit_activity = new DepositActivity(this.journal);
+        this.deposit_activity = new DepositActivity(this, this.journal);
 
         this.callbacks = new TelegramCallbacks(this.journal.child("callbacks"));
 
@@ -95,6 +95,10 @@ export class UserLogic extends Logic<void> {
 
     is_ex_chorister(): boolean {
         return this.data.is(Role.ExChorister);
+    }
+
+    get_deposit_activity(): DepositActivity {
+        return this.deposit_activity;
     }
 
     main_dialog(): Dialog | undefined {
