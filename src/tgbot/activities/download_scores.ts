@@ -6,7 +6,7 @@ import { Dialog } from "../logic/dialog.js";
 import { BaseActivity } from "./base_activity.js";
 import { BotAPI } from "../api/telegram.js";
 import { Status } from "../../status.js";
-import { Language } from "../database.js";
+import { Language, Scores } from "../database.js";
 import { Runtime } from "../runtime.js";
 import { Journal } from "../journal.js";
 import { return_exception } from "../utils.js";
@@ -87,9 +87,9 @@ export class DownloadScoresActivity extends BaseActivity {
 
         const callbacks = this.dialog.user.callbacks_registry();
 
-        split_to_columns(scores, 2).forEach((scores) => {
-            assert(scores[0].file, "score file is undefined");
-            const callback_params = { file: scores[0].file };
+        const create_button = (score: Scores): TelegramBot.InlineKeyboardButton => {
+            assert(score.file, "score file is undefined");
+            const callback_params = { file: score.file };
             const callback_id = callbacks.add_callback({
                 fn: async (params: typeof callback_params) => {
                     return await DownloadScoresActivity.send_scores(
@@ -97,13 +97,16 @@ export class DownloadScoresActivity extends BaseActivity {
                 },
                 journal: this.journal.child("callback"),
                 params: callback_params,
-                debug_name: `download ${scores[0].name} scores`,
+                debug_name: `download ${score.name} scores`,
             });
-
-            keyboard.inline_keyboard.push(scores.map(score => ({
+            return {
                 text: score.name,
                 callback_data: callback_id
-            })));
+            };
+        }
+
+        split_to_columns(scores, 2).forEach((scores) => {
+            keyboard.inline_keyboard.push(scores.map(create_button));
         });
 
         try {
