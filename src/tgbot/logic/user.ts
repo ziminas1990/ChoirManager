@@ -206,7 +206,7 @@ export class UserLogic extends Logic<void> {
         try {
             await BotAPI.instance().sendDocument(
                 this.dialog.chat_id,
-                fs.createReadStream("./logs/bot.log"),
+                fs.createReadStream(Config.data.logs_file),
                 undefined,
                 { contentType: "text/plain" }
             );

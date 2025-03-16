@@ -10,6 +10,7 @@ export class Config {
         tgbot_token_file: string;
         runtime_dump_interval_sec: number;
         openai_api_key_file?: string;
+        logs_file: string;
         formatting: Formatting;
         users_fetcher: {
             google_sheet_id: string
@@ -124,6 +125,9 @@ export class Config {
         }
         if (!this.data.formatting || !["markdown", "html", "plain"].includes(this.data.formatting)) {
             return Status.fail("'formatting' MUST be specified (markdown, html, plain)");
+        }
+        if (!this.data.logs_file) {
+            return Status.fail("'logs_file' MUST be specified");
         }
 
         // Runtime configuration

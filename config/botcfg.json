@@ -3,6 +3,7 @@
     "google_cloud_key_file": "./config/google_cloud_key.json",
     "tgbot_token_file": "./config/tgbot_token",
     "openai_api_key_file": "./config/openai_api_key",
+    "logs_file": "/mnt/logs/bot.log",
     "runtime_dump_interval_sec": 10,
     "formatting": "html",
     "users_fetcher": {
