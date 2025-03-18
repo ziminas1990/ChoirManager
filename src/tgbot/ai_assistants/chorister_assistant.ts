@@ -77,11 +77,11 @@ Examples:
 1. User: "Закинул 100 лари". Action: { what: "top_up", amount: 100, original_message: "Закинул 100 лари" }
 
 ## already_paid
-Action MUST be emitted if user says that they already paid membership fee.
-Usually user reacts with this message on reminder that they should pay membership fee.
-NOTE: that this action is less priority than "top_up" action. If user specifies the amount, use "top_up" action instead.
+Action MUST be emitted if after getting a reminder user says that they have already paid membership fee.
+IMPORTANT: if user specifies the amount or previous date (yesterday, last week, etc), use "top_up" action instead.
 Examples:
 1. User: "Я уже пополнял". Action: { what: "already_paid" }
+2. User: "I deposited 100 GEL yesterday". Action: { what: "top_up", amount: 100, original_message: "I deposited 100 GEL yesterday" }
 
 ## complaint
 If user is trying to complain OR want to report something follow the following steps:

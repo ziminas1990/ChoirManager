@@ -60,7 +60,12 @@ export class MainActivity extends BaseActivity {
             this.on_download_scores();
             return Status.ok();
         } else if (text == Messages.get_deposit_info(lang)) {
-            return await this.on_deposit_request();
+            return await DepositActions.deposit_requested(
+                Runtime.get_instance(),
+                this.dialog.user.data.tgid,
+                this.journal,
+                this.dialog
+            );
         }
 
         if (!msg.text) {
@@ -138,10 +143,18 @@ export class MainActivity extends BaseActivity {
             case "download_scores":
                 return await this.on_download_scores(action.filename);
             case "get_deposit_info":
-                return await this.on_deposit_request();
+                return await DepositActions.deposit_requested(
+                    Runtime.get_instance(),
+                    this.dialog.user.data.tgid,
+                    this.journal,
+                    this.dialog
+                );
             case "already_paid":
                 return DepositActions.already_paid(
-                    Runtime.get_instance(), this.dialog.user.data.tgid, this.journal);
+                    Runtime.get_instance(),
+                    this.dialog.user.data.tgid,
+                    this.journal,
+                    this.dialog);
             case "top_up":
                 return DepositActions.top_up(
                     Runtime.get_instance(),
@@ -167,11 +180,6 @@ export class MainActivity extends BaseActivity {
         this.child_activity = new DownloadScoresActivity(this.dialog, this.journal);
         return (await this.child_activity.start())
             .wrap("failed to start download scores activity");
-    }
-
-    private async on_deposit_request(): Promise<Status> {
-        return (await this.dialog.user.send_deposit_info())
-            .wrap("failed to send deposit info");
     }
 
     private async on_service_message(command: string): Promise<Status> {

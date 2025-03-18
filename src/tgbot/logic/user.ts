@@ -6,23 +6,27 @@ import { Dialog } from './dialog.js';
 import { Database, Role, User } from '../database.js';
 import { Status, StatusWith } from '../../status.js';
 import { DepositsFetcher } from '../fetchers/deposits_fetcher.js';
-import { DepositsTracker, DepositsTrackerEvent } from './deposits_tracker.js';
-import { DepositActivity } from '../activities/deposit_activity.js';
+import { DepositsTracker } from './deposits_tracker.js';
 import { BotAPI } from '../api/telegram.js';
 import { Config } from '../config.js';
 import { ChoristerAssistant } from '../ai_assistants/chorister_assistant.js';
 import { DocumentsFetcher } from '../fetchers/document_fetcher.js';
 import { OpenaiAPI } from '../api/openai.js';
 import { Journal } from "../journal.js";
-import { return_exception, return_fail } from '../utils.js';
+import { GlobalFormatter, return_exception, return_fail } from '../utils.js';
 import { TelegramCallbacks } from '../api/tg_callbacks.js';
+import { DepositOwnerDialog } from '../entities/dialog/deposit_owner_dialog.js';
+import { AccounterDialog } from '../entities/dialog/accounter_dialog.js';
+import { Runtime } from '../runtime.js';
+import { DepositActions } from '../use_cases/deposit_actions.js';
 
 export class UserLogic extends Logic<void> {
     private dialog?: Dialog;
     private messages_queue: TelegramBot.Message[] = [];
     private last_activity?: Date;
     private deposit_tracker: DepositsTracker;
-    private deposit_activity: DepositActivity;
+    private deposit_owner_dialog?: DepositOwnerDialog;
+    private accounter_dialog?: AccounterDialog;
     private journal: Journal;
 
     private callbacks: TelegramCallbacks;
@@ -43,15 +47,10 @@ export class UserLogic extends Logic<void> {
         }
 
         this.journal = parent_journal.child(`@${data.tgid}`, additional_tags);
-        this.deposit_activity = new DepositActivity(this, this.journal);
 
         this.callbacks = new TelegramCallbacks(this.journal.child("callbacks"));
 
         this.deposit_tracker = new DepositsTracker(this.data.tgid, this.journal);
-
-        if (this.is_accountant()) {
-            DepositActivity.add_accountant(this);
-        }
     }
 
     get_journal(): Journal {
@@ -97,8 +96,24 @@ export class UserLogic extends Logic<void> {
         return this.data.is(Role.ExChorister);
     }
 
-    get_deposit_activity(): DepositActivity {
-        return this.deposit_activity;
+    as_deposit_owner(): DepositOwnerDialog | undefined {
+        if (!this.is_chorister() && !this.is_ex_chorister()) {
+            return undefined;
+        }
+        if (!this.deposit_owner_dialog) {
+            this.deposit_owner_dialog = new DepositOwnerDialog(this, this.journal, GlobalFormatter.instance());
+        }
+        return this.deposit_owner_dialog;
+    }
+
+    as_accounter(): AccounterDialog | undefined {
+        if (!this.is_accountant()) {
+            return undefined;
+        }
+        if (!this.accounter_dialog) {
+            this.accounter_dialog = new AccounterDialog(this, this.journal, GlobalFormatter.instance());
+        }
+        return this.accounter_dialog;
     }
 
     main_dialog(): Dialog | undefined {
@@ -127,22 +142,12 @@ export class UserLogic extends Logic<void> {
         return this.last_activity;
     }
 
-    get_chorister_assistant(): ChoristerAssistant | undefined {
-        return this.chorister_assustant;
+    get_deposit_tracker(): DepositsTracker | undefined {
+        return this.deposit_tracker;
     }
 
-    async send_deposit_info(): Promise<Status> {
-        if (!this.dialog) {
-            return return_fail("no active dialog", this.journal.log());
-        }
-
-        const deposit_info = this.deposit_tracker.get_deposit()
-        if (deposit_info) {
-            return await this.deposit_activity.send_deposit_info(deposit_info, this.dialog);
-        } else {
-            this.dialog?.send_message("Error: no deposit info available")
-            return return_fail("no deposit info available", this.journal.log());
-        }
+    get_chorister_assistant(): ChoristerAssistant | undefined {
+        return this.chorister_assustant;
     }
 
     async proceed_impl(now: Date): Promise<Status> {
@@ -166,7 +171,16 @@ export class UserLogic extends Logic<void> {
                 warnings.push(events.wrap("deposit_tracker"));
             }
             for (const event of events.value ?? []) {
-                await this.handle_deposit_tracker_event(event);
+                const status = await DepositActions.handle_deposit_tracker_event(
+                    Runtime.get_instance(),
+                    this.data.tgid,
+                    event,
+                    this.journal,
+                    this.dialog
+                );
+                if (!status.ok()) {
+                    this.journal.log().error({ status }, "failed to handle deposit tracker event");
+                }
             }
         }
 
@@ -280,12 +294,5 @@ export class UserLogic extends Logic<void> {
         }
 
         return this.dialog.on_message(msg);
-    }
-
-    private async handle_deposit_tracker_event(event: DepositsTrackerEvent): Promise<Status> {
-        if (!this.dialog) {
-            return return_fail("no active dialog", this.journal.log());
-        }
-        return await this.deposit_activity.on_deposit_event(event, this.dialog)
     }
 }
