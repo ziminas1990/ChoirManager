@@ -37,6 +37,14 @@ export function apply_interval(
     return date;
 }
 
+export function split_to_columns<T>(list: T[], columns: number): T[][] {
+    const result: T[][] = [];
+    for (let i = 0; i < list.length; i += columns) {
+        result.push(list.slice(i, i + columns));
+    }
+    return result;
+}
+
 export function return_fail(what: string, logger: pino.Logger): Status {
     logger.error(what);
     return Status.fail(what);
@@ -72,6 +80,8 @@ export class Formatter {
     constructor(formatting: Formatting) {
         Formatter.formatting = formatting;
     }
+
+    do_nothing() {}
 
     bold(text: string): string {
         switch (Formatter.formatting) {

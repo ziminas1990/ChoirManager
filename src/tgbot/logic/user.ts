@@ -19,6 +19,7 @@ import { DepositOwnerDialog } from '../entities/dialog/deposit_owner_dialog.js';
 import { AccounterDialog } from '../entities/dialog/accounter_dialog.js';
 import { Runtime } from '../runtime.js';
 import { DepositActions } from '../use_cases/deposit_actions.js';
+import { ScoresDialog } from '../entities/dialog/scores_dialog.js';
 
 export class UserLogic extends Logic<void> {
     private dialog?: Dialog;
@@ -27,6 +28,7 @@ export class UserLogic extends Logic<void> {
     private deposit_tracker: DepositsTracker;
     private deposit_owner_dialog?: DepositOwnerDialog;
     private accounter_dialog?: AccounterDialog;
+    private scores_dialog?: ScoresDialog;
     private journal: Journal;
 
     private callbacks: TelegramCallbacks;
@@ -114,6 +116,16 @@ export class UserLogic extends Logic<void> {
             this.accounter_dialog = new AccounterDialog(this, this.journal, GlobalFormatter.instance());
         }
         return this.accounter_dialog;
+    }
+
+    get_scores_dialog(): ScoresDialog | undefined {
+        if (!this.is_chorister()) {
+            return undefined;
+        }
+        if (!this.scores_dialog) {
+            this.scores_dialog = new ScoresDialog(this, this.journal, GlobalFormatter.instance());
+        }
+        return this.scores_dialog;
     }
 
     main_dialog(): Dialog | undefined {

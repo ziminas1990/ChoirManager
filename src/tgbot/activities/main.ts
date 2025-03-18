@@ -3,7 +3,6 @@ import TelegramBot from "node-telegram-bot-api";
 import { Dialog } from "../logic/dialog.js";
 import { BaseActivity } from "./base_activity.js";
 import { BotAPI } from "../api/telegram.js";
-import { DownloadScoresActivity } from "./download_scores.js";
 import { Status } from "../../status.js";
 import { Language } from "../database.js";
 import { return_exception, return_fail, seconds_since } from "../utils.js";
@@ -11,6 +10,7 @@ import { Action, ChoristerAssistant } from "../ai_assistants/chorister_assistant
 import { Journal } from "../journal.js";
 import { DepositActions } from "../use_cases/deposit_actions.js";
 import { Runtime } from "../runtime.js";
+import { ScoresActions } from "../use_cases/scores_actions.js";
 
 export class MainActivity extends BaseActivity {
     private last_welcome: Date = new Date(0);
@@ -57,8 +57,12 @@ export class MainActivity extends BaseActivity {
             this.start();
             return Status.ok();
         } else if (text === Messages.download_scores(lang)) {
-            this.on_download_scores();
-            return Status.ok();
+            return await ScoresActions.scores_list_requested(
+                Runtime.get_instance(),
+                this.dialog.user.data.tgid,
+                this.journal,
+                this.dialog
+            );
         } else if (text == Messages.get_deposit_info(lang)) {
             return await DepositActions.deposit_requested(
                 Runtime.get_instance(),
@@ -139,9 +143,20 @@ export class MainActivity extends BaseActivity {
     private async on_action(action: Action): Promise<Status> {
         switch (action.what) {
             case "scores_list":
-                return await this.on_download_scores();
+                return await ScoresActions.scores_list_requested(
+                    Runtime.get_instance(),
+                    this.dialog.user.data.tgid,
+                    this.journal,
+                    this.dialog
+                );
             case "download_scores":
-                return await this.on_download_scores(action.filename);
+                return await ScoresActions.download_scores(
+                    Runtime.get_instance(),
+                    this.dialog.user.data.tgid,
+                    action.filename,
+                    this.journal,
+                    this.dialog
+                );
             case "get_deposit_info":
                 return await DepositActions.deposit_requested(
                     Runtime.get_instance(),
@@ -165,21 +180,6 @@ export class MainActivity extends BaseActivity {
             default:
                 return return_fail(`unknown action: ${action.what}`, this.journal.log());
         }
-    }
-
-    private async on_download_scores(filename?: string): Promise<Status> {
-        if (this.dialog.user.is_guest()) {
-            return Status.ok();
-        }
-
-        if (filename) {
-            return (await DownloadScoresActivity.send_scores(this.dialog, filename, this.journal))
-                .wrap(`failed to download scores "${filename}"`);
-        }
-
-        this.child_activity = new DownloadScoresActivity(this.dialog, this.journal);
-        return (await this.child_activity.start())
-            .wrap("failed to start download scores activity");
     }
 
     private async on_service_message(command: string): Promise<Status> {
