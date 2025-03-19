@@ -6,7 +6,6 @@ import { Status, StatusWith } from "../status.js";
 import { Database, Language, Role, User, Voice } from "./database.js";
 import { UserLogic } from "./logic/user.js";
 import { pack_map, return_exception, return_fail, unpack_map } from "./utils.js";
-import { AnnounceTranslator } from "./activities/translator.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Config } from "./config.js";
 import { Proceeder } from "./logic/abstracts.js";
@@ -16,6 +15,7 @@ import { UsersFetcher } from "./fetchers/users_fetcher.js";
 import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
 import { Journal } from "./journal.js";
 import { AdminActions } from "./use_cases/admin_actions.js";
+import { Translator } from "./use_cases/translator.js";
 
 
 class RuntimeCfg {
@@ -58,7 +58,6 @@ export class Runtime {
 
     private next_dump: Date = new Date();
     private update_interval_sec: number = 0;
-    private translator: AnnounceTranslator;
     private users_fetcher?: UsersFetcher;
     private deposits_fetcher?: DepositsFetcher;
     private documents_fetcher?: DocumentsFetcher;
@@ -94,7 +93,6 @@ export class Runtime {
         }
         Runtime.instance = this;
 
-        this.translator = new AnnounceTranslator(this.journal.child("translator"));
         this.last_backup = {
             hash: runtime_hash,
             time: new Date(),
@@ -103,10 +101,6 @@ export class Runtime {
 
     async start(): Promise<Status> {
         this.journal.log().info("Starting runtime");
-        const translator_status = await this.translator.start();
-        if (!translator_status.ok()) {
-            return translator_status.wrap("Failed to start translator");
-        }
 
         if (Config.HasDepoditTracker()) {
             this.journal.log().info("Starting deposits fetcher");
@@ -238,7 +232,8 @@ export class Runtime {
         }
 
         if (is_announce && sent_by_manager) {
-            return await this.translator.on_announce(msg);
+            return await Translator.translate_announce(
+                this, msg.text ?? "", user.data, this.journal);
         }
         return Status.ok();
     }
