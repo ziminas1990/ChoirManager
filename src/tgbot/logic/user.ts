@@ -20,6 +20,7 @@ import { AccounterDialog } from '../entities/dialog/accounter_dialog.js';
 import { Runtime } from '../runtime.js';
 import { DepositActions } from '../use_cases/deposit_actions.js';
 import { ScoresDialog } from '../entities/dialog/scores_dialog.js';
+import { AdminDialog } from '../entities/dialog/admin_dialog.js';
 
 export class UserLogic extends Logic<void> {
     private dialog?: Dialog;
@@ -29,6 +30,7 @@ export class UserLogic extends Logic<void> {
     private deposit_owner_dialog?: DepositOwnerDialog;
     private accounter_dialog?: AccounterDialog;
     private scores_dialog?: ScoresDialog;
+    private admin_dialog?: AdminDialog;
     private journal: Journal;
 
     private callbacks: TelegramCallbacks;
@@ -96,6 +98,16 @@ export class UserLogic extends Logic<void> {
 
     is_ex_chorister(): boolean {
         return this.data.is(Role.ExChorister);
+    }
+
+    as_admin(): AdminDialog | undefined {
+        if (!this.is_admin()) {
+            return undefined;
+        }
+        if (!this.admin_dialog) {
+            this.admin_dialog = new AdminDialog(this, this.journal, GlobalFormatter.instance());
+        }
+        return this.admin_dialog;
     }
 
     as_deposit_owner(): DepositOwnerDialog | undefined {

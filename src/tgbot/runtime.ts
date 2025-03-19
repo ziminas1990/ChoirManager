@@ -7,7 +7,6 @@ import { Database, Language, Role, User, Voice } from "./database.js";
 import { UserLogic } from "./logic/user.js";
 import { pack_map, return_exception, return_fail, unpack_map } from "./utils.js";
 import { AnnounceTranslator } from "./activities/translator.js";
-import { AdminPanel } from "./activities/admin_panel.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Config } from "./config.js";
 import { Proceeder } from "./logic/abstracts.js";
@@ -16,6 +15,7 @@ import { ChoristerAssistant } from "./ai_assistants/chorister_assistant.js";
 import { UsersFetcher } from "./fetchers/users_fetcher.js";
 import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
 import { Journal } from "./journal.js";
+import { AdminActions } from "./use_cases/admin_actions.js";
 
 
 class RuntimeCfg {
@@ -59,7 +59,6 @@ export class Runtime {
     private next_dump: Date = new Date();
     private update_interval_sec: number = 0;
     private translator: AnnounceTranslator;
-    private admin_panel: AdminPanel;
     private users_fetcher?: UsersFetcher;
     private deposits_fetcher?: DepositsFetcher;
     private documents_fetcher?: DocumentsFetcher;
@@ -96,7 +95,6 @@ export class Runtime {
         Runtime.instance = this;
 
         this.translator = new AnnounceTranslator(this.journal.child("translator"));
-        this.admin_panel = new AdminPanel(this.journal.child("admin_panel"));
         this.last_backup = {
             hash: runtime_hash,
             time: new Date(),
@@ -147,11 +145,11 @@ export class Runtime {
             this.on_user_added(user, true);
         }
 
-        this.journal.log().info("Starting admin panel");
-        const admin_panel_status = await this.admin_panel.start();
-        if (!admin_panel_status.ok()) {
-            return admin_panel_status.wrap("Failed to start admin panel");
-        }
+        await AdminActions.notify_all_admins(
+            Runtime.get_instance(),
+            "Bot has been restarted",
+            this.journal
+        );
 
         return Status.ok();
     }
@@ -189,6 +187,31 @@ export class Runtime {
         return user.on_message(msg);
     }
 
+    async handle_admin_message(msg: TelegramBot.Message): Promise<Status> {
+        this.journal.log().info(`Admin panel message: ${msg.text}`);
+        if (msg.text?.includes("this is announces thread")) {
+            if (msg.message_thread_id == undefined) {
+                return return_fail("message thread id is undefined", this.journal.log());
+            }
+            return (await AdminActions.set_announce_thread(
+                Runtime.get_instance(),
+                msg.chat.title ?? "unknown",
+                msg.chat.id,
+                msg.message_thread_id,
+                this.journal
+            )).wrap("failed to set announces thread");
+        }
+        if (msg.text?.includes("this is managers chat")) {
+            return (await AdminActions.set_manager_chat_id(
+                Runtime.get_instance(),
+                msg.chat.title ?? "unknown",
+                msg.chat.id,
+                this.journal
+            )).wrap("failed to set managers chat");
+        }
+        return return_fail("unexpected message", this.journal.log());
+    }
+
     async handle_group_message(msg: TelegramBot.Message): Promise<Status> {
         const username = msg.from?.username;
         if (username == undefined) {
@@ -211,7 +234,7 @@ export class Runtime {
         }
 
         if (sent_by_admin && sent_to_bot) {
-            return await this.admin_panel.handle_message(msg);
+            return await this.handle_admin_message(msg);
         }
 
         if (is_announce && sent_by_manager) {
@@ -374,8 +397,10 @@ export class Runtime {
 
         // Notify admins:
         if (!startup) {
-            this.admin_panel.send_notification(
-                `User ${user.data.name} ${user.data.surname} (@${user.data.tgid}) has joined`);
+            AdminActions.notify_all_admins(
+                Runtime.get_instance(),
+                `User ${user.data.name} ${user.data.surname} (@${user.data.tgid}) has joined`,
+                this.journal);
         }
     }
 
@@ -388,7 +413,7 @@ export class Runtime {
             hash: runtime_hash,
             time: new Date(),
         };
-        this.admin_panel.send_runtime_backup_to_admins();
+        AdminActions.send_runtime_backup(this, this.journal);
     }
 }
 
