@@ -1,6 +1,6 @@
-import { Status, StatusWith } from "../../status.js";
-import { GoogleDocument } from "../api/google_docs.js";
-import { Config } from "../config.js";
+import { Status, StatusWith } from "@src/status.js";
+import { GoogleDocument } from "@src/tgbot/api/google_docs.js";
+import { Config } from "@src/tgbot/config.js";
 
 type Document = {
     api: GoogleDocument

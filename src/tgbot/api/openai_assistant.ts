@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { Status, StatusWith } from "../../status.js";
+import { Status, StatusWith } from "@src/status.js";
 import { OpenaiAPI } from "./openai.js";
 
 // NOTE: this API is not being used now, because it much slower than regular

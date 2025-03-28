@@ -1,5 +1,5 @@
 import pino from "pino";
-import { Status } from "../status.js";
+import { Status } from "@src/status.js";
 
 export type PackedMap<K, P> = [K, P][];
 

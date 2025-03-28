@@ -1,4 +1,4 @@
-import { Status } from "../status.js";
+import { Status } from "@src/status.js";
 
 export enum Role {
     Chorister = "chorister",
@@ -16,6 +16,13 @@ export enum Voice {
     Tenor = "tenor",
     Baritone = "baritone",
     Unknown = "unknown",
+}
+
+export function voice_from_string(voice: string | undefined): Voice {
+    if (!voice) {
+        return Voice.Unknown;
+    }
+    return Voice[voice as keyof typeof Voice] || Voice.Unknown;
 }
 
 export enum Language {
@@ -143,6 +150,12 @@ export class Database {
 
     public get_user(tg_id: string): User | undefined {
         return this.users.get(tg_id);
+    }
+
+    public create_guest_user(tg_id: string): User {
+        const guest = new User(tg_id, "", "", Language.EN, Voice.Unknown, [Role.Guest]);
+        this.users.set(tg_id, guest);
+        return guest;
     }
 
     public find_scores(what: Partial<Scores>): Scores | undefined {

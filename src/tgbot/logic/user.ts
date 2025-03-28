@@ -1,41 +1,24 @@
-import TelegramBot from 'node-telegram-bot-api';
-import fs from "fs";
-
 import { Logic } from './abstracts.js';
-import { Dialog } from './dialog.js';
-import { Database, Role, User } from '../database.js';
-import { Status, StatusWith } from '../../status.js';
-import { DepositsFetcher } from '../fetchers/deposits_fetcher.js';
+import { Database, Role, User } from '@src/tgbot/database.js';
+import { Status, StatusWith } from '@src/status.js';
+import { DepositsFetcher } from '@src/tgbot/fetchers/deposits_fetcher.js';
 import { DepositsTracker } from './deposits_tracker.js';
-import { BotAPI } from '../api/telegram.js';
-import { Config } from '../config.js';
-import { ChoristerAssistant } from '../ai_assistants/chorister_assistant.js';
-import { DocumentsFetcher } from '../fetchers/document_fetcher.js';
-import { OpenaiAPI } from '../api/openai.js';
-import { Journal } from "../journal.js";
-import { GlobalFormatter, return_exception, return_fail } from '../utils.js';
-import { TelegramCallbacks } from '../api/tg_callbacks.js';
-import { DepositOwnerDialog } from '../entities/dialog/deposit_owner_dialog.js';
-import { AccounterDialog } from '../entities/dialog/accounter_dialog.js';
-import { Runtime } from '../runtime.js';
-import { DepositActions } from '../use_cases/deposit_actions.js';
-import { ScoresDialog } from '../entities/dialog/scores_dialog.js';
-import { AdminDialog } from '../entities/dialog/admin_dialog.js';
+import { ChoristerAssistant } from '@src/tgbot/ai_assistants/chorister_assistant.js';
+import { DocumentsFetcher } from '@src/tgbot/fetchers/document_fetcher.js';
+import { OpenaiAPI } from '@src/tgbot/api/openai.js';
+import { Journal } from "@src/tgbot/journal.js";
+import { TelegramCallbacks } from '@src/tgbot/adapters/telegram/callbacks.js';
+import { DepositActions } from '@src/tgbot/use_cases/deposit_actions.js';
+import { IAccounterAgent, IAdminAgent, IBaseAgent, IDepositOwnerAgent, IUserAgent } from '@src/tgbot/interfaces/user_agent.js';
 
 export class UserLogic extends Logic<void> {
-    private dialog?: Dialog;
-    private messages_queue: TelegramBot.Message[] = [];
     private last_activity?: Date;
     private deposit_tracker: DepositsTracker;
-    private deposit_owner_dialog?: DepositOwnerDialog;
-    private accounter_dialog?: AccounterDialog;
-    private scores_dialog?: ScoresDialog;
-    private admin_dialog?: AdminDialog;
     private journal: Journal;
-
     private callbacks: TelegramCallbacks;
-
     private chorister_assustant?: ChoristerAssistant
+
+    private agents: IUserAgent[] = [];
 
     constructor(
         public readonly data: User,
@@ -100,66 +83,20 @@ export class UserLogic extends Logic<void> {
         return this.data.is(Role.ExChorister);
     }
 
-    as_admin(): AdminDialog | undefined {
-        if (!this.is_admin()) {
-            return undefined;
-        }
-        if (!this.admin_dialog) {
-            this.admin_dialog = new AdminDialog(this, this.journal, GlobalFormatter.instance());
-        }
-        return this.admin_dialog;
+    base_agents(): IBaseAgent[] {
+        return this.agents;
     }
 
-    as_deposit_owner(): DepositOwnerDialog | undefined {
-        if (!this.is_chorister() && !this.is_ex_chorister()) {
-            return undefined;
-        }
-        if (!this.deposit_owner_dialog) {
-            this.deposit_owner_dialog = new DepositOwnerDialog(this, this.journal, GlobalFormatter.instance());
-        }
-        return this.deposit_owner_dialog;
+    as_admin(): IAdminAgent[] | undefined {
+        return this.is_admin() ? this.agents : undefined;
     }
 
-    as_accounter(): AccounterDialog | undefined {
-        if (!this.is_accountant()) {
-            return undefined;
-        }
-        if (!this.accounter_dialog) {
-            this.accounter_dialog = new AccounterDialog(this, this.journal, GlobalFormatter.instance());
-        }
-        return this.accounter_dialog;
+    as_deposit_owner(): IDepositOwnerAgent[] | undefined {
+        return this.is_chorister() ? this.agents : undefined;
     }
 
-    get_scores_dialog(): ScoresDialog | undefined {
-        if (!this.is_chorister()) {
-            return undefined;
-        }
-        if (!this.scores_dialog) {
-            this.scores_dialog = new ScoresDialog(this, this.journal, GlobalFormatter.instance());
-        }
-        return this.scores_dialog;
-    }
-
-    main_dialog(): Dialog | undefined {
-        return this.dialog;
-    }
-
-    on_message(msg: TelegramBot.Message): Status {
-        this.last_activity = new Date();
-        if (msg.chat.type !== "private") {
-            return return_fail("Message is not from a private chat", this.journal.log());
-        }
-        this.messages_queue.push(msg);
-        return Status.ok();
-    }
-
-    on_callback(query: TelegramBot.CallbackQuery): Status {
-        this.last_activity = new Date();
-        const callback_id = query.data;
-        if (!callback_id) {
-            return return_fail("callback_id is undefined", this.journal.log());
-        }
-        return this.callbacks.on_callback(query);
+    as_accounter(): IAccounterAgent[] | undefined {
+        return this.is_accountant() ? this.agents : undefined;
     }
 
     get_last_activity() {
@@ -175,19 +112,7 @@ export class UserLogic extends Logic<void> {
     }
 
     async proceed_impl(now: Date): Promise<Status> {
-        let status = await this.proceed_messages_queue();
-        if (!status.ok()) {
-            return status.wrap("can't proceed messages queue");
-        }
-
         const warnings: Status[] = [];
-
-        if (this.dialog) {
-            const status = await this.dialog.proceed(now);
-            if (!status.ok()) {
-                warnings.push(status.wrap("dialog proceeding"))
-            }
-        }
 
         {
             const events = await this.deposit_tracker.proceed(now);
@@ -195,20 +120,11 @@ export class UserLogic extends Logic<void> {
                 warnings.push(events.wrap("deposit_tracker"));
             }
             for (const event of events.value ?? []) {
-                const status = await DepositActions.handle_deposit_tracker_event(
-                    Runtime.get_instance(),
-                    this.data.tgid,
-                    event,
-                    this.journal,
-                    this.dialog
-                );
-                if (!status.ok()) {
-                    this.journal.log().error({ status }, "failed to handle deposit tracker event");
-                }
+                DepositActions.handle_deposit_tracker_event(this, event, this.journal);
             }
         }
 
-        status = await this.callbacks.proceed(now);
+        const status = await this.callbacks.proceed(now);
         if (!status.ok()) {
             warnings.push(status.wrap("callbacks"));
         }
@@ -216,52 +132,9 @@ export class UserLogic extends Logic<void> {
         return Status.ok_and_warnings("dialog proceed", warnings);
     }
 
-    async send_runtime_backup(): Promise<Status> {
-        if (!this.dialog) {
-            return return_fail("no active dialog", this.journal.log());
-        }
-        if (!this.is_admin()) {
-            return return_fail("not an admin", this.journal.log());
-        }
-
-        try {
-            await BotAPI.instance().sendDocument(
-                this.dialog.chat_id,
-                fs.createReadStream(Config.data.runtime_cache_filename),
-                undefined,
-                { contentType: "application/json" }
-            );
-        } catch (error) {
-            return return_exception(error, this.journal.log(), "failed to send runtime backup");
-        }
-        return Status.ok();
-    }
-
-    async send_logs(): Promise<Status> {
-        if (!this.dialog) {
-            return return_fail("no active dialog", this.journal.log());
-        }
-        if (!this.is_admin()) {
-            return return_fail("not an admin", this.journal.log());
-        }
-
-        try {
-            await BotAPI.instance().sendDocument(
-                this.dialog.chat_id,
-                fs.createReadStream(Config.data.logs_file),
-                undefined,
-                { contentType: "text/plain" }
-            );
-        } catch (error) {
-            return return_exception(error, this.journal.log(), "failed to send logs");
-        }
-        return Status.ok();
-    }
-
     static pack(user: UserLogic) {
         return {
             "tgid": user.data.tgid,
-            "dlg": user.dialog ? Dialog.pack(user.dialog) : undefined,
             "deposit_tracker": DepositsTracker.pack(user.deposit_tracker)
         } as const;
     }
@@ -271,7 +144,7 @@ export class UserLogic extends Logic<void> {
         packed: ReturnType<typeof UserLogic.pack>,
         parent_journal: Journal
     ): StatusWith<UserLogic> {
-        const [tgid, dialog] = [packed.tgid, packed.dlg];
+        const tgid = packed.tgid;
 
         const user = tgid ? database.get_user(tgid) : undefined;
         if (!user) {
@@ -279,44 +152,10 @@ export class UserLogic extends Logic<void> {
         }
         const logic = new UserLogic(user, 100, parent_journal);
 
-        // Load dialogs
-        const unpack_dialog_status: StatusWith<Dialog> =
-            dialog ? Dialog.unpack(logic, dialog) : Status.ok();
-        if (unpack_dialog_status.ok()) {
-            logic.dialog = unpack_dialog_status.value!;
-        }
-
         if (packed.deposit_tracker) {
             logic.deposit_tracker = DepositsTracker.unpack(tgid, packed.deposit_tracker, parent_journal);
         }
 
-        return Status.ok_and_warnings("unpacking", [unpack_dialog_status]).with(logic);
-    }
-
-    private async proceed_messages_queue(): Promise<Status> {
-        const warnings: Status[] = [];
-        for (const msg of this.messages_queue) {
-            const status = await this.proceed_message(msg);
-            if (!status.ok()) {
-                warnings.push(status);
-            }
-        }
-        this.messages_queue = [];
-        return Status.ok_and_warnings("proceed messages", warnings);
-    }
-
-    private async proceed_message(msg: TelegramBot.Message): Promise<Status> {
-        const is_start = msg.text?.toLocaleLowerCase() === "/start";
-
-        if (!this.dialog || this.dialog.chat_id !== msg.chat.id || is_start) {
-            this.dialog = undefined;
-            const status = await Dialog.Start(this, msg.chat.id, this.journal);
-            if (!status.ok()) {
-                return status.wrap("can't start dialog");
-            }
-            this.dialog = status.value!;
-        }
-
-        return this.dialog.on_message(msg);
+        return Status.ok().with(logic);
     }
 }

@@ -1,10 +1,10 @@
 import OpenAI from "openai";
 import fs from "fs";
 import { ChatCompletionMessageParam } from "openai/resources";
-import { Config } from "../config.js";
-import { Status, StatusWith } from "../../status.js";
-import { return_exception, return_fail } from "../utils.js";
-import { Journal } from "../journal.js";
+import { Config } from "@src/tgbot/config.js";
+import { Status, StatusWith } from "@src/status.js";
+import { return_exception, return_fail } from "@src/tgbot/utils.js";
+import { Journal } from "@src/tgbot/journal.js";
 
 export class OpenaiAPI {
     private static _instance: OpenAI;

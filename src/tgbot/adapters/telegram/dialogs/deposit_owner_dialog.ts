@@ -1,121 +1,84 @@
 import TelegramBot from "node-telegram-bot-api";
-import { Journal } from "../../journal.js";
 
-import { Status, StatusWith } from "../../../status.js";
-import { Language } from "../../database.js";
-import { Deposit, DepositChange } from "../../fetchers/deposits_fetcher.js";
-import { UserLogic } from "../../logic/user.js";
-import { Dialog } from "../../logic/dialog.js";
-import { current_month, Formatter, GlobalFormatter, return_exception, return_fail } from "../../utils.js";
-import { Config } from "../../config.js";
-import { BotAPI } from "../../api/telegram.js";
-import { Runtime } from "../../runtime.js";
-import { DepositActions } from "../../use_cases/deposit_actions.js";
+import { Journal } from "@src/tgbot/journal.js";
+import { TelegramUser } from "@src/tgbot/adapters/telegram/telegram_user.js";
+import { current_month, Formatter, GlobalFormatter } from "@src/tgbot/utils.js";
+import { Status } from "@src/status.js";
+import { Language } from "@src/tgbot/database.js";
+import { Deposit, DepositChange } from "@src/tgbot/fetchers/deposits_fetcher.js";
+import { DepositActions } from "@src/tgbot/use_cases/deposit_actions.js";
+import { Config } from "@src/tgbot/config.js";
 
 
 export class DepositOwnerDialog {
     private journal: Journal;
     private orator: Orator;
 
-    constructor(private user: UserLogic, parent_journal: Journal, formatter?: Formatter) {
+    constructor(
+        private user: TelegramUser,
+        parent_journal: Journal,
+        formatter?: Formatter)
+    {
         this.journal = parent_journal.child("dialog.deposit_owner");
         this.orator = new Orator(formatter ?? GlobalFormatter.instance());
     }
 
-    async send_deposit_info(info: Deposit | undefined, dialog?: Dialog): Promise<Status> {
-        if (!dialog) {
-            dialog = this.user.main_dialog();
-            if (!dialog) {
-                return return_fail(`no active dialog`, this.journal.log());
-            }
-        }
-        return await dialog.send_message(this.orator.deposit_info(info, dialog.user.data.lang));
+    async send_deposit_info(info: Deposit | undefined): Promise<Status> {
+        return await this.user.send_message(
+            this.orator.deposit_info(info, this.user.info().lang));
     }
 
-    async on_deposit_change(deposit: Deposit, changes: DepositChange, dialog?: Dialog)
-    : Promise<StatusWith<string>>
+    async on_deposit_change(deposit: Deposit, changes: DepositChange) : Promise<Status>
     {
-        if (!dialog) {
-            dialog = this.user.main_dialog();
-            if (!dialog) {
-                return return_fail(`no active dialog`, this.journal.log());
-            }
-        }
-        const message = this.orator.deposit_change(deposit, changes, dialog.user.data.lang);
-        const status = await dialog.send_message(message);
-        return status.with(message);
+        return await this.user.send_message(
+            this.orator.deposit_change(deposit, changes, this.user.info().lang)
+        );
     }
 
-    async send_already_paid_response(dialog?: Dialog): Promise<Status> {
-        if (!dialog) {
-            dialog = this.user.main_dialog();
-            if (!dialog) {
-                return return_fail(`no active dialog`, this.journal.log());
-            }
-        }
-        return await dialog.send_message(this.orator.already_paid_response(this.user.data.lang));
+    async send_already_paid_response(): Promise<Status> {
+        return await this.user.send_message(
+            this.orator.already_paid_response(this.user.info().lang)
+        );
     }
 
-    async send_thanks_for_information(dialog?: Dialog): Promise<Status> {
-        if (!dialog) {
-            dialog = this.user.main_dialog();
-            if (!dialog) {
-                return return_fail(`no active dialog`, this.journal.log());
-            }
-        }
-        return await dialog.send_message(this.orator.thanks_for_information(this.user.data.lang));
+    async send_thanks_for_information(): Promise<Status> {
+        return await this.user.send_message(
+            this.orator.thanks_for_information(this.user.info().lang)
+        );
     }
 
-    async send_reminder(amount: number, dialog?: Dialog): Promise<StatusWith<string>> {
-        if (!dialog) {
-            dialog = this.user.main_dialog();
-            if (!dialog) {
-                return return_fail(`no active dialog`, this.journal.log());
-            }
-        }
-
+    async send_reminder(amount: number): Promise<Status> {
         const message = [
-            this.orator.deposit_reminder(amount, dialog.user.data.lang),
+            this.orator.deposit_reminder(amount, this.user.info().lang),
             "",
-            this.orator.account_info(dialog.user.data.lang)
+            this.orator.account_info(this.user.info().lang)
         ].join("\n");
 
-        const callbacks = dialog.user.callbacks_registry();
 
-        const callback_params = { dialog };
-        const have_paid_callback_id = callbacks.add_callback({
-            fn: async () => {
-                return await DepositActions.already_paid(
-                    Runtime.get_instance(),
-                    dialog.user.data.tgid,
-                    this.journal,);
-            },
-            journal: this.journal.child("callback"),
-            params: callback_params,
-            debug_name: `already paid by @${dialog.user.data.tgid}`,
-            single_shot: true
-        });
+        const have_paid_botton = this.user.create_keyboard_button(
+            this.orator.have_paid_already(this.user.info().lang),
+            `already paid by @${this.user.info().tgid}`,
+            async () => {
+                return await DepositActions.already_paid(this.user, this.journal);
+            }
+        );
 
         const keyboard: TelegramBot.InlineKeyboardMarkup = {
             inline_keyboard: [
-                [{
-                    text: this.orator.have_paid_already(dialog.user.data.lang),
-                    callback_data: have_paid_callback_id
-                }]
+                [have_paid_botton]
             ]
         };
 
         try {
-            await BotAPI.instance().sendMessage(
-                dialog.chat_id,
+            await this.user.send_message(
                 message,
                 {
                     reply_markup: keyboard,
                     parse_mode: "HTML"
                 });
-            return Status.ok().with(message);
+            return Status.ok();
         } catch (err) {
-            return return_exception(err, this.journal.log());
+            return Status.exception(err);
         }
     }
 }
@@ -127,7 +90,7 @@ const monthes: {[key in Language]: string[]} = {
            "July", "August", "September", "October", "November", "December"]
 }
 
-class Orator {
+export class Orator {
     constructor(private formatter: Formatter) {}
 
     deposit_change(deposit: Deposit, change: DepositChange, lang: Language): string {

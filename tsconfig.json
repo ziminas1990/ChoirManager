@@ -20,10 +20,9 @@
       "noFallthroughCasesInSwitch": true,
       "sourceMap": true,
       "paths": {
-        "@src/*": ["src/*"],
+        "@src/*": ["./src/*"],
       }
     },
     "include": ["src/**/*"],
     "exclude": ["node_modules", "dist"]
   }
-  
