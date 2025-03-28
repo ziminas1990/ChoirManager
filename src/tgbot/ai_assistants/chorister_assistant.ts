@@ -1,12 +1,12 @@
-import { StatusWith, Status } from "../../status.js";
-import { DocumentsFetcher } from "../fetchers/document_fetcher.js";
-import { Assistant, AssistantThread } from "../api/openai_assistant.js";
-import { ChatWithHistory } from "../api/openai.js";
-import { Config } from "../config.js";
-import { Runtime } from "../runtime.js";
-import { Scores } from "../database.js";
-import { Journal } from "../journal.js";
-import { return_fail } from "../utils.js";
+import { StatusWith, Status } from "@src/status.js";
+import { DocumentsFetcher } from "@src/tgbot/fetchers/document_fetcher.js";
+import { Assistant, AssistantThread } from "@src/tgbot/api/openai_assistant.js";
+import { ChatWithHistory } from "@src/tgbot/api/openai.js";
+import { Config } from "@src/tgbot/config.js";
+import { Runtime } from "@src/tgbot/runtime.js";
+import { Scores } from "@src/tgbot/database.js";
+import { Journal } from "@src/tgbot/journal.js";
+import { return_fail } from "@src/tgbot/utils.js";
 
 const fails_instruction = `
 You are a friendly counsellor for choristers. But bot didn't manage to download the document,
@@ -17,40 +17,38 @@ Try to use informal and joking language.
 
 const instruction = `
 You are a friendly counsellor for choristers. Always speak in a warm tone and never end your response with an extra question.
-
-IMPORTANT: complaints are NOT supported in this version. If user tries to complain, politely refuse the request and say that cimplaints will be added later.
-
 Output MUST be a valid JSON object of type 'Response' according to the following type definition:
 
-type Response = {
-    message?: string;
-    actions: Action[];
-}
-
-type Action =
+type Response =
+  | { what: "message", text: string }
   | { what: "download_scores", filename: string }
   | { what: "scores_list" }
   | { what: "get_deposit_info" }
   | { what: "already_paid" }
   | { what: "top_up", amount: number, original_message: string }
-  | { what: "complaint", message: string, who?: string, voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone" }
-
-Use 'message' field to provide a message to the user. If you return an action, omit the message field.
-Do NOT end your messages with an offer to answer more questions or your readiness to help with other questions.
-Use the same language in which the question was asked.
-Если общение идёт на русском, обращайся на "ты".
-
-Use 'actions' field to provide a list of actions to be done. It MUST be an array of Action objects.
+  | { what: "feedback", message: string, who?: string, voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone" }
 
 Action MUST have a 'what' field with one of the following values:
+  - "message": use when you need to send a message to the user in order to clarify something OR to provide a response to the user
   - "download_scores": use when user requests specific scores (filename array must be non-empty)
   - "scores_list": use when user asks for scores without specifying which ones
   - "get_deposit_info": use when user asks for deposit/membership info
   - "already_paid": use when user tells that they already paid membership fee
   - "top-up": use when user says that they has deposited the money
-  - "complaint": use for complaints
+  - "feedback": use for complaints or any feedback that chorister want to share with the org group
 
 More details about each action will be provided below.
+
+## Terms
+A list of terms that you may use in your responses:
+- "org group": the group of people who are responsible for the choir. In russian it's called "орг. группа".
+
+## message
+Emit this action when you need to send a message to the user with any purpose.
+"text" field MUST be a non-empty string that contains the message to be sent.
+Do NOT end your messages with an offer to answer more questions or your readiness to help with other questions.
+Use the same language in which the question was asked.
+Если общение идёт на русском, обращайся на "ты".
 
 ## download_scores
 Action MUST be emitted if user requrested specific scores. "what" field MUST be "download_scores".
@@ -83,12 +81,12 @@ Examples:
 1. User: "Я уже пополнял". Action: { what: "already_paid" }
 2. User: "I deposited 100 GEL yesterday". Action: { what: "top_up", amount: 100, original_message: "I deposited 100 GEL yesterday" }
 
-## complaint
+## feedback
 If user is trying to complain OR want to report something follow the following steps:
-1. Confirm if the complaint should be forwarded to the org group (орг. группе)
-2. If no any details are provided, ask for any details.
-3. Clarify if user wants to report anonymously or may provide name and/or voice.
-4. Once clarified, output a complaint action without a message field.
+1. If no any details are provided, ask for any details
+2. Once details are provided, inform the user that you can forward this feedback to the org group
+3. If user agrees, clarify if user wants to report anonymously or ready to provide their name and/or voice.
+5. Once all are clarified, emit a feedback action. Do NOT emit the action on any previous steps.
 
 Use 'who' field to specify the name of the person who is complaining.
 If name is not provided, omit the 'who' field.
@@ -103,20 +101,17 @@ You are allowed to:
 Politely refuse to answer any other questions.
 `
 
-export type Response = {
-    message?: string;
-    actions?: Action[];
-}
-
-export type Action =
+export type Response =
+  | { what: "message", text: string }
   | { what: "download_scores", filename: string }
   | { what: "scores_list" }
   | { what: "get_deposit_info" }
   | { what: "already_paid" }
   | { what: "top_up", amount: number, original_message: string }
   | {
-        what: "complaint",
-        message: string, who?: string,
+        what: "feedback",
+        message: string,
+        who?: string,
         voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone"
     };
 
@@ -247,8 +242,8 @@ class VanillaAssistant implements IAssistant {
         }
         const response = send_status.value!;
         const response_obj: Response = JSON.parse(response);
-        if (response_obj.message) {
-            const add_status = await this.add_response(response_obj.message);
+        if (response_obj.what === "message") {
+            const add_status = await this.add_response(response_obj.text);
             if (!add_status.ok()) {
                 this.journal.log().warn(`vanilla: failed to add response: ${add_status.what()}`);
             }

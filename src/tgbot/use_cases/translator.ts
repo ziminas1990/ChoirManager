@@ -1,23 +1,21 @@
-import { Status } from "../../status.js";
-import { Runtime } from "../runtime.js";
-import { Language, User } from "../database.js";
-import { GoogleTranslate } from "../api/google_translate.js";
-import { Journal } from "../journal.js";
-
+import { Status } from "@src/status.js";
+import { Runtime } from "@src/tgbot/runtime.js";
+import { Language, User } from "@src/tgbot/database.js";
+import { GoogleTranslate } from "@src/tgbot/api/google_translate.js";
+import { Journal } from "@src/tgbot/journal.js";
 
 export class Translator {
 
     static async translate_announce(
-        runtime: Runtime,
-        announce: string,
         author: User,
+        announce: string,
         journal: Journal
     ): Promise<Status> {
         if (!announce) {
             return Status.ok();
         }
 
-        const users = [...runtime.all_users()].filter(logic => logic.data.lang !== Language.RU);
+        const users = [...Runtime.get_instance().all_users()].filter(logic => logic.data.lang !== Language.RU);
         if (users.length == 0) {
             return Status.ok();
         }
@@ -30,13 +28,15 @@ export class Translator {
         ].join("\n"), "en");
 
         for (const user of users) {
-            const dialog = user.main_dialog();
-            if (!dialog) {
+            if (user.data.tgid == author.tgid) {
                 continue;
             }
-            const status = await dialog.send_message(translated_text);
-            if (!status.ok()) {
-                journal.log().warn(`failed to send announce to ${user.data.tgid}: ${status.what()}`);
+            const agents = user.base_agents();
+            for (const agent of agents) {
+                const status = await agent.send_message(translated_text);
+                if (!status.ok()) {
+                    journal.log().warn(`failed to send announce to ${user.data.tgid}: ${status.what()}`);
+                }
             }
         }
         return Status.ok();

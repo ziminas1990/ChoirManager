@@ -1,11 +1,10 @@
-import TelegramBot from "node-telegram-bot-api";
 import fs from "fs";
 import crypto from "crypto";
 
-import { Status, StatusWith } from "../status.js";
+import { Status, StatusWith } from "@src/status.js";
 import { Database, Language, Role, User, Voice } from "./database.js";
 import { UserLogic } from "./logic/user.js";
-import { pack_map, return_exception, return_fail, unpack_map } from "./utils.js";
+import { pack_map, return_exception, unpack_map } from "./utils.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Config } from "./config.js";
 import { Proceeder } from "./logic/abstracts.js";
@@ -15,43 +14,24 @@ import { UsersFetcher } from "./fetchers/users_fetcher.js";
 import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
 import { Journal } from "./journal.js";
 import { AdminActions } from "./use_cases/admin_actions.js";
-import { Translator } from "./use_cases/translator.js";
-
-
-class RuntimeCfg {
-    constructor(
-        public filename: string,
-        public choir_chat_id?: number,
-        public announce_chat_id?: number,
-        public manager_chat_id?: number,
-    ) {}
-
-    static pack(cfg: RuntimeCfg) {
-        return {
-            "cfg": cfg.filename,
-            "chat_id": cfg.choir_chat_id,
-            "announces_chat_id": cfg.announce_chat_id,
-            "managers_chat_id": cfg.manager_chat_id
-         } as const;
-    }
-
-    static unpack(packed: ReturnType<typeof RuntimeCfg.pack>): RuntimeCfg {
-        return new RuntimeCfg(
-            packed.cfg, packed.chat_id, packed.announces_chat_id, packed.managers_chat_id);
-    }
-}
+import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
+import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
+import { TgAdapter } from "./adapters/telegram/adapter.js";
 
 export class Runtime {
 
     private static instance?: Runtime;
 
-    static Load(filename: string, database: Database, parent_journal: Journal): StatusWith<Runtime> {
+    static Load(database: Database, parent_journal: Journal): StatusWith<Runtime> {
         const journal = parent_journal.child("rt");
         try {
-            const packed = JSON.parse(fs.readFileSync(filename, "utf8"));
-            return Runtime.unpack(filename, database, packed, journal);
+            const packed = JSON.parse(fs.readFileSync(
+                Config.data.runtime_cache_filename,
+                "utf8"
+            ));
+            return Runtime.unpack(database, packed, journal);
         } catch (e) {
-            const empty_runtime = new Runtime(database, new RuntimeCfg(filename), "", new Map(), journal);
+            const empty_runtime = new Runtime(database, "", new Map(), journal);
             return StatusWith.ok().with(empty_runtime);
         }
     }
@@ -62,13 +42,16 @@ export class Runtime {
     private deposits_fetcher?: DepositsFetcher;
     private documents_fetcher?: DocumentsFetcher;
     private scores_fetcher?: ScoresFetcher;
+    private feedback_storage?: IFeedbackStorage;
+
+    private tg_adapter?: TgAdapter;
 
     // We need a separate proceeder for each user to guarantee that all users will
     // be proceeded independently, so that if some user stuck in it's proceed() due to
     // some lokng operation, it won't affect another users
     private user_proceeders: Map<UserLogic, Proceeder<void>> = new Map();
 
-    private last_backup?: {
+    private last_backup: {
         hash: string;
         time: Date;
     };
@@ -82,7 +65,6 @@ export class Runtime {
 
     private constructor(
         private database: Database,
-        private cfg: RuntimeCfg,
         private runtime_hash: string,
         private users: Map<string, UserLogic>,
         private journal: Journal,
@@ -101,6 +83,17 @@ export class Runtime {
 
     async start(): Promise<Status> {
         this.journal.log().info("Starting runtime");
+
+        if (Config.HasTgAdapter()) {
+            this.journal.log().info("Starting Telegram adapter");
+            if (!this.tg_adapter) {
+                this.tg_adapter = new TgAdapter(Config.TgAdapter(), this.journal);
+            }
+            const status = await this.tg_adapter.init();
+            if (!status.ok()) {
+                return status.wrap("Failed to start Telegram adapter");
+            }
+        }
 
         if (Config.HasDepoditTracker()) {
             this.journal.log().info("Starting deposits fetcher");
@@ -140,10 +133,17 @@ export class Runtime {
         }
 
         await AdminActions.notify_all_admins(
-            Runtime.get_instance(),
             "Bot has been restarted",
             this.journal
         );
+
+        if (Config.data.feedback_storage) {
+            const status = FeedbackStorageFactory.create(Config.data.feedback_storage);
+            if (!status.ok()) {
+                return status.wrap("Failed to create feedback storage");
+            }
+            this.feedback_storage = status.value;
+        }
 
         return Status.ok();
     }
@@ -152,104 +152,19 @@ export class Runtime {
         return this.users;
     }
 
-    verify(){
-        [...this.users.values()].forEach(user => {
-            if (!user.main_dialog()) {
-                this.journal.log().warn(`User ${user.data.tgid} has no active dialog, removing`);
-                this.users.delete(user.data.tgid);
-            }
-        });
-    }
-
     get_database(): Database {
         return this.database;
+    }
+
+    get_feedback_storage(): IFeedbackStorage | undefined {
+        return this.feedback_storage;
     }
 
     attach_users_fetcher(fetcher: UsersFetcher): void {
         this.users_fetcher = fetcher;
     }
 
-    handle_private_message(msg: TelegramBot.Message): Status {
-        log_message(this.journal, msg);
-
-        const username = msg.from?.username;
-        if (username == undefined) {
-            return Status.fail("username is undefined");
-        }
-
-        const user = this.get_user(username) ?? this.get_guest_user(username);
-        return user.on_message(msg);
-    }
-
-    async handle_admin_message(msg: TelegramBot.Message): Promise<Status> {
-        this.journal.log().info(`Admin panel message: ${msg.text}`);
-        if (msg.text?.includes("this is announces thread")) {
-            if (msg.message_thread_id == undefined) {
-                return return_fail("message thread id is undefined", this.journal.log());
-            }
-            return (await AdminActions.set_announce_thread(
-                Runtime.get_instance(),
-                msg.chat.title ?? "unknown",
-                msg.chat.id,
-                msg.message_thread_id,
-                this.journal
-            )).wrap("failed to set announces thread");
-        }
-        if (msg.text?.includes("this is managers chat")) {
-            return (await AdminActions.set_manager_chat_id(
-                Runtime.get_instance(),
-                msg.chat.title ?? "unknown",
-                msg.chat.id,
-                this.journal
-            )).wrap("failed to set managers chat");
-        }
-        return return_fail("unexpected message", this.journal.log());
-    }
-
-    async handle_group_message(msg: TelegramBot.Message): Promise<Status> {
-        const username = msg.from?.username;
-        if (username == undefined) {
-            return return_fail("username is undefined", this.journal.log());
-        }
-        const user = this.get_user(username, false);
-        if (user == undefined) {
-            // Ignore guest users in group chats
-            return Status.ok();
-        }
-
-        const sent_by_admin   = user.is_admin();
-        const sent_to_bot     = msg.text?.includes("@ursa_major_choir");
-        const is_announce     = msg.chat.id == this.cfg.choir_chat_id &&
-                                msg.message_thread_id == this.cfg.announce_chat_id;
-        const sent_by_manager = user.data.roles.includes(Role.Manager);
-
-        if (sent_to_bot || is_announce) {
-            log_message(this.journal, msg);
-        }
-
-        if (sent_by_admin && sent_to_bot) {
-            return await this.handle_admin_message(msg);
-        }
-
-        if (is_announce && sent_by_manager) {
-            return await Translator.translate_announce(
-                this, msg.text ?? "", user.data, this.journal);
-        }
-        return Status.ok();
-    }
-
-    handle_callback(query: TelegramBot.CallbackQuery): Status {
-        const username = query.from?.username
-        this.journal.log().info(`Callback query from ${username} in ${query.message?.chat.id}: ${query.data}`);
-        if (username == undefined) {
-            return return_fail("username is undefined", this.journal.log());
-        }
-
-        let user = this.get_user(username) ?? this.get_guest_user(username);
-        return user.on_callback(query);
-    }
-
-    get_user(tg_id: string, create_if_not_found: boolean = true): UserLogic | undefined {
+    get_user(tg_id: string, create_if_not_found: boolean = false): UserLogic | undefined {
         const user = this.database.get_user(tg_id);
         if (user) {
             let user_logic = this.users.get(user.tgid);
@@ -283,16 +198,15 @@ export class Runtime {
         return this.users.values();
     }
 
-    set_announce_thread(chat_id: number, thread_id: number): void {
-        this.cfg.choir_chat_id = chat_id;
-        this.cfg.announce_chat_id = thread_id;
-    }
-
-    set_manager_chat_id(chat_id: number): void {
-        this.cfg.manager_chat_id = chat_id;
-    }
-
     async proceed(now: Date): Promise<Status> {
+
+        if (this.tg_adapter) {
+            const status = await this.tg_adapter.proceed(now);
+            if (!status.ok()) {
+                this.journal.log().error(status.what());
+            }
+        }
+
         if (this.users_fetcher) {
             const users_status = await this.users_fetcher.proceed();
             if (!users_status.ok()) {
@@ -318,56 +232,62 @@ export class Runtime {
         }
 
         if (now >= this.next_dump && this.update_interval_sec > 0) {
-            this.dump();
+            const runtime_hash = this.do_backup();
             this.next_dump = new Date(Date.now() + this.update_interval_sec * 1000);
+
+            // Send runtime backup to admins (not more than once a day)
+            if (this.last_backup.hash != runtime_hash) {
+                const time_diff = new Date().getTime() - this.last_backup.time.getTime();
+                if (time_diff > 24 * 60 * 60 * 1000) {
+                    for (const user of this.all_users()) {
+                        if (user.is_admin()) {
+                            await AdminActions.send_runtime_backup(user.data, this.journal);
+                        }
+                    }
+                    this.last_backup = {
+                        hash: runtime_hash,
+                        time: new Date(),
+                    }
+                }
+            }
         }
         return Status.ok();
     }
 
-    dump(): void {
+    // Return hash
+    do_backup(): string {
         const runtime_data = JSON.stringify(Runtime.pack(this), null, 2);
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
 
         if (runtime_hash != this.runtime_hash) {
             this.journal.log().info(`Updating runtime, hash: ${runtime_hash}`);
-            fs.writeFileSync(this.cfg.filename, runtime_data);
+            fs.writeFileSync(Config.data.runtime_cache_filename, runtime_data);
             this.runtime_hash = runtime_hash;
         }
-
-        if (this.last_backup && this.last_backup.hash != runtime_hash) {
-            const time_diff = new Date().getTime() - this.last_backup.time.getTime();
-            // Do backup once a day
-            if (time_diff > 24 * 60 * 60 * 1000) {
-                this.send_backup_to_admins();
-            }
-        }
+        return runtime_hash;
     }
 
     static pack(runtime: Runtime) {
         return {
-            version: 2,
-            cfg: RuntimeCfg.pack(runtime.cfg),
+            version: 3,
+            tg_adapter: runtime.tg_adapter ? TgAdapter.pack(runtime.tg_adapter) : undefined,
             users: pack_map(runtime.users, UserLogic.pack)
         } as const;
     }
 
-    static unpack(filename: string, database: Database, packed: ReturnType<typeof Runtime.pack>, journal: Journal)
+    static unpack(database: Database, packed: ReturnType<typeof Runtime.pack>, journal: Journal)
     : StatusWith<Runtime>
     {
         const runtime_hash = crypto.createHash("sha256").update(JSON.stringify(packed)).digest("hex");
 
-        if (packed.version != 2) {
+        if (packed.version != 3) {
             const old_version: number = packed.version == "1.0" ? 1 : packed.version;
-
             try {
                 packed = update_packed_runtime(old_version, database, packed, journal);
             } catch (e) {
                 return return_exception(e, journal.log(), "failed to update runtime data");
             }
         }
-
-        const config = RuntimeCfg.unpack(packed.cfg);
-        config.filename = filename;
 
         const load_users_problems: Status[] = [];
         const users = unpack_map(packed.users, (packed) => {
@@ -378,7 +298,13 @@ export class Runtime {
             return status.value;
         });
 
-        const runtime = new Runtime(database, config, runtime_hash, users, journal);
+        const runtime = new Runtime(database, runtime_hash, users, journal);
+
+        if (packed.tg_adapter) {
+            runtime.tg_adapter = TgAdapter.unpack(
+                Config.data.tg_adapter, packed.tg_adapter, journal);
+        }
+
         return Status.ok_and_warnings("loading users", load_users_problems)
                      .with(runtime);
     }
@@ -393,50 +319,21 @@ export class Runtime {
         // Notify admins:
         if (!startup) {
             AdminActions.notify_all_admins(
-                Runtime.get_instance(),
                 `User ${user.data.name} ${user.data.surname} (@${user.data.tgid}) has joined`,
                 this.journal);
         }
-    }
-
-    private async send_backup_to_admins(): Promise<void> {
-        const runtime_data = JSON.stringify(Runtime.pack(this));
-        const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
-
-        this.journal.log().info(`Sending runtime backup, hash: ${runtime_hash}`);
-        this.last_backup = {
-            hash: runtime_hash,
-            time: new Date(),
-        };
-        AdminActions.send_runtime_backup(this, this.journal);
-    }
-}
-
-function log_message(journal: Journal, msg: TelegramBot.Message) {
-    if (msg.text) {
-        if (!msg.text.includes("\n")) {
-            journal.log().info(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
-        } else {
-            journal.log().info([
-                `Message from ${msg.from?.username} in ${msg.chat.id}:`,
-                msg.text,
-            ].join("\n"));
-        }
-    } else {
-        journal.log().info(`Empty message from ${msg.from?.username} in ${msg.chat.id}`);
     }
 }
 
 
 function update_packed_runtime(old_version: number, database: Database, data: any, journal: Journal): ReturnType<typeof Runtime.pack> {
-    switch (old_version) {
-        case 1:
-            const status = update_runtime_v1(database, data, journal);
-            if (!status.ok()) {
-                throw status;
-            }
-            data = status.value;
-            // no break!
+    if (old_version == 1) {
+        const status = update_runtime_v1(database, data, journal);
+        if (!status.ok()) {
+            throw status;
+        }
+        data = status.value;
+        old_version = 2;
     }
     return data;
 }
@@ -462,4 +359,3 @@ function update_runtime_v1(database: Database, data: any, journal: Journal): Sta
         return return_exception(e, journal.log(), "Failed to unpack users");
     }
 }
-

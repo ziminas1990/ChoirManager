@@ -94,3 +94,5 @@ export class Status {
 export class StatusWith<T> extends Status {
     value?: T;
 }
+
+export type StatusAnd<T> = [Status, T | undefined];

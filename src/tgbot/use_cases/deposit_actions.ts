@@ -1,105 +1,118 @@
-import { Status } from "../../status.js";
-import { Deposit, DepositChange } from "../fetchers/deposits_fetcher.js";
-import { Journal } from "../journal.js";
-import { DepositsTrackerEvent } from "../logic/deposits_tracker.js";
-import { Dialog } from "../logic/dialog.js";
-import { Runtime } from "../runtime.js";
-import { return_fail } from "../utils.js";
+import { Status } from "@src/status.js";
+import { IUserAgent } from "@src/tgbot/interfaces/user_agent.js";
+import { Journal } from "@src/tgbot/journal.js";
+import { Runtime } from "@src/tgbot/runtime.js";
+import { return_fail } from "@src/tgbot/utils.js";
+import { UserLogic } from "@src/tgbot/logic/user.js";
+import { DepositsTrackerEvent } from "@src/tgbot/logic/deposits_tracker.js";
+import { Deposit, DepositChange } from "@src/tgbot/fetchers/deposits_fetcher.js";
 
 
 export class DepositActions {
 
     static async deposit_requested(
-        runtime: Runtime,
-        userid: string,
-        journal: Journal,
-        dialog?: Dialog
+        agent: IUserAgent,
+        journal: Journal
     ): Promise<Status> {
-        const user = runtime.get_user(userid);
+        const user = Runtime.get_instance().get_user(agent.userid());
         if (!user) {
-            return return_fail(`user ${userid} not found`, journal.log());
+            return return_fail(`user ${agent.userid()} not found`, journal.log());
         }
 
-        const deposit_info = user.get_deposit_tracker()?.get_deposit()
-        const deposit_owner_dialog = user.as_deposit_owner();
-        if (!deposit_owner_dialog) {
-            return return_fail("no deposit owner dialog", journal.log());
+        if (user.is_guest()) {
+            return return_fail(`user ${agent.userid()} is a guest`, journal.log());
         }
 
-        return await deposit_owner_dialog.send_deposit_info(deposit_info, dialog);
+        return await agent.send_deposit_info(
+            user.get_deposit_tracker()?.get_deposit()
+        );
     }
 
     static async top_up(
-        runtime: Runtime,
-        userid: string,
+        agent: IUserAgent,
         amount: number,
         original_message: string,
         journal: Journal,
-        dialog?: Dialog
     ): Promise<Status> {
-        journal.log().info(`top_up ${userid} ${amount} ${original_message}`);
+        const user_id = agent.userid();
+        journal.log().info(`top_up ${user_id} ${amount} ${original_message}`);
+
+        const runtime = Runtime.get_instance();
         const all_users = runtime.get_users();
-        const user = all_users.get(userid);
+        const user = all_users.get(user_id);
         if (!user) {
-            return return_fail(`user ${userid} not found`, journal.log());
+            return return_fail(`user ${user_id} not found`, journal.log());
+        }
+
+        if (user.is_guest()) {
+            return return_fail(`user ${user_id} is a guest`, journal.log());
         }
 
         {
-            const deposit_owner_dialog = user.as_deposit_owner();
-            if (!deposit_owner_dialog) {
-                return return_fail(`user ${userid} has no deposit activity`, journal.log());
-            }
-            const status = await deposit_owner_dialog.send_thanks_for_information(dialog);
+            const status = await agent.send_thanks_for_information();
             if (!status.ok()) {
-                journal.log().warn(`send_thanks_for_information() failed for ${userid}: ${status.what()}`);
+                journal.log().warn([
+                    `failed to send thanks_for_information to ${user_id}`,
+                    status.what()
+                ].join(":"));
             }
         }
 
+        // Notify all accountants
         for (const user of all_users.values()) {
-            const accounter_dialog = user.as_accounter();
-            if (accounter_dialog) {
-                const status = await accounter_dialog.send_top_up_notification(
-                    userid, amount, original_message);
+            const accounter_agents = user.as_accounter();
+            if (!accounter_agents) {
+                continue;
+            }
+            for (const accounter of accounter_agents) {
+                const status = await accounter.send_top_up_notification(
+                    user.data, amount, original_message);
                 if (!status.ok()) {
-                    return status;
+                    journal.log().warn([
+                        `failed to send top_up notification to ${user.data.tgid}`,
+                        status.what()
+                    ].join(":"));
                 }
             }
         }
-
         return Status.ok();
     }
 
     static async already_paid(
-        runtime: Runtime,
-        userid: string,
+        agent: IUserAgent,
         journal: Journal,
-        dialog?: Dialog
     ): Promise<Status> {
-        journal.log().info(`handle already_paid by ${userid}`);
+        const user_id = agent.userid();
+        journal.log().info(`handle already_paid by ${user_id}`);
+
+        const runtime = Runtime.get_instance();
         const all_users = runtime.get_users();
-        const user = all_users.get(userid);
+        const user = all_users.get(user_id);
         if (!user) {
-            return return_fail(`user ${userid} not found`, journal.log());
+            return return_fail(`user ${user_id} not found`, journal.log());
         }
 
         {
-            const deposit_owner_dialog = user.as_deposit_owner();
-            if (!deposit_owner_dialog) {
-                return return_fail(`user ${userid} has no deposit activity`, journal.log());
-            }
-            const status = await deposit_owner_dialog.send_already_paid_response(dialog);
+            const status = await agent.send_already_paid_response();
             if (!status.ok()) {
-                journal.log().warn(`send_already_paid_response() failed ${userid}: ${status.what()}`);
+                journal.log().warn([
+                    `failed to send already_paid response to ${user_id}`,
+                    status.what()
+                ].join(":"));
             }
         }
 
+        // Notify all accountants
         for (const user of all_users.values()) {
-            const accounter_dialog = user.as_accounter();
-            if (accounter_dialog) {
-                const status = await accounter_dialog.send_already_paid_notification(userid);
+            const accounter_agents = user.as_accounter();
+            if (!accounter_agents) {
+                continue;
+            }
+            for (const accounter of accounter_agents) {
+                const status = await accounter.send_already_paid_notification(user.data);
                 if (!status.ok()) {
                     journal.log().warn([
-                        `faild to send already_paid notification to ${user.data.tgid}`,
+                        `failed to send already_paid notification to ${user.data.tgid}`,
                         status.what()
                     ].join(":"));
                 }
@@ -109,119 +122,90 @@ export class DepositActions {
     }
 
     static async send_deposit_update(
-        runtime: Runtime,
-        userid: string,
+        user: UserLogic,
         deposit: Deposit,
         changes: DepositChange,
         journal: Journal,
-        dialog?: Dialog,
     ): Promise<Status>
     {
-        const user = runtime.get_user(userid);
-        if (!user) {
-            return return_fail(`user ${userid} not found`, journal.log());
-        }
+        journal.log().info(`send_deposit_update for ${user.data.tgid}`);
 
         const deposit_owner_dialog = user.as_deposit_owner();
-        if (!deposit_owner_dialog) {
-            return return_fail(`user ${userid} has no deposit dialog`, journal.log());
+        if (!deposit_owner_dialog || deposit_owner_dialog.length === 0) {
+            return Status.fail(`user ${user.data.tgid} has no agents`);
         }
 
-        const sent_message = await deposit_owner_dialog.on_deposit_change(deposit, changes, dialog);
-        if (!sent_message.ok()) {
-            return sent_message;
+        let total = 0;
+        for (const dialog of deposit_owner_dialog) {
+            const status = await dialog.send_deposit_changes(deposit, changes);
+            if (status.ok()) {
+                total += 1;
+            }
+        }
+
+        if (total == 0) {
+            return Status.fail(`failed to send deposit changes to any agent`);
         }
 
         // Notify accountants
-        for (const accounter of runtime.get_users().values()) {
-            const accounter_dialog = accounter.as_accounter();
-            if (accounter_dialog) {
-                const status = await accounter_dialog.mirror_message(
-                    sent_message.value!, user.data);
-                if (!status.ok()) {
-                    journal.log().warn([
-                        `failed to mirror top_up_notification to ${accounter.data.tgid}`,
-                        status.what()
-                    ].join(":"));
-                }
+        for (const accounter of Runtime.get_instance().get_users().values()) {
+            const accounter_dialog = accounter.as_accounter() ?? [];
+            for (const dialog of accounter_dialog) {
+                await dialog.mirror_deposit_changes(user.data, deposit, changes);
             }
         }
         return Status.ok();
     }
 
     static async send_reminder(
-        runtime: Runtime,
-        userid: string,
+        user: UserLogic,
         amount: number,
-        journal: Journal,
-        dialog?: Dialog
+        journal: Journal
     ): Promise<Status>
     {
-        const user = runtime.get_user(userid);
-        if (!user) {
-            return return_fail(`user ${userid} not found`, journal.log());
-        }
-        if (!user.is_chorister() && !user.is_ex_chorister()) {
-            journal.log().info(`skipping reminder for ${userid} because they are not chorister`);
-            return Status.ok();
-        }
+        const userid = user.data.tgid;
+        journal.log().info(`send_reminder for @${userid}`);
+
         if (amount < 10) {
-            journal.log().info(`skipping reminder for ${userid} because amount is too small: ${amount}`);
+            journal.log().info(`skipping reminder for @${userid} because amount is too small: ${amount}`);
             // It's okay to move it to the next month
             return Status.ok();
         }
 
         const deposit_owner_dialog = user.as_deposit_owner();
-        if (!deposit_owner_dialog) {
-            return return_fail(`user ${userid} has no deposit dialog`, journal.log());
+        if (!deposit_owner_dialog || deposit_owner_dialog.length === 0) {
+            journal.log().info(`skipping reminder for @${userid} because they have no deposit dialogs`);
+            return Status.ok();
         }
 
-        const send_status = await deposit_owner_dialog.send_reminder(amount, dialog);
-        if (!send_status.ok()) {
-            return send_status;
-        }
-        const message = send_status.value!;
-
-        // Notify accountants
-        for (const accounter of runtime.get_users().values()) {
-            const accounter_dialog = accounter.as_accounter();
-            if (accounter_dialog) {
-                const status = await accounter_dialog.mirror_message(message, user.data);
-                if (!status.ok()) {
-                    journal.log().warn([
-                        `failed to mirror reminder to ${accounter.data.tgid}`,
-                        status.what()
-                    ].join(":"));
-                }
+        let total = 0;
+        for (const dialog of deposit_owner_dialog) {
+            const status = await dialog.send_membership_reminder(amount);
+            if (status.ok()) {
+                total += 1;
             }
         }
 
+        if (total == 0) {
+            return Status.fail(`failed to send reminder to any agent`);
+        }
         return Status.ok();
     }
 
     static async handle_deposit_tracker_event(
-        runtime: Runtime,
-        userid: string,
+        user: UserLogic,
         event: DepositsTrackerEvent,
         journal: Journal,
-        dialog?: Dialog
     ): Promise<Status> {
         journal.log().info({ event }, `got event`);
         switch (event.what) {
             case "update":
                 return await this.send_deposit_update(
-                    runtime,
-                    userid,
-                    event.deposit,
-                    event.changes,
-                    journal,
-                    dialog
-                );
+                    user, event.deposit, event.changes, journal);
             case "reminder":
-                return await this.send_reminder(runtime, userid, event.amount, journal, dialog);
+                return await this.send_reminder(user, event.amount, journal);
             default:
                 return Status.fail(`Unknown event type: ${(event as any).what}`);
         }
     }
-
 }

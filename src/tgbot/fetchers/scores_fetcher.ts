@@ -1,7 +1,7 @@
-import { Status, StatusWith } from '../../status.js';
-import { Config } from '../config.js';
-import { GoogleSpreadsheet } from '../api/google_docs.js';
-import { Database, Scores } from '../database.js';
+import { Status, StatusWith } from '@src/status.js';
+import { Config } from '@src/tgbot/config.js';
+import { GoogleSpreadsheet } from '@src/tgbot/api/google_docs.js';
+import { Database, Scores } from '@src/tgbot/database.js';
 
 type TableColumns = {
     name: number,

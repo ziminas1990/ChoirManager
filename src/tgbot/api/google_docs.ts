@@ -2,7 +2,7 @@ import fs from "fs";
 import { google, Auth, sheets_v4, docs_v1 } from "googleapis";
 
 
-import { Status, StatusWith } from "../../status.js";
+import { Status, StatusWith } from "@src/status.js";
 
 
 export class GoogleDocsAPI {

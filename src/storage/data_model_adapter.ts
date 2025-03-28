@@ -1,5 +1,5 @@
-import * as db from "../data_model.js";
-import { Status, StatusWith } from "../status.js";
+import * as db from "@src/data_model.js";
+import { Status, StatusWith } from "@src/status.js";
 
 export type Row = string[];
 export type Table = Row[];

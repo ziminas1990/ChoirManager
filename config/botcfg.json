@@ -1,11 +1,13 @@
 {
     "runtime_cache_filename": "./config/runtime.json",
     "google_cloud_key_file": "./config/google_cloud_key.json",
-    "tgbot_token_file": "./config/tgbot_token",
     "openai_api_key_file": "./config/openai_api_key",
     "logs_file": "/mnt/logs/bot.log",
     "runtime_dump_interval_sec": 10,
-    "formatting": "html",
+    "tg_adapter": {
+        "token_file": "./config/tgbot_token",
+        "formatting": "html"
+    },
     "users_fetcher": {
         "google_sheet_id": "1gvVUsCn3xTyav2xMBvaFqs-uBtIL68ucvu2km9A1wMs",
         "range": "Users!A:Z",
@@ -44,5 +46,9 @@
         "model": "gpt-4o",
         "fetch_interval_sec": 60,
         "faq_document_id": "1Voaud1Thf71QuATIOC_2zDK29o-aVcmi5Fnz_3RoBes"
+    },
+    "feedback_storage": {
+        "type": "local_json_file",
+        "filename": "./config/feedbacks.json"
     }
 }

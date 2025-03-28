@@ -1,28 +1,18 @@
 import TelegramBot from "node-telegram-bot-api";
-import { Journal } from "../journal.js";
-import { Dialog } from "../logic/dialog.js";
-import { BaseActivity } from "./base_activity.js";
-import { BotAPI } from "../api/telegram.js";
-import { Status } from "../../status.js";
-import { return_exception, seconds_since } from "../utils.js";
 
-export class GuestActivity extends BaseActivity {
+import { Status } from "@src/status.js";
+import { Journal } from "@src/tgbot/journal.js";
+import { TelegramUser } from "@src/tgbot/adapters/telegram/telegram_user.js";
+import { return_exception, seconds_since } from "@src/tgbot/utils.js";
+
+
+export class GuestDialog {
     private last_welcome: Date = new Date(0);
     private journal: Journal;
 
-    constructor(private dialog: Dialog, parent_journal: Journal)
+    constructor(private user: TelegramUser, parent_journal: Journal)
     {
-        super();
-        this.journal = parent_journal.child("guest");
-    }
-
-    async start(): Promise<Status> {
-        this.maybe_send_welcome();
-        return Status.ok();
-    }
-
-    async proceed(_: Date): Promise<Status> {
-        return Status.ok();
+        this.journal = parent_journal.child("guest_dialog");
     }
 
     async on_message(msg: TelegramBot.Message): Promise<Status> {
@@ -50,8 +40,7 @@ export class GuestActivity extends BaseActivity {
         ];
 
         try {
-            await BotAPI.instance().sendMessage(
-                this.dialog.chat_id,
+            await this.user.send_message(
                 text.join("\n"),
                 {
                     reply_markup: keyboard,

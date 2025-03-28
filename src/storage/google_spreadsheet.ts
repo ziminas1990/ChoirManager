@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import fs from 'fs';
 
-import { Status, StatusWith } from "../status.js"
+import { Status, StatusWith } from "@src/status.js"
 import { Table, build_data_model } from './data_model_adapter.js';
 import { Database } from 'src/data_model.js';
 

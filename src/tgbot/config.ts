@@ -1,17 +1,20 @@
-import { Status } from "../status.js";
 import fs from "fs"
+import { Status } from "@src/status.js";
 import { Formatting } from "./utils.js";
+import { FeedbackStorageConfig, FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 
 export class Config {
 
     public static data: {
         runtime_cache_filename: string;
         google_cloud_key_file: string;
-        tgbot_token_file: string;
         runtime_dump_interval_sec: number;
         openai_api_key_file?: string;
         logs_file: string;
-        formatting: Formatting;
+        tg_adapter: {
+            token_file: string;
+            formatting: Formatting;
+        },
         users_fetcher: {
             google_sheet_id: string
             range: string,
@@ -24,12 +27,12 @@ export class Config {
         },
         deposit_tracking?: {
             google_sheet_id: string
-            fetch_interval_sec: number,  // not less than 5 seconds
+            fetch_interval_sec: number,    // not less than 5 seconds
             collect_interval_sec: number,  // not less than 10 seconds
-            membership_fee: number,      // in GEL
+            membership_fee: number,        // in GEL
             reminders: Array<{
-                day_of_month: number,    // 1-31
-                hour_utc: number            // 0-23
+                day_of_month: number,      // 1-31
+                hour_utc: number           // 0-23
             }>
             reminder_cooldown_hours: number,
             accounts: Array<{
@@ -44,7 +47,8 @@ export class Config {
             model: "gpt-4o-mini" | "gpt-4o"
             fetch_interval_sec: number  // not less than 60 seconds
             faq_document_id: string
-        }
+        },
+        feedback_storage: FeedbackStorageConfig;
     }
 
     static Load(path: string): Status {
@@ -58,6 +62,11 @@ export class Config {
             }
             return Status.fail(`${error}`);
         }
+    }
+
+
+    static HasTgAdapter(): boolean {
+        return this.data.tg_adapter != undefined;
     }
 
     static HasDepoditTracker(): boolean {
@@ -83,6 +92,12 @@ export class Config {
         return this.data.deposit_tracking!;
     }
 
+    static TgAdapter() {
+        if (!this.data.tg_adapter) {
+            throw new Error("tg_adapter is not specified!")
+        }
+        return this.data.tg_adapter!;
+    }
 
     static UsersFetcher() {
         if (!this.data.users_fetcher) {
@@ -120,14 +135,19 @@ export class Config {
         if (!this.data.google_cloud_key_file) {
             return Status.fail("'google_cloud_key_file' MUST be specified");
         }
-        if (!this.data.tgbot_token_file) {
-            return Status.fail("'tgbot_token_file' MUST be specified");
-        }
-        if (!this.data.formatting || !["markdown", "html", "plain"].includes(this.data.formatting)) {
-            return Status.fail("'formatting' MUST be specified (markdown, html, plain)");
-        }
         if (!this.data.logs_file) {
             return Status.fail("'logs_file' MUST be specified");
+        }
+
+        if (!this.data.tg_adapter) {
+            return Status.fail("'tg_adapter' MUST be specified");
+        }
+        if (!this.data.tg_adapter.token_file) {
+            return Status.fail("'tg_adapter.token_file' MUST be specified");
+        }
+        if (!this.data.tg_adapter.formatting ||
+            !["markdown", "html", "plain"].includes(this.data.tg_adapter.formatting)) {
+            return Status.fail("'tg_adapter.formatting' MUST be specified (markdown, html, plain)");
         }
 
         // Runtime configuration
@@ -272,6 +292,13 @@ export class Config {
                 "'assistant' is specifed, but 'openai_api_key_file' is not specifed,",
                 " feature will be DISABLED",
             ].join()));
+        }
+
+        if (this.data.feedback_storage) {
+            const status = FeedbackStorageFactory.verify(this.data.feedback_storage);
+            if (!status.ok()) {
+                return status.wrap("feedback_storage misconfiguration");
+            }
         }
 
         return Status.ok_and_warnings("verification", warnings);

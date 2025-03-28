@@ -1,5 +1,5 @@
-import { Status, StatusWith } from "../../status.js";
-import { apply_interval } from "../utils.js";
+import { Status, StatusWith } from "@src/status.js";
+import { apply_interval } from "@src/tgbot/utils.js";
 
 export abstract class Logic<Event> {
 

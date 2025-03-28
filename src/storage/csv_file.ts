@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { StatusWith } from '../status.js';
+import { StatusWith } from '@src/status.js';
 import { Database } from 'src/data_model.js';
 import { Table, build_data_model } from './data_model_adapter.js';
 

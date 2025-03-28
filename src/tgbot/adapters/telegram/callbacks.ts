@@ -1,61 +1,51 @@
-import TelegramBot from "node-telegram-bot-api";
 import crypto from 'crypto';
-import { Status, StatusWith } from "../../status.js";
-import { Journal } from "../journal.js";
-import { Logic } from "../logic/abstracts.js";
-import { return_fail } from "../utils.js";
+import TelegramBot from "node-telegram-bot-api";
+import { Status, StatusWith } from '@src/status.js';
+import { Journal } from '@src/tgbot/journal.js';
+import { Logic } from '@src/tgbot/logic/abstracts.js';
+import { return_fail } from '@src/tgbot/utils.js';
+
 
 function random_32bit_value(): string {
     return crypto.randomBytes(4).toString('hex');
 }
 
 type Callback = {
-    fn: (params: any) => Promise<Status>;
+    fn: () => Promise<Status>;
     journal: Journal;
-    params: any;
     debug_name?: string;
     single_shot?: boolean;
+    valid_until?: number;
 }
 
 export class TelegramCallbacks extends Logic<void> {
     private callbacks: Map<string, Callback> = new Map();
-    private queue: TelegramBot.CallbackQuery[] = [];
 
     constructor(private readonly journal: Journal) {
         super(100);
     }
 
-    async proceed_impl(): Promise<StatusWith<void[]>> {
-        const statuses: Status[] = [];
-        for (const tg_callback of this.queue) {
-            try {
-                const status = await this.handle_callback(tg_callback);
-                statuses.push(status);
-            } catch (error) {
-                statuses.push(Status.exception(error).wrap(`callback ${tg_callback.id} failed`));
+    async proceed_impl(now: Date): Promise<StatusWith<void[]>> {
+        // Remove expired callbacks
+        for (const [id, callback] of this.callbacks) {
+            if (callback.valid_until && callback.valid_until < now.getTime()) {
+                this.callbacks.delete(id);
             }
         }
-        this.queue = [];
-        return StatusWith.ok_and_warnings("callbacks processing", statuses);
+        return StatusWith.ok();
     }
 
-    add_callback(callback: Callback): string {
+    add_callback(callback: Callback, lifetime_sec?: number): string {
         const id = this.generate_id();
+        if (lifetime_sec && lifetime_sec > 0) {
+            callback.valid_until = Date.now() + lifetime_sec * 1000;
+        }
         this.callbacks.set(id, callback);
         return id;
     }
 
-    on_callback(callback: TelegramBot.CallbackQuery): Status {
-        this.journal.log().info(`On callback ${callback.id} received (${callback.data})`);
-        this.queue.push(callback);
-        return Status.ok();
-    }
-
-    remove_callback(id: string): void {
-        this.callbacks.delete(id);
-    }
-
-    private async handle_callback(tg_callback: TelegramBot.CallbackQuery): Promise<Status> {
+    async on_callback(tg_callback: TelegramBot.CallbackQuery): Promise<Status> {
+        this.journal.log().info(`On callback ${tg_callback.id} received (${tg_callback.data})`);
         if (tg_callback.data == undefined) {
             this.journal.log().error(`Callback query has no data: ${tg_callback.id}`);
             return Status.fail(`Callback query has no data: ${tg_callback.id}`).with([]);
@@ -64,7 +54,7 @@ export class TelegramCallbacks extends Logic<void> {
         const callback = this.callbacks.get(id);
         if (callback) {
             try {
-                const status = await callback.fn(callback.params);
+                const status = await callback.fn();
                 if (callback.single_shot) {
                     this.remove_callback(id);
                 }
@@ -76,6 +66,10 @@ export class TelegramCallbacks extends Logic<void> {
         } else {
             return return_fail(`callback ${id} not found`, this.journal.log()).with([]);
         }
+    }
+
+    remove_callback(id: string): void {
+        this.callbacks.delete(id);
     }
 
     private generate_id(): string {

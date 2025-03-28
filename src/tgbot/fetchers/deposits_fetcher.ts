@@ -1,7 +1,7 @@
-import { Status, StatusWith } from '../../status.js';
-import { Config } from '../config.js';
-import { GoogleSpreadsheet } from '../api/google_docs.js';
-import { current_month, only_month } from '../utils.js';
+import { Status, StatusWith } from '@src/status.js';
+import { Config } from '@src/tgbot/config.js';
+import { GoogleSpreadsheet } from '@src/tgbot/api/google_docs.js';
+import { current_month, only_month } from '@src/tgbot/utils.js';
 
 // Assuming the date format is DD.MM.YY
 function try_parse_date(date: string): Date | undefined {

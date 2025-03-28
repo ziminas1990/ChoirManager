@@ -1,7 +1,5 @@
-import * as fs from 'fs';
 import * as path from 'path';
-import { Status, StatusWith } from '../status.js';
-import { BotAPI } from './api/telegram.js';
+import { Status, StatusWith } from '@src/status.js';
 import { GoogleDocsAPI } from './api/google_docs.js';
 import { GoogleTranslate } from './api/google_translate.js';
 import { Runtime } from './runtime.js';
@@ -35,40 +33,6 @@ function init_openai_api(): Status {
     return OpenaiAPI.init();
 }
 
-function init_telegram_api(): Status {
-    try {
-        const tg_token = fs.readFileSync(Config.data.tgbot_token_file, 'utf-8');
-        if (!tg_token) {
-            return Status.fail("Telegram token not found");
-        }
-        BotAPI.init(tg_token.split('\n')[0].trim());
-    } catch (e) {
-        return Status.fail(`Failed to initialize Telegram API: ${e}`);
-    }
-    return Status.ok();
-}
-
-function bind_telegram_events(runtime: Runtime) {
-    const bot = BotAPI.instance();
-
-    bot.on("message", async (msg) => {
-        const status = msg.chat.type == "private" ?
-            runtime.handle_private_message(msg) :
-            await runtime.handle_group_message(msg);
-
-        if (!status.ok()) {
-            root_logger.log().error(`${status.what()}`);
-        }
-    });
-
-    bot.on("callback_query", (query) => {
-        const status = runtime.handle_callback(query);
-        if (!status.ok()) {
-            root_logger.log().error(`${status.what()}`);
-        }
-    });
-}
-
 async function load_database(database: Database, users_fetcher: UsersFetcher): Promise<Status> {
     const status = await users_fetcher.start();
     if (!status.ok()) {
@@ -92,7 +56,7 @@ async function main() {
     root_logger.log().info("Preparing...");
     load_config();
 
-    GlobalFormatter.init(Config.data.formatting);
+    GlobalFormatter.init(Config.data.tg_adapter.formatting);
 
     root_logger.log().info("Initializing Google Docs API...");
     {
@@ -114,7 +78,7 @@ async function main() {
     }
 
     root_logger.log().info("Loading runtime...");
-    const runtime_status = Runtime.Load(Config.data.runtime_cache_filename, database, root_logger);
+    const runtime_status = Runtime.Load(database, root_logger);
     if (!runtime_status.done() || runtime_status.value == undefined) {
         root_logger.log().error(`Failed to load runtime: ${runtime_status.what()}`);
         await wait_and_exit(10000, 1);
@@ -131,23 +95,12 @@ async function main() {
     root_logger.log().info("Initializing Google Translate API...");
     GoogleTranslate.init(Config.data.google_cloud_key_file);
 
-    root_logger.log().info("Initializing Telegram API...");
-    const telegram_status = init_telegram_api();
-    if (!telegram_status.ok()) {
-        root_logger.log().error(`Failed to initialize Telegram API: ${telegram_status.what()}`);
-        await wait_and_exit(10000, 1);
-    }
-    bind_telegram_events(runtime);
-
     root_logger.log().info("Starting runtime...");
     const status = await runtime.start();
     if (!status.ok()) {
         root_logger.log().error(`${status.what()}`);
         await wait_and_exit(10000, 1);
     }
-
-    root_logger.log().info("Verifying runtime...");
-    runtime.verify();
 
     root_logger.log().info("Runnning...");
     while (true) {

@@ -1,9 +1,9 @@
-import { Journal } from "../journal.js";
-import { Status, StatusWith } from "../../status.js";
-import { Config } from "../config.js";
-import { Deposit, DepositChange, DepositsFetcher } from "../fetchers/deposits_fetcher.js";
+import { Journal } from "@src/tgbot/journal.js";
+import { Status, StatusWith } from "@src/status.js";
+import { Config } from "@src/tgbot/config.js";
+import { Deposit, DepositChange, DepositsFetcher } from "@src/tgbot/fetchers/deposits_fetcher.js";
 import { Logic } from "./abstracts.js";
-import { seconds_since } from "../utils.js";
+import { seconds_since } from "@src/tgbot/utils.js";
 
 export type DepositsTrackerEvent = {
     what: "update",

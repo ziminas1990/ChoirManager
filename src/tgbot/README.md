@@ -68,10 +68,17 @@ docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config -v $(pwd)/logs:/
 
 ## Things to be done:
 * ignore all messages, received during the startup
-* figure out how to enable valid markdown support in messages
 * notifications about new applications
 * notifications about new feedback
 * use webpack to pack bot into a single js-file and publish docker image with this single file
 * BUG: adding to memberships table
 * configure logs rotation
-* add loading of logs file by admin's request
+* remove "chorister" role, because everyone who is not a guest is chorister
+* TelegramCallbacks: add lifetime for callbacks. Once lifetime is out, callback should be removed
+
+## Useful
+
+Regex to find all imports with no ".js" specified:
+```regex
+import.*from\s+["']([^"']*?)(?<!\.js)["']
+```

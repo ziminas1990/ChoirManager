@@ -1,96 +1,68 @@
-import { BotAPI } from "../api/telegram.js";
-import { Status } from "../../status.js";
-import { Journal } from "../journal.js";
-import { Runtime } from "../runtime.js";
-import { Config } from "../config.js";
+import { Status } from "@src/status.js";
+import { Journal } from "@src/tgbot/journal.js";
+import { Runtime } from "@src/tgbot/runtime.js";
+import { Config } from "@src/tgbot/config.js";
+import { return_fail } from "@src/tgbot/utils.js";
+import { User } from "@src/tgbot/database.js";
+import { UserLogic } from "@src/tgbot/logic/user.js";
 
 export class AdminActions {
 
-    static async notify_all_admins(
-        runtime: Runtime,
-        message: string,
-        journal: Journal
-    ): Promise<Status> {
-        for (const user of runtime.all_users()) {
-            const dialog = user.as_admin();
-            if (dialog) {
-                const status = await dialog.send_notification(message);
+    static async notify_all_admins(notification: string, journal: Journal) {
+        journal.log().info({ notification }, "Notifying all admins");
+        const users = Runtime.get_instance().all_users();
+        for (const user of users) {
+            const admin_agents = user.as_admin();
+            for (const agent of admin_agents ?? []) {
+                const status = await agent.send_message(notification);
                 if (!status.ok()) {
-                    journal.log().warn(status.what());
+                    journal.log().warn(`Failed to notify admin @${user.data.tgid}: ${status.what()}`);
                 }
             }
         }
-        return Status.ok();
     }
 
-    static async send_runtime_backup(
-        runtime: Runtime,
-        journal: Journal,
-    ): Promise<Status> {
-        journal.log().info("Sending runtime backup to admins");
-        for (const user of runtime.all_users()) {
-            const dialog = user.as_admin();
-            if (!dialog) {
-                continue;
-            }
-            const status = await dialog.send_file(Config.data.runtime_cache_filename);
+    static async send_runtime_backup(user: User, journal: Journal): Promise<Status> {
+        journal.log().info(`Sending runtime backup to @${user.tgid}`);
+
+        const user_logic = Runtime.get_instance().get_user(user.tgid);
+        if (!user_logic) {
+            return return_fail(`User ${user.tgid} not found`, journal.log());
+        }
+
+        if (!user_logic.is_admin()) {
+            return return_fail(`User ${user.tgid} is not an admin`, journal.log());
+        }
+
+        const status = await this.send_file(user_logic, Config.data.runtime_cache_filename, journal);
+        return status.wrap(`Failed to send runtime backup to @${user.tgid}`);
+    }
+
+    static async send_logs(user: User, journal: Journal): Promise<Status> {
+        journal.log().info(`Sending logs to @${user.tgid}`);
+
+        const user_logic = Runtime.get_instance().get_user(user.tgid);
+        if (!user_logic) {
+            return return_fail(`User ${user.tgid} not found`, journal.log());
+        }
+
+        if (!user_logic.is_admin()) {
+            return return_fail(`User ${user.tgid} is not an admin`, journal.log());
+        }
+
+        const status = await this.send_file(user_logic, Config.data.logs_file, journal);
+        return status.wrap(`Failed to send logs to @${user.tgid}`);
+    }
+
+    private static async send_file(user: UserLogic, file: string, journal: Journal): Promise<Status> {
+        const admin_agents = user.as_admin();
+        for (const agent of admin_agents ?? []) {
+            const status = await agent.send_file(file);
             if (!status.ok()) {
-                journal.log().warn(status.what());
+                journal.log().warn(`Failed to send file to @${user.data.tgid}: ${status.what()}`);
             }
         }
         return Status.ok();
-    }
-
-    static async set_announce_thread(
-        runtime: Runtime,
-        chat_title: string,
-        chat_id: number,
-        thread_id: number,
-        journal: Journal): Promise<Status>
-    {
-        runtime.set_announce_thread(chat_id, thread_id);
-        BotAPI.instance().sendMessage(
-            chat_id,
-            "Got it! This will be announces thread now.",
-            {
-                message_thread_id: thread_id,
-            }
-        );
-        const status = await AdminActions.notify_all_admins(
-            Runtime.get_instance(),
-            [
-                `Announce thread set:`,
-                `Group: ${chat_title} (${chat_id})`,
-                `Thread: ${thread_id}`,
-            ].join("\n"),
-            journal
-        );
-        if (!status.ok()) {
-            journal.log().warn(`Failed to notify admins: ${status.what()}`);
-        }
-        return Status.ok();
-    }
-
-    static async set_manager_chat_id(
-        runtime: Runtime,
-        chat_title: string,
-        chat_id: number,
-        journal: Journal
-    ): Promise<Status> {
-        runtime.set_manager_chat_id(chat_id);
-        BotAPI.instance().sendMessage(
-            chat_id,
-            "Got it! This will be managers chat now.",
-        );
-        const status = await AdminActions.notify_all_admins(
-            Runtime.get_instance(),
-            [
-                `Manager chat set:`,
-                `Group: ${chat_title} (${chat_id})`,
-            ].join("\n"),
-            journal
-        );
-        return status.wrap("failed to send notification to admins");
     }
 }
 
