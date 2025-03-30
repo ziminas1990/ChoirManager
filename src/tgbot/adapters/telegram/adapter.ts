@@ -31,9 +31,22 @@ export class TgAdapter extends Logic<void> {
     private users: Map<string, TelegramUser> = new Map();
     private pending_actions: PendingAction[] = [];
 
+    private journal: Journal;
+
     private choir_chat_id?: number;
     private announce_thread_id?: number;
     private managers_chat_id?: number;
+
+    public static unpack(
+        cfg: Config,
+        packed: ReturnType<typeof TgAdapter.pack>,
+        parent_journal: Journal)
+    : TgAdapter
+    {
+        const adapter = new TgAdapter(cfg, parent_journal)
+        adapter.unpack(packed);
+        return adapter;
+    }
 
     public static pack(adapter: TgAdapter) {
         return {
@@ -44,16 +57,26 @@ export class TgAdapter extends Logic<void> {
         } as const;
     }
 
-    public static unpack(cfg: Config, packed: ReturnType<typeof TgAdapter.pack>, parent_journal: Journal) {
-        const adapter = new TgAdapter(cfg, parent_journal);
-        adapter.choir_chat_id = packed.choir_chat_id;
-        adapter.announce_thread_id = packed.announce_thread_id;
-        adapter.managers_chat_id = packed.managers_chat_id;
-        return adapter;
+    private unpack(packed: ReturnType<typeof TgAdapter.pack>) {
+        this.choir_chat_id = packed.choir_chat_id;
+        this.announce_thread_id = packed.announce_thread_id;
+        this.managers_chat_id = packed.managers_chat_id;
+
+        for (const packed_user of packed.users) {
+            const tgid = packed_user.tgid;
+            const user_info = CoreAPI.get_user_by_tg_id(tgid, false);
+            if (!user_info.ok() || user_info.value == undefined) {
+                this.journal.log().warn(`Can't get user ${tgid}: ${user_info.what()}`);
+                continue;
+            }
+            const user = TelegramUser.unpack(user_info.value, packed_user, this.journal);
+            this.users.set(tgid, user);
+        }
     }
 
-    constructor(private cfg: Config, private journal: Journal) {
+    constructor(private cfg: Config, parent_journal: Journal) {
         super(50);
+        this.journal = parent_journal.child("adapter.telegram");
     }
 
     async init(): Promise<Status> {
@@ -77,27 +100,25 @@ export class TgAdapter extends Logic<void> {
                     this.journal.log().error(`failed to handle callback: ${status.what()}`);
                 }
             });
+            for (const [userid, user] of this.users.entries()) {
+                const status = user.init(this.bot);
+                if (!status.ok()) {
+                    this.journal.log().error(`failed to init user: ${status.what()}`);
+                    this.users.delete(userid);
+                }
+            }
             return Status.ok();
         } catch (e) {
             return Status.exception(e);
         }
     }
 
-    lowlevel(): TelegramBot {
-        if (this.bot == undefined) {
-            throw new Error("Telegram API is not initialized");
-        }
-        return this.bot;
-    }
-
-    protected async proceed_impl(now: Date): Promise<StatusWith<void[]>>
+    protected async proceed_impl(_: Date): Promise<StatusWith<void[]>>
     {
-        for (const user of this.users.values()) {
-            await user.proceed(now);
-        }
         return Status.ok().with([]);
     }
 
+    // NOTE: this function must NOT be async, it should return immediately
     private handle_private_message(msg: TelegramBot.Message): Status {
         this.log_message(msg);
 
@@ -108,24 +129,24 @@ export class TgAdapter extends Logic<void> {
 
         const status = this.get_or_create_user(tgid, msg.chat.id);
         if (!status.ok()) {
-            return status;
+            return status.wrap(`can't get/create user ${tgid}`);
         }
         const user = status.value!;
         user.put_incoming_item({ what: "message", message: msg });
         return Status.ok();
     }
 
+    // NOTE: this function must NOT be async, it should return immediately
     private handle_group_message(msg: TelegramBot.Message): Status {
         const tgid = msg.from?.username;
         if (tgid == undefined) {
             return return_fail("username is undefined", this.journal.log());
         }
-        const status = this.get_or_create_user(tgid, msg.chat.id);
-        if (!status.ok()) {
-            return status;
+
+        const user_id = msg.from?.username;
+        if (user_id == undefined) {
+            return Status.ok();  // just ignore
         }
-        const user = status.value!;
-        const user_id = user.userid();
 
         let user_info: User | undefined = undefined;
         {
@@ -157,6 +178,7 @@ export class TgAdapter extends Logic<void> {
         return Status.ok();
     }
 
+    // NOTE: this function must NOT be async, it should return immediately
     private handle_callback(query: TelegramBot.CallbackQuery): Status {
         const username = query.from?.username
         this.journal.log().info(`Callback query from ${username} in ${query.message?.chat.id}: ${query.data}`);
@@ -250,8 +272,17 @@ export class TgAdapter extends Logic<void> {
         if (this.bot == undefined) {
             return Status.fail("bot is not initialized");
         }
+
+        this.journal.log().info(`Creating telegram agent for ${tgid}...`);
+
         const new_user = new TelegramUser(user_data.value, chat_id, this.journal);
+        let status = new_user.init(this.bot);
+        if (!status.ok()) {
+            return status.wrap("initialization error");
+        }
+
         this.users.set(tgid, new_user);
+        this.journal.log().info(`Telegram agent for ${tgid} created`);
         return Status.ok().with(new_user);
     }
 }

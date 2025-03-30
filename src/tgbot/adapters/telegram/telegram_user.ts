@@ -43,7 +43,8 @@ export class TelegramUser implements IUserAgent {
     public static unpack(
         user_info: User,
         packed: ReturnType<typeof TelegramUser.pack>,
-        parent_journal: Journal) {
+        parent_journal: Journal): TelegramUser
+    {
         return new TelegramUser(user_info, packed.chat_id, parent_journal);
     }
 
@@ -53,23 +54,25 @@ export class TelegramUser implements IUserAgent {
         this.timings = {};
     }
 
-    async init(bot: TelegramBot): Promise<Status> {
+    init(bot: TelegramBot): Status {
         this.bot = bot;
+
+        const status = CoreAPI.on_new_user_agent(this.user_info.tgid, this);
+        if (!status.ok()) {
+            return status.wrap(`Can't register user ${this.user_info.tgid} agent`);
+        }
+
         return Status.ok();
     }
 
-    info() {
-        return this.user_info;
-    }
+    info() { return this.user_info; }
 
     put_incoming_item(item: IcomingItem) {
         this.queue.push(item);
     }
 
     // From IBaseAgent
-    userid(): string {
-        return this.user_info.tgid;
-    }
+    userid(): string { return this.user_info.tgid; }
 
     get_scores_dialog(): ScoresDialog {
         if (!this.scores_dialog) {
@@ -224,6 +227,7 @@ export class TelegramUser implements IUserAgent {
                 }
             }
         }
+        this.queue = [];
     }
 
     maybe_update_user_info(now: Date) {

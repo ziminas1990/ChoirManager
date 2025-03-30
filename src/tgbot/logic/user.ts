@@ -1,22 +1,15 @@
-import { Logic } from './abstracts.js';
+import { Logic } from '@src/tgbot/logic/abstracts.js';
 import { Database, Role, User } from '@src/tgbot/database.js';
 import { Status, StatusWith } from '@src/status.js';
 import { DepositsFetcher } from '@src/tgbot/fetchers/deposits_fetcher.js';
-import { DepositsTracker } from './deposits_tracker.js';
-import { ChoristerAssistant } from '@src/tgbot/ai_assistants/chorister_assistant.js';
-import { DocumentsFetcher } from '@src/tgbot/fetchers/document_fetcher.js';
-import { OpenaiAPI } from '@src/tgbot/api/openai.js';
+import { DepositsTracker } from '@src/tgbot/logic/deposits_tracker.js';
 import { Journal } from "@src/tgbot/journal.js";
-import { TelegramCallbacks } from '@src/tgbot/adapters/telegram/callbacks.js';
 import { DepositActions } from '@src/tgbot/use_cases/deposit_actions.js';
 import { IAccounterAgent, IAdminAgent, IBaseAgent, IDepositOwnerAgent, IUserAgent } from '@src/tgbot/interfaces/user_agent.js';
 
 export class UserLogic extends Logic<void> {
-    private last_activity?: Date;
     private deposit_tracker: DepositsTracker;
     private journal: Journal;
-    private callbacks: TelegramCallbacks;
-    private chorister_assustant?: ChoristerAssistant
 
     private agents: IUserAgent[] = [];
 
@@ -26,7 +19,6 @@ export class UserLogic extends Logic<void> {
         parent_journal: Journal)
     {
         super(proceed_interval_ms);
-        this.last_activity = new Date();
 
         const additional_tags: Record<string, any> = {};
         if (this.is_guest()) {
@@ -35,8 +27,6 @@ export class UserLogic extends Logic<void> {
 
         this.journal = parent_journal.child(`@${data.tgid}`, additional_tags);
 
-        this.callbacks = new TelegramCallbacks(this.journal.child("callbacks"));
-
         this.deposit_tracker = new DepositsTracker(this.data.tgid, this.journal);
     }
 
@@ -44,19 +34,8 @@ export class UserLogic extends Logic<void> {
         return this.journal;
     }
 
-    callbacks_registry(): TelegramCallbacks {
-        return this.callbacks;
-    }
-
     attach_deposit_fetcher(fetcher: DepositsFetcher): void {
         this.deposit_tracker.attach_deposit_fetcher(fetcher);
-    }
-
-    attach_documents_fetcher(fetcher: DocumentsFetcher) {
-        if (OpenaiAPI.is_available()) {
-            const journal = this.journal.child("chorister");
-            this.chorister_assustant = new ChoristerAssistant(fetcher, journal);
-        }
     }
 
     is_guest(): boolean {
@@ -99,16 +78,12 @@ export class UserLogic extends Logic<void> {
         return this.is_accountant() ? this.agents : undefined;
     }
 
-    get_last_activity() {
-        return this.last_activity;
-    }
-
     get_deposit_tracker(): DepositsTracker | undefined {
         return this.deposit_tracker;
     }
 
-    get_chorister_assistant(): ChoristerAssistant | undefined {
-        return this.chorister_assustant;
+    add_agent(agent: IUserAgent): void {
+        this.agents.push(agent);
     }
 
     async proceed_impl(now: Date): Promise<Status> {
@@ -124,9 +99,8 @@ export class UserLogic extends Logic<void> {
             }
         }
 
-        const status = await this.callbacks.proceed(now);
-        if (!status.ok()) {
-            warnings.push(status.wrap("callbacks"));
+        for (const agent of this.agents) {
+            await agent.proceed(now);
         }
 
         return Status.ok_and_warnings("dialog proceed", warnings);

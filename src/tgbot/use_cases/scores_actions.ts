@@ -45,8 +45,8 @@ export class ScoresActions {
         const runtime = Runtime.get_instance();
         const database = runtime.get_database();
 
-        if (typeof score === "string") {
-            const score_info = database.find_scores({ name: score });
+        if (typeof score == "string") {
+            const score_info = database.find_scores({ name: score }) ?? database.find_scores({ file: score });
             if (!score_info) {
                 return return_fail(`score ${score} not found`, journal.log());
             }
