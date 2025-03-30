@@ -103,8 +103,8 @@ export class DepositActions {
         }
 
         // Notify all accountants
-        for (const user of all_users.values()) {
-            const accounter_agents = user.as_accounter();
+        for (const accounter of all_users.values()) {
+            const accounter_agents = accounter.as_accounter();
             if (!accounter_agents) {
                 continue;
             }
@@ -112,7 +112,7 @@ export class DepositActions {
                 const status = await accounter.send_already_paid_notification(user.data);
                 if (!status.ok()) {
                     journal.log().warn([
-                        `failed to send already_paid notification to ${user.data.tgid}`,
+                        `failed to send already_paid notification to ${accounter.userid}`,
                         status.what()
                     ].join(":"));
                 }
@@ -189,6 +189,15 @@ export class DepositActions {
         if (total == 0) {
             return Status.fail(`failed to send reminder to any agent`);
         }
+
+        // Notify accountants
+        for (const accounter of Runtime.get_instance().get_users().values()) {
+            const accounter_dialog = accounter.as_accounter() ?? [];
+            for (const dialog of accounter_dialog) {
+                await dialog.mirror_reminder(user.data, amount);
+            }
+        }
+
         return Status.ok();
     }
 
