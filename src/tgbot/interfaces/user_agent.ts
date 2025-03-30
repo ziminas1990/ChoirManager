@@ -8,7 +8,9 @@ export interface IUserAgent extends
     IScoresSubscriberAgent,
     IAccounterAgent,
     IAdminAgent
-{}
+{
+    proceed(now: Date): Promise<void>;
+}
 
 export interface IBaseAgent {
     userid(): string;

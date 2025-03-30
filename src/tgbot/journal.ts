@@ -13,7 +13,7 @@ export class Journal {
         this.logger = pino({
             formatters: {
                 bindings: () => ({
-                    component: this.component,
+                    component: this.component.join("."),
                     ...this.additional_bindings,
                 }),
                 level: (label) => ({ level: label.toUpperCase() }),

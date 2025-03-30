@@ -9,6 +9,7 @@ import { UsersFetcher } from './fetchers/users_fetcher.js';
 import { Database } from './database.js';
 import { Journal } from './journal.js';
 import { GlobalFormatter } from './utils.js';
+import { CoreAPI } from './use_cases/core.js';
 
 const root_logger = Journal.Root();
 
@@ -57,6 +58,9 @@ async function main() {
     load_config();
 
     GlobalFormatter.init(Config.data.tg_adapter.formatting);
+
+    const operations_journal = root_logger.child("operations");
+    CoreAPI.attach_journal(operations_journal.child("core_api"));
 
     root_logger.log().info("Initializing Google Docs API...");
     {

@@ -164,18 +164,18 @@ export class Runtime {
         this.users_fetcher = fetcher;
     }
 
-    get_user(tg_id: string, create_if_not_found: boolean = false): UserLogic | undefined {
+    get_user(tg_id: string, create_guest: boolean = false): UserLogic | undefined {
         const user = this.database.get_user(tg_id);
         if (user) {
             let user_logic = this.users.get(user.tgid);
-            if (!user_logic && create_if_not_found) {
+            if (!user_logic) {
                 user_logic = new UserLogic(user, 100, this.journal);
                 this.users.set(user.tgid, user_logic);
                 this.on_user_added(user_logic, false);
             }
             return user_logic;
         }
-        if (create_if_not_found) {
+        if (create_guest) {
             return this.get_guest_user(tg_id);
         }
         return undefined;
