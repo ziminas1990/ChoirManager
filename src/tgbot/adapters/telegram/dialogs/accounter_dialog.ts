@@ -37,8 +37,20 @@ export class AccounterDialog {
         return await this.user.send_message(full_message);
     }
 
-    private user_already_paid(user: User, lang: Language): string {
-        const name = `${user.name} ${user.surname ?? ""} (@${user.tgid})`;
+    async mirror_deposit_changes(who: User, deposit: Deposit, changes: DepositChange): Promise<Status> {
+        const orator = new Orator(this.formatter);
+        const changes_msg = orator.deposit_change(deposit, changes, this.user.info().lang);
+        const who_msg = `Notification for ${who.name} ${who.surname} (@${who.tgid}):\n`;
+        const message = [who_msg, changes_msg].join("\n");
+        return await this.user.send_message(message);
+    }
+
+    async mirror_reminder(who: User, amount: number, lang: Language): Promise<Status> {
+        return await this.user.send_message(this.mirrored_reminder(who, amount, lang));
+    }
+
+    private user_already_paid(who: User, lang: Language): string {
+        const name = `${who.name} ${who.surname ?? ""} (@${who.tgid})`;
         switch (lang) {
             case Language.RU:
                 return `${name} говорит что уже оплатил членский взнос`;
@@ -60,7 +72,7 @@ export class AccounterDialog {
                 break;
             case Language.EN:
             default:
-                lines.push(`${name} says deposited ${amount} GEL`);
+                lines.push(`${name} says that they deposited ${amount} GEL`);
                 break;
         }
 
@@ -69,11 +81,27 @@ export class AccounterDialog {
         return lines.join("\n");
     }
 
-    async mirror_deposit_changes(who: User, deposit: Deposit, changes: DepositChange): Promise<Status> {
-        const orator = new Orator(this.formatter);
-        const changes_msg = orator.deposit_change(deposit, changes, this.user.info().lang);
-        const who_msg = `Notification for ${who.name} ${who.surname} (@${who.tgid}):\n`;
-        const message = [who_msg, changes_msg].join("\n");
-        return await this.user.send_message(message);
+    private mirrored_reminder(who: User, amount: number, lang: Language): string {
+        const name = `${who.name} ${who.surname ?? ""} (@${who.tgid})`;
+        const message: string[] = []
+
+        switch (lang) {
+            case Language.RU:
+                message.push(...[
+                    this.formatter.bold("Отправлено напоминание:"),
+                    "",
+                    `Пользователь ${name} должен внести ещё ${amount} GEL`,
+                ])
+                break;
+            case Language.EN:
+            default:
+                message.push(...[
+                    this.formatter.bold("Reminder sent:"),
+                    "",
+                    `User ${name} should deposit another ${amount} GEL`,
+                ]);
+                break;
+        }
+        return message.join("\n");
     }
 }

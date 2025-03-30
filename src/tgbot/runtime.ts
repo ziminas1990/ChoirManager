@@ -36,6 +36,8 @@ export class Runtime {
         }
     }
 
+    private started_at: Date = new Date();
+
     private next_dump: Date = new Date();
     private update_interval_sec: number = 0;
     private users_fetcher?: UsersFetcher;
@@ -79,6 +81,10 @@ export class Runtime {
             hash: runtime_hash,
             time: new Date(),
         };
+    }
+
+    running_time_sec(): number {
+        return Math.floor((new Date().getTime() - this.started_at.getTime()) / 1000);
     }
 
     async start(): Promise<Status> {

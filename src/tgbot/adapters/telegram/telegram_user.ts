@@ -122,6 +122,7 @@ export class TelegramUser implements IUserAgent {
                 ...options,
                 parse_mode: "HTML"
             });
+            this.journal.log().info({ message }, "message sent")
             return Status.ok();
         } catch (e) {
             return return_exception(e, this.journal.log());
@@ -141,6 +142,7 @@ export class TelegramUser implements IUserAgent {
                 contentType: content_type,
             };
             await this.bot.sendDocument(this.chat_id, filename, options, file_options);
+            this.journal.log().info({ document: filename }, "document sent")
             return Status.ok();
         } catch (e) {
             return return_exception(e, this.journal.log());
@@ -187,8 +189,14 @@ export class TelegramUser implements IUserAgent {
         return await this.get_accounter_dialog().send_top_up_notification(who, amount, original_message);
     }
 
+    // From IAccounterAgent
     async mirror_deposit_changes(who: User, deposit: Deposit, changes: DepositChange): Promise<Status> {
         return await this.get_accounter_dialog().mirror_deposit_changes(who, deposit, changes);
+    }
+
+    // From IAccounterAgent
+    async mirror_reminder(who: User, amount: number): Promise<Status> {
+        return await this.get_accounter_dialog().mirror_reminder(who, amount, this.user_info.lang);
     }
 
     // From IAdminAgent

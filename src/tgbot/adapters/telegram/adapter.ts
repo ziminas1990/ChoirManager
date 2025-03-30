@@ -115,12 +115,20 @@ export class TgAdapter extends Logic<void> {
 
     protected async proceed_impl(_: Date): Promise<StatusWith<void[]>>
     {
+        for (const action of this.pending_actions) {
+            const status = await action();
+            if (!status.ok()) {
+                return status.wrap(`failed to execute pending action: ${status.what()}`);
+            }
+        }
+        this.pending_actions = [];
+
         return Status.ok().with([]);
     }
 
     // NOTE: this function must NOT be async, it should return immediately
     private handle_private_message(msg: TelegramBot.Message): Status {
-        this.log_message(msg);
+        this.log_message(msg, "private");
 
         const tgid = msg.from?.username;
         if (tgid == undefined) {
@@ -164,7 +172,7 @@ export class TgAdapter extends Logic<void> {
         const sent_by_manager = user_info.roles.includes(Role.Manager);
 
         if (sent_to_bot || is_announce) {
-            this.log_message(msg);
+            this.log_message(msg, "group");
         }
 
         if (sent_by_admin && sent_to_bot) {
@@ -172,8 +180,9 @@ export class TgAdapter extends Logic<void> {
         }
 
         if (is_announce && sent_by_manager && msg.text != undefined) {
-            this.pending_actions.push(async () =>
-                await Translator.translate_announce(user_info, msg.text!, this.journal));
+            this.pending_actions.push(async () => {
+                return await Translator.translate_announce(user_info, msg.text!, this.journal)
+            });
         }
         return Status.ok();
     }
@@ -237,10 +246,10 @@ export class TgAdapter extends Logic<void> {
         return Status.ok();
     }
 
-    private log_message(msg: TelegramBot.Message) {
+    private log_message(msg: TelegramBot.Message, msg_type: "private" | "group") {
         if (msg.text) {
             if (!msg.text.includes("\n")) {
-                this.journal.log().info(`Message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
+                this.journal.log().info(`${msg_type} message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
             } else {
                 this.journal.log().info([
                     `Message from ${msg.from?.username} in ${msg.chat.id}:`,

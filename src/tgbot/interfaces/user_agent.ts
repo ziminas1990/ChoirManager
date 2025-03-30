@@ -45,6 +45,8 @@ export interface IAccounterAgent extends IBaseAgent {
     send_top_up_notification(who: User, amount: number, original_message: string): Promise<Status>;
 
     mirror_deposit_changes(who: User, deposit: Deposit, changes: DepositChange): Promise<Status>;
+
+    mirror_reminder(who: User, amount: number): Promise<Status>;
 }
 
 // Someone who has admin role

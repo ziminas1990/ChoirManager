@@ -4,6 +4,7 @@ import { Config } from "@src/tgbot/config.js";
 import { Deposit, DepositChange, DepositsFetcher } from "@src/tgbot/fetchers/deposits_fetcher.js";
 import { Logic } from "./abstracts.js";
 import { seconds_since } from "@src/tgbot/utils.js";
+import { Runtime } from "../runtime.js";
 
 export type DepositsTrackerEvent = {
     what: "update",
@@ -125,6 +126,12 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
     private should_send_reminders(now: Date): boolean {
         const cfg = Config.DepositTracker();
         if (!cfg.reminders?.length) {
+            return false;
+        }
+
+        // TODO: replace with configurable value
+        if (Runtime.get_instance().running_time_sec() < 3600) {
+            // Do not produce any reminders during the hour after restart
             return false;
         }
 
