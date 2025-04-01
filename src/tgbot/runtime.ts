@@ -17,6 +17,7 @@ import { AdminActions } from "./use_cases/admin_actions.js";
 import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
 import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
+import { update_v2_v3 } from "./configuration/update_v2_v3.js";
 
 export class Runtime {
 
@@ -289,7 +290,7 @@ export class Runtime {
         if (packed.version != 3) {
             const old_version: number = packed.version == "1.0" ? 1 : packed.version;
             try {
-                packed = update_packed_runtime(old_version, database, packed, journal);
+                packed = update_packed_runtime(old_version, packed);
             } catch (e) {
                 return return_exception(e, journal.log(), "failed to update runtime data");
             }
@@ -333,36 +334,13 @@ export class Runtime {
 }
 
 
-function update_packed_runtime(old_version: number, database: Database, data: any, journal: Journal): ReturnType<typeof Runtime.pack> {
+function update_packed_runtime(old_version: number, data: any)
+: ReturnType<typeof Runtime.pack> {
     if (old_version == 1) {
-        const status = update_runtime_v1(database, data, journal);
-        if (!status.ok()) {
-            throw status;
-        }
-        data = status.value;
-        old_version = 2;
+        throw new Error("Exporting from version 1 is not supported");
+    }
+    if (old_version == 2) {
+        data = update_v2_v3(data);
     }
     return data;
-}
-
-// Update from v1 to v2
-function update_runtime_v1(database: Database, data: any, journal: Journal): StatusWith<any> {
-    try {
-        // in version 1 users were stored as map of user_id: number -> user_logic
-        // in version 2 key was replaced with tgid: string
-        const users = unpack_map(data.users, (packed) => {
-            const status = UserLogic.unpack(database, packed as any, journal);
-            if (!status.ok()) {
-                throw status;
-            }
-            return status.value;
-        }) as Map<number, UserLogic>;
-
-        const new_users = new Map([...users.values()].map(user => [user.data.tgid, user]));
-        data.users = pack_map(new_users, UserLogic.pack);
-        data.version = 2;
-        return Status.ok().with(data);
-    } catch (e) {
-        return return_exception(e, journal.log(), "Failed to unpack users");
-    }
 }

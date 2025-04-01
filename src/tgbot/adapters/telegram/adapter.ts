@@ -118,7 +118,7 @@ export class TgAdapter extends Logic<void> {
         for (const action of this.pending_actions) {
             const status = await action();
             if (!status.ok()) {
-                return status.wrap(`failed to execute pending action: ${status.what()}`);
+                this.journal.log().warn(`pending action failed: ${status.what()}`);
             }
         }
         this.pending_actions = [];
