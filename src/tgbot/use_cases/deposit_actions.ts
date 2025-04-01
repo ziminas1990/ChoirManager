@@ -59,8 +59,8 @@ export class DepositActions {
         }
 
         // Notify all accountants
-        for (const user of all_users.values()) {
-            const accounter_agents = user.as_accounter();
+        for (const accounter of all_users.values()) {
+            const accounter_agents = accounter.as_accounter();
             if (!accounter_agents) {
                 continue;
             }
@@ -69,7 +69,7 @@ export class DepositActions {
                     user.data, amount, original_message);
                 if (!status.ok()) {
                     journal.log().warn([
-                        `failed to send top_up notification to ${user.data.tgid}`,
+                        `failed to send top_up notification to ${accounter.userid()}`,
                         status.what()
                     ].join(":"));
                 }

@@ -324,8 +324,9 @@ export class Runtime {
 
         // Notify admins:
         if (!startup) {
+            const name = user.data.name.length > 0 ? user.data.name : "guest";
             AdminActions.notify_all_admins(
-                `User ${user.data.name} ${user.data.surname} (@${user.data.tgid}) has joined`,
+                `User ${name} ${user.data.surname} (@${user.data.tgid}) has joined`,
                 this.journal);
         }
     }
