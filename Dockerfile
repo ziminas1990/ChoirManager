@@ -20,4 +20,4 @@ RUN apt update && \
 # Building the application
 RUN npm install && npm run compile
 
-CMD ["sh", "-c", "npm run bot | tee -a /mnt/logs/bot.log"]
+CMD ["sh", "-c", "npm run app | tee -a /mnt/logs/bot.log"]

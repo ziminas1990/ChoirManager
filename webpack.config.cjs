@@ -1,7 +1,7 @@
 const path = require('path');
 
 module.exports = {
-    entry: './src/webapp/index.ts',
+    entry: './src/analytic/webapp/index.ts',
     module: {
         rules: [
             {
@@ -25,7 +25,7 @@ module.exports = {
         },
     },
     output: {
-        filename: 'webapp/index.js',
+        filename: 'analytic/webapp/index.js',
         path: path.resolve(__dirname, 'dist'),
     }
 };
