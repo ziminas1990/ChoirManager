@@ -1,20 +1,18 @@
 import TelegramBot from "node-telegram-bot-api";
 
-import { IUserAgent } from "@src/interfaces/user_agent.js";
-import { Status } from "@src/status.js";
+import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
+import { Status, StatusWith } from "@src/status.js";
 import { Journal } from "@src/journal.js";
-import { DepositChange } from "@src/fetchers/deposits_fetcher.js";
-import { Deposit } from "@src/fetchers/deposits_fetcher.js";
-import { Role, Scores, User } from "@src/database.js";
-import { GlobalFormatter, return_exception, return_fail } from "@src/utils.js";
+import { Role, User } from "@src/database.js";
+import { return_exception, return_fail } from "@src/utils.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { IcomingItem } from "./adapter.js";
 import { TelegramCallbacks } from "./callbacks.js";
-import { ScoresDialog } from "./dialogs/scores_dialog.js";
 import { DepositOwnerDialog } from "./dialogs/deposit_owner_dialog.js";
 import { AccounterDialog } from "./dialogs/accounter_dialog.js";
 import { ChoristerDialog } from "./dialogs/chorister_dialog.js";
 import { GuestDialog } from "./dialogs/guest_dialog.js";
+import { AdminDialog } from "./dialogs/admin_dialog.js";
 
 
 export class TelegramUser implements IUserAgent {
@@ -23,11 +21,11 @@ export class TelegramUser implements IUserAgent {
     private bot?: TelegramBot;
     private callbacks_registry: TelegramCallbacks
 
-    private scores_dialog?: ScoresDialog;
     private deposit_owner_dialog?: DepositOwnerDialog;
     private accounter_dialog?: AccounterDialog;
     private chorister_dialog?: ChoristerDialog;
     private guest_dialog?: GuestDialog;
+    private admin_dialog?: AdminDialog;
 
     private timings: {
         next_user_info_update?: number;
@@ -71,28 +69,41 @@ export class TelegramUser implements IUserAgent {
         this.queue.push(item);
     }
 
-    // From IBaseAgent
+    agent_name(): string { return "TelegramUser"; }
+
+    // From IUserAgent
     userid(): string { return this.user_info.tgid; }
 
-    get_scores_dialog(): ScoresDialog {
-        if (!this.scores_dialog) {
-            this.scores_dialog = new ScoresDialog(this, this.journal);
+    // From IUserAgent
+    as_chorister(): IChorister {
+        if (!this.chorister_dialog) {
+            this.chorister_dialog = new ChoristerDialog(this, this.journal);
         }
-        return this.scores_dialog;
+        return this.chorister_dialog;
     }
 
-    get_deposit_owner_dialog(): DepositOwnerDialog {
+    // From IUserAgent
+    as_deposit_owner(): IDepositOwnerAgent {
         if (!this.deposit_owner_dialog) {
             this.deposit_owner_dialog = new DepositOwnerDialog(this, this.journal);
         }
         return this.deposit_owner_dialog;
     }
 
-    get_accounter_dialog(): AccounterDialog {
+    // From IUserAgent
+    as_accounter(): IAccounterAgent {
         if (!this.accounter_dialog) {
             this.accounter_dialog = new AccounterDialog(this);
         }
         return this.accounter_dialog;
+    }
+
+    // From IUserAgent
+    as_admin(): IAdminAgent {
+        if (!this.admin_dialog) {
+            this.admin_dialog = new AdminDialog(this);
+        }
+        return this.admin_dialog;
     }
 
     create_keyboard_button(
@@ -112,24 +123,38 @@ export class TelegramUser implements IUserAgent {
         };
     }
 
-    // From IBaseAgent
-    async send_message(message: string, options?: TelegramBot.SendMessageOptions): Promise<Status> {
+    remove_keyboard_button(button: TelegramBot.InlineKeyboardButton): Status {
+        const callback_id = button.callback_data;
+        const text = button.text;
+        if (!callback_id) {
+            return return_fail("callback_data is not specified", this.journal.log());
+        }
+        if (this.callbacks_registry.remove_callback(callback_id)) {
+            this.journal.log().debug({ callback_id, text }, "callback removed");
+            return Status.ok();
+        }
+        return return_fail(`failed to remove callback ${callback_id}`, this.journal.log());
+    }
+
+    // From IUserAgent
+    async send_message(message: string, options?: TelegramBot.SendMessageOptions)
+    : Promise<StatusWith<number>> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal.log());
         }
         try {
-            await this.bot.sendMessage(this.chat_id, message, {
+            const sent = await this.bot.sendMessage(this.chat_id, message, {
                 ...options,
                 parse_mode: "HTML"
             });
             this.journal.log().info({ message }, "message sent")
-            return Status.ok();
+            return Status.ok().with(sent.message_id);
         } catch (e) {
             return return_exception(e, this.journal.log());
         }
     }
 
-    // From IBaseAgent
+    // From IUserAgent
     async send_file(filename: string, caption?: string, content_type?: string): Promise<Status> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal.log());
@@ -149,64 +174,51 @@ export class TelegramUser implements IUserAgent {
         }
     }
 
-    // From IScoresSubscriberAgent
-    async send_scores_list(scores: Scores[]): Promise<Status> {
-        return await this.get_scores_dialog().send_scores_list(scores);
+    async edit_message(message_id: number, what: {
+        text?: string,
+        inline_keyboard?: TelegramBot.InlineKeyboardButton[][]
+    }): Promise<Status> {
+        if (!this.bot) {
+            return return_fail("API is not initialized", this.journal.log());
+        }
+
+        try {
+            if (what.text != undefined) {
+                await this.bot.editMessageText(what.text, {
+                    chat_id: this.chat_id,
+                    message_id: message_id,
+                    parse_mode: "HTML",
+                    reply_markup: what.inline_keyboard ? {
+                        inline_keyboard: what.inline_keyboard,
+                    } : undefined
+                });
+            } else if (what.inline_keyboard != undefined) {
+                await this.bot.editMessageReplyMarkup(
+                    {
+                        inline_keyboard: what.inline_keyboard,
+                    },
+                    {
+                        chat_id: this.chat_id,
+                        message_id: message_id
+                    }
+                );
+            }
+            return Status.ok();
+        } catch (e) {
+            return return_exception(e, this.journal.log());
+        }
     }
 
-    // From IDepositOwnerAgent
-    async send_deposit_info(deposit: Deposit | undefined): Promise<Status> {
-        return await this.get_deposit_owner_dialog().send_deposit_info(deposit);
-    }
-
-    // From IDepositOwnerAgent
-    async send_deposit_changes(deposit: Deposit, changes: DepositChange): Promise<Status> {
-        return await this.get_deposit_owner_dialog().on_deposit_change(deposit, changes);
-    }
-
-    // From IDepositOwnerAgent
-    async send_already_paid_response(): Promise<Status> {
-        return await this.get_deposit_owner_dialog().send_already_paid_response();
-    }
-
-    // From IDepositOwnerAgent
-    async send_membership_reminder(amount: number): Promise<Status> {
-        return await this.get_deposit_owner_dialog().send_reminder(amount);
-    }
-
-    // From IDepositOwnerAgent
-    async send_thanks_for_information(): Promise<Status> {
-        return await this.get_deposit_owner_dialog().send_thanks_for_information();
-    }
-
-    // From IAccounterAgent
-    async send_already_paid_notification(who: User): Promise<Status> {
-        return await this.get_accounter_dialog().send_already_paid_notification(who);
-    }
-
-    // From IAccounterAgent
-    async send_top_up_notification(who: User, amount: number, original_message: string): Promise<Status> {
-        return await this.get_accounter_dialog().send_top_up_notification(who, amount, original_message);
-    }
-
-    // From IAccounterAgent
-    async mirror_deposit_changes(who: User, deposit: Deposit, changes: DepositChange): Promise<Status> {
-        return await this.get_accounter_dialog().mirror_deposit_changes(who, deposit, changes);
-    }
-
-    // From IAccounterAgent
-    async mirror_reminder(who: User, amount: number): Promise<Status> {
-        return await this.get_accounter_dialog().mirror_reminder(who, amount, this.user_info.lang);
-    }
-
-    // From IAdminAgent
-    async send_notification(message: string): Promise<Status> {
-        const formatter = GlobalFormatter.instance();
-        return await this.send_message([
-            formatter.bold("Admin's notification:"),
-            "",
-            message,
-        ].join("\n"));
+    async delete_message(message_id: number): Promise<Status> {
+        if (!this.bot) {
+            return return_fail("API is not initialized", this.journal.log());
+        }
+        try {
+            const ok = await this.bot.deleteMessage(this.chat_id, message_id);
+            return ok ? Status.ok() : return_fail("Failed to delete message", this.journal.log());
+        } catch(e) {
+            return return_exception(e, this.journal.log());
+        }
     }
 
     async proceed(now: Date): Promise<void> {

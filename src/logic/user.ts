@@ -5,7 +5,7 @@ import { DepositsFetcher } from '@src/fetchers/deposits_fetcher.js';
 import { DepositsTracker } from '@src/logic/deposits_tracker.js';
 import { Journal } from "@src/journal.js";
 import { DepositActions } from '@src/use_cases/deposit_actions.js';
-import { IAccounterAgent, IAdminAgent, IBaseAgent, IDepositOwnerAgent, IUserAgent } from '@src/interfaces/user_agent.js';
+import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from '@src/interfaces/user_agent.js';
 
 export class UserLogic extends Logic<void> {
     private deposit_tracker: DepositsTracker;
@@ -62,20 +62,48 @@ export class UserLogic extends Logic<void> {
         return this.data.is(Role.ExChorister);
     }
 
-    base_agents(): IBaseAgent[] {
+    all_agents(): IUserAgent[] {
         return this.agents;
     }
 
-    as_admin(): IAdminAgent[] | undefined {
-        return this.is_admin() ? this.agents : undefined;
+    as_chorister(): IChorister[] {
+        if (!this.is_chorister()) {
+            return [];
+        }
+
+        return this.agents
+            .map(agent => agent.as_chorister())
+            .filter(agent => agent !== undefined);
     }
 
-    as_deposit_owner(): IDepositOwnerAgent[] | undefined {
-        return this.is_chorister() ? this.agents : undefined;
+    as_admin(): IAdminAgent[] {
+        if (!this.is_admin()) {
+            return [];
+        }
+
+        return this.agents
+            .map(agent => agent.as_admin())
+            .filter(agent => agent !== undefined);
     }
 
-    as_accounter(): IAccounterAgent[] | undefined {
-        return this.is_accountant() ? this.agents : undefined;
+    as_deposit_owner(): IDepositOwnerAgent[] {
+        if (!this.is_chorister()) {
+            return [];
+        }
+
+        return this.agents
+            .map(agent => agent.as_deposit_owner())
+            .filter(agent => agent !== undefined);
+    }
+
+    as_accounter(): IAccounterAgent[] {
+        if (!this.is_accountant()) {
+            return [];
+        }
+
+        return this.agents
+            .map(agent => agent.as_accounter())
+            .filter(agent => agent !== undefined);
     }
 
     get_deposit_tracker(): DepositsTracker | undefined {

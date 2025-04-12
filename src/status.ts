@@ -45,6 +45,9 @@ export class Status {
 
     public has_warnings(): boolean { return this.warn != undefined; }
 
+    public is_error(): boolean { return this.error != undefined; }
+    public is_warning(): boolean { return this.warn != undefined; }
+
     public wrap(operation: string): Status {
         if (this.error) {
             return Status.fail(operation, this);

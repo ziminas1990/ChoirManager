@@ -33,7 +33,7 @@ export class ScoresActions {
         const scores = [...database.all_scores()]
             .sort((a, b) => a.name.localeCompare(b.name));
 
-        return await agent.send_scores_list(scores);
+        return await agent.as_chorister().send_scores_list(scores);
     }
 
     static async download_scores_request(

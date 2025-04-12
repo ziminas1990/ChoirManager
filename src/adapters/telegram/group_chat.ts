@@ -9,8 +9,9 @@ export class GroupChat implements IGroupChat {
     private journal: Journal;
 
     constructor(
-        private readonly chat_id:
-        number, private readonly bot: TelegramBot,
+        private readonly chat_id: number,
+        private readonly thread_id: number | undefined,
+        private readonly bot: TelegramBot,
         parent_journal: Journal)
     {
         this.journal = parent_journal.child(`group.${chat_id}`);
@@ -22,7 +23,8 @@ export class GroupChat implements IGroupChat {
         }
         try {
             await this.bot.sendMessage(this.chat_id, message, {
-                parse_mode: "HTML"
+                parse_mode: "HTML",
+                message_thread_id: this.thread_id,
             });
             return Status.ok();
         } catch (e) {

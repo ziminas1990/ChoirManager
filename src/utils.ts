@@ -58,6 +58,15 @@ export function return_exception(error: unknown, logger: pino.Logger, wrap?: str
     return Status.exception(error);
 }
 
+export function log_and_return(status: Status, logger: pino.Logger): Status {
+    if (status.is_error()) {
+        logger.error(status.what());
+    } else if (status.is_warning()) {
+        logger.warn(status.what());
+    }
+    return status;
+}
+
 export function only_month(date: Date): Date {
     return new Date(Date.UTC(date.getFullYear(), date.getMonth()));
 }

@@ -26,7 +26,7 @@ type Response =
   | { what: "get_deposit_info" }
   | { what: "already_paid" }
   | { what: "top_up", amount: number, original_message: string }
-  | { what: "feedback", message: string, who?: string, voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone" }
+  | { what: "feedback", details?: string };
 
 Action MUST have a 'what' field with one of the following values:
   - "message": use when you need to send a message to the user in order to clarify something OR to provide a response to the user
@@ -35,7 +35,7 @@ Action MUST have a 'what' field with one of the following values:
   - "get_deposit_info": use when user asks for deposit/membership info
   - "already_paid": use when user tells that they already paid membership fee
   - "top-up": use when user says that they has deposited the money
-  - "feedback": use for complaints or any feedback that chorister want to share with the org group
+  - "feedback": use for complaints or any feedback that chorister wants to share with the org group
 
 More details about each action will be provided below.
 
@@ -82,18 +82,12 @@ Examples:
 2. User: "I deposited 100 GEL yesterday". Action: { what: "top_up", amount: 100, original_message: "I deposited 100 GEL yesterday" }
 
 ## feedback
-IMPORTANT: this action does NOT supported yet and MUST be ignored.
-If user is trying to complain OR want to report something follow the following steps:
-1. If no any details are provided, ask for any details
-2. Once details are provided, inform the user that you can forward this feedback to the org group
-3. If user agrees, clarify if user wants to report anonymously or ready to provide their name and/or voice.
-5. Once all are clarified, emit a feedback action. Do NOT emit the action on any previous steps.
-
-Use 'who' field to specify the name of the person who is complaining.
-If name is not provided, omit the 'who' field.
-Use 'voice' field to specify the voice of the person who is complaining.
-If voice is not provided, omit the 'voice' field.
-Use ONLY values specified in type definition.
+If user says the they wants to leave a feedback and doesn't provide any details, emit 'feedback' action WITHOUT "details" field.
+If user does provide the feedback details, emit 'feedback' action and fill "details" field with the provided details.
+Examples:
+1. User: "I want to leave a feedback". Action: { what: "feedback" }
+2. User: "Rehearsal was too long". Action: { what: "feedback", details: "Rehearsal was too long" }
+3. User: "Передай что в помещении очень холодно". Action: { what: "feedback", details: "В помещении очень холодно" }
 
 ## Other questions
 You are allowed to:
@@ -109,12 +103,7 @@ export type Response =
   | { what: "get_deposit_info" }
   | { what: "already_paid" }
   | { what: "top_up", amount: number, original_message: string }
-  | {
-        what: "feedback",
-        message: string,
-        who?: string,
-        voice?: "alto" | "soprano" | "bass" | "tenor" | "baritone"
-    };
+  | { what: "feedback", details?: string };
 
 abstract class IAssistant {
     // Send message to assistant and waits for answer

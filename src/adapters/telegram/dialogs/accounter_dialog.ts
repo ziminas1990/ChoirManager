@@ -4,8 +4,9 @@ import { Formatter, GlobalFormatter } from "@src/utils.js";
 import { Language, User } from "@src/database.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { Orator } from "./deposit_owner_dialog.js";
+import { IAccounterAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 
-export class AccounterDialog {
+export class AccounterDialog implements IAccounterAgent {
     private formatter: Formatter;
 
     constructor(
@@ -13,6 +14,10 @@ export class AccounterDialog {
         formatter?: Formatter)
     {
         this.formatter = formatter ?? GlobalFormatter.instance();
+    }
+
+    base(): IUserAgent {
+        return this.user;
     }
 
     async send_top_up_notification(who: User, amount: number, original_message: string)
@@ -45,7 +50,8 @@ export class AccounterDialog {
         return await this.user.send_message(message);
     }
 
-    async mirror_reminder(who: User, amount: number, lang: Language): Promise<Status> {
+    async mirror_reminder(who: User, amount: number): Promise<Status> {
+        const lang = this.user.info().lang;
         return await this.user.send_message(this.mirrored_reminder(who, amount, lang));
     }
 

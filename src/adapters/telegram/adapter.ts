@@ -5,11 +5,16 @@ import { Status, StatusWith } from "@src/status.js";
 import { Journal } from "@src/journal.js";
 import { Formatting, return_fail } from "@src/utils.js";
 import { Logic } from "@src/logic/abstracts.js";
-import { TelegramUser } from "./telegram_user.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { Role, User } from "@src/database.js";
 import { Translator } from "@src/use_cases/translator.js";
 import { AdminActions } from "@src/use_cases/admin_actions.js";
+import { IAdapter, IManagersChat } from "@src/interfaces/adapter.js";
+import { IUserAgent } from "@src/interfaces/user_agent.js";
+import { GroupChat } from "@src/adapters/telegram/group_chat.js";
+import { IGroupChat } from "@src/interfaces/group_chat.js";
+import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
+import { ManagersGroup } from "@src/adapters/telegram/dialogs/managers_group.js";
 
 export type Config = {
     token_file: string;
@@ -26,7 +31,7 @@ export type IcomingItem = {
 
 type PendingAction = () => Promise<Status>;
 
-export class TgAdapter extends Logic<void> {
+export class TgAdapter extends Logic<void> implements IAdapter {
     private bot?: TelegramBot;
     private users: Map<string, TelegramUser> = new Map();
     private pending_actions: PendingAction[] = [];
@@ -36,6 +41,8 @@ export class TgAdapter extends Logic<void> {
     private choir_chat_id?: number;
     private announce_thread_id?: number;
     private managers_chat_id?: number;
+
+    private managers_chat?: IManagersChat;
 
     public static unpack(
         cfg: Config,
@@ -111,6 +118,38 @@ export class TgAdapter extends Logic<void> {
         } catch (e) {
             return Status.exception(e);
         }
+    }
+
+    async get_user_agent(user_id: string): Promise<StatusWith<IUserAgent>> {
+        return this.get_user(user_id);
+    }
+
+    async get_announcement_chat(): Promise<IGroupChat | undefined> {
+        if (this.choir_chat_id == undefined || this.announce_thread_id == undefined) {
+            return undefined;
+        }
+        return new GroupChat(this.choir_chat_id, this.announce_thread_id, this.bot!, this.journal);
+    }
+
+    async get_choir_chat(): Promise<IGroupChat | undefined> {
+        if (this.choir_chat_id == undefined) {
+            return undefined;
+        }
+        return new GroupChat(this.choir_chat_id, undefined, this.bot!, this.journal);
+    }
+
+    async get_managers_chat(): Promise<IManagersChat | undefined> {
+        if (this.managers_chat) {
+            return this.managers_chat;
+        }
+        if (this.managers_chat_id == undefined) {
+            return undefined;
+        }
+        this.managers_chat = new ManagersGroup(
+            new GroupChat(this.managers_chat_id, undefined, this.bot!, this.journal),
+            this.journal
+        );
+        return this.managers_chat;
     }
 
     protected async proceed_impl(_: Date): Promise<StatusWith<void[]>>

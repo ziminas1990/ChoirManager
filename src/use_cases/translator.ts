@@ -31,7 +31,7 @@ export class Translator {
             if (user.data.tgid == author.tgid) {
                 continue;
             }
-            const agents = user.base_agents();
+            const agents = user.all_agents();
             for (const agent of agents) {
                 const status = await agent.send_message(translated_text);
                 if (!status.ok()) {
