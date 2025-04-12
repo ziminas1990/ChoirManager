@@ -61,15 +61,15 @@ export class TelegramCallbacks extends Logic<void> {
                 return status;
             } catch (error) {
                 this.remove_callback(id);
-                return Status.exception(error).wrap(`callback ${callback.debug_name ?? ""} failed`);
+                return Status.exception(error).wrap(`callback '${callback.debug_name ?? ""}' failed`);
             }
         } else {
             return return_fail(`callback ${id} not found`, this.journal.log()).with([]);
         }
     }
 
-    remove_callback(id: string): void {
-        this.callbacks.delete(id);
+    remove_callback(id: string): boolean {
+        return this.callbacks.delete(id);
     }
 
     private generate_id(): string {

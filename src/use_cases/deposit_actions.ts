@@ -23,7 +23,9 @@ export class DepositActions {
             return return_fail(`user ${agent.userid()} is a guest`, journal.log());
         }
 
-        return await agent.send_deposit_info(
+
+
+        return await agent.as_deposit_owner().send_deposit_info(
             user.get_deposit_tracker()?.get_deposit()
         );
     }
@@ -49,7 +51,7 @@ export class DepositActions {
         }
 
         {
-            const status = await agent.send_thanks_for_information();
+            const status = await agent.as_deposit_owner().send_thanks_for_information();
             if (!status.ok()) {
                 journal.log().warn([
                     `failed to send thanks_for_information to ${user_id}`,
@@ -69,7 +71,7 @@ export class DepositActions {
                     user.data, amount, original_message);
                 if (!status.ok()) {
                     journal.log().warn([
-                        `failed to send top_up notification to ${accounter.userid()}`,
+                        `failed to send top_up notification to ${accounter.base().userid()}`,
                         status.what()
                     ].join(":"));
                 }
@@ -93,7 +95,7 @@ export class DepositActions {
         }
 
         {
-            const status = await agent.send_already_paid_response();
+            const status = await agent.as_deposit_owner().send_already_paid_response();
             if (!status.ok()) {
                 journal.log().warn([
                     `failed to send already_paid response to ${user_id}`,
@@ -103,8 +105,8 @@ export class DepositActions {
         }
 
         // Notify all accountants
-        for (const accounter of all_users.values()) {
-            const accounter_agents = accounter.as_accounter();
+        for (const user of all_users.values()) {
+            const accounter_agents = user.as_accounter();
             if (!accounter_agents) {
                 continue;
             }
@@ -112,7 +114,7 @@ export class DepositActions {
                 const status = await accounter.send_already_paid_notification(user.data);
                 if (!status.ok()) {
                     journal.log().warn([
-                        `failed to send already_paid notification to ${accounter.userid}`,
+                        `failed to send already_paid notification to ${user.data.tgid}`,
                         status.what()
                     ].join(":"));
                 }

@@ -8,9 +8,10 @@ import { Language } from "@src/database.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { Config } from "@src/config.js";
+import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 
 
-export class DepositOwnerDialog {
+export class DepositOwnerDialog implements IDepositOwnerAgent {
     private journal: Journal;
     private orator: Orator;
 
@@ -23,12 +24,16 @@ export class DepositOwnerDialog {
         this.orator = new Orator(formatter ?? GlobalFormatter.instance());
     }
 
+    base(): IUserAgent {
+        return this.user;
+    }
+
     async send_deposit_info(info: Deposit | undefined): Promise<Status> {
         return await this.user.send_message(
             this.orator.deposit_info(info, this.user.info().lang));
     }
 
-    async on_deposit_change(deposit: Deposit, changes: DepositChange) : Promise<Status>
+    async send_deposit_changes(deposit: Deposit, changes: DepositChange) : Promise<Status>
     {
         return await this.user.send_message(
             this.orator.deposit_change(deposit, changes, this.user.info().lang)
@@ -47,7 +52,7 @@ export class DepositOwnerDialog {
         );
     }
 
-    async send_reminder(amount: number): Promise<Status> {
+    async send_membership_reminder(amount: number): Promise<Status> {
         const message = [
             this.orator.deposit_reminder(amount, this.user.info().lang),
             "",

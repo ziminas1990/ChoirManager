@@ -4,7 +4,6 @@ import { Runtime } from "@src/runtime.js";
 import { Config } from "@src/config.js";
 import { return_fail } from "@src/utils.js";
 import { User } from "@src/database.js";
-import { UserLogic } from "@src/logic/user.js";
 
 export class AdminActions {
 
@@ -14,7 +13,7 @@ export class AdminActions {
         for (const user of users) {
             const admin_agents = user.as_admin();
             for (const agent of admin_agents ?? []) {
-                const status = await agent.send_message(notification);
+                const status = await agent.send_notification(notification);
                 if (!status.ok()) {
                     journal.log().warn(`Failed to notify admin @${user.data.tgid}: ${status.what()}`);
                 }
@@ -34,8 +33,16 @@ export class AdminActions {
             return return_fail(`User ${user.tgid} is not an admin`, journal.log());
         }
 
-        const status = await this.send_file(user_logic, Config.data.runtime_cache_filename, journal);
-        return status.wrap(`Failed to send runtime backup to @${user.tgid}`);
+        for (const agent of user_logic.as_admin()) {
+            const status = await agent.send_runtime_backup(Config.data.runtime_cache_filename);
+            if (!status.ok()) {
+                journal.log().warn([
+                    `Failed to send runtime backup to @${agent.base().userid()}`,
+                    `Error: ${status.what()}`,
+                ].join("\n"));
+            }
+        }
+        return Status.ok();
     }
 
     static async send_logs(user: User, journal: Journal): Promise<Status> {
@@ -50,18 +57,16 @@ export class AdminActions {
             return return_fail(`User ${user.tgid} is not an admin`, journal.log());
         }
 
-        const status = await this.send_file(user_logic, Config.data.logs_file, journal);
-        return status.wrap(`Failed to send logs to @${user.tgid}`);
-    }
-
-    private static async send_file(user: UserLogic, file: string, journal: Journal): Promise<Status> {
-        const admin_agents = user.as_admin();
-        for (const agent of admin_agents ?? []) {
-            const status = await agent.send_file(file);
+        for (const agent of user_logic.as_admin()) {
+            const status = await agent.send_logs(Config.data.logs_file);
             if (!status.ok()) {
-                journal.log().warn(`Failed to send file to @${user.data.tgid}: ${status.what()}`);
+                journal.log().warn([
+                    `Failed to send runtime backup to @${agent.base().userid()}`,
+                    `Error: ${status.what()}`,
+                ].join("\n"));
             }
         }
+
         return Status.ok();
     }
 }

@@ -18,6 +18,7 @@ import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
 import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
 import { update_v2_v3 } from "./configuration/update_v2_v3.js";
+import { IAdapter } from "./interfaces/adapter.js";
 
 export class Runtime {
 
@@ -203,6 +204,13 @@ export class Runtime {
 
     all_users(): IterableIterator<UserLogic> {
         return this.users.values();
+    }
+
+    get_adapters(): IAdapter[] {
+        const adapters: (IAdapter | undefined)[] = [
+            this.tg_adapter,
+        ];
+        return adapters.filter((adapter) => adapter != undefined) as IAdapter[];
     }
 
     async proceed(now: Date): Promise<Status> {
