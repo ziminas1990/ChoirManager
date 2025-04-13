@@ -1,4 +1,4 @@
-import { Feedback } from "@src/entities/feedback";
+import { Feedback } from "@src/entities/feedback.js";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Status, StatusWith } from "@src/status.js";

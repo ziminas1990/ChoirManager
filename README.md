@@ -80,5 +80,5 @@ docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config -v $(pwd)/logs:/
 
 Regex to find all imports with no ".js" specified:
 ```regex
-import.*from\s+["']([^"']*?)(?<!\.js)["']
+import.*from\s+["']@([^"']*?)(?<!\.js)["']
 ```

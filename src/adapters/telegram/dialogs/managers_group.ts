@@ -24,7 +24,10 @@ export class ManagersGroup implements IManagersChat {
         ];
 
         if (feedback.who) {
-            message.push(`${formatter.bold("Author:")} ${feedback.who}`);
+            message.push([
+                formatter.bold("Author:"),
+                `${feedback.who.name_surname} (@${feedback.who.tgid})`
+            ].join(" "));
         }
         if (feedback.voice) {
             message.push(`${formatter.bold("Voice:")} ${feedback.voice}`);

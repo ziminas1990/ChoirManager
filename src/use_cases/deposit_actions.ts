@@ -40,8 +40,7 @@ export class DepositActions {
         journal.log().info(`top_up ${user_id} ${amount} ${original_message}`);
 
         const runtime = Runtime.get_instance();
-        const all_users = runtime.get_users();
-        const user = all_users.get(user_id);
+        const user = runtime.get_user(user_id, false);
         if (!user) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
@@ -61,7 +60,8 @@ export class DepositActions {
         }
 
         // Notify all accountants
-        for (const accounter of all_users.values()) {
+        const accountants = Runtime.get_instance().get_users(user => user.is_accountant());
+        for (const accounter of accountants) {
             const accounter_agents = accounter.as_accounter();
             if (!accounter_agents) {
                 continue;
@@ -88,8 +88,7 @@ export class DepositActions {
         journal.log().info(`handle already_paid by ${user_id}`);
 
         const runtime = Runtime.get_instance();
-        const all_users = runtime.get_users();
-        const user = all_users.get(user_id);
+        const user = runtime.get_user(user_id, false);
         if (!user) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
@@ -105,8 +104,9 @@ export class DepositActions {
         }
 
         // Notify all accountants
-        for (const user of all_users.values()) {
-            const accounter_agents = user.as_accounter();
+        const accountants = Runtime.get_instance().get_users(user => user.is_accountant());
+        for (const accountant of accountants) {
+            const accounter_agents = accountant.as_accounter();
             if (!accounter_agents) {
                 continue;
             }
@@ -150,7 +150,8 @@ export class DepositActions {
         }
 
         // Notify accountants
-        for (const accounter of Runtime.get_instance().get_users().values()) {
+        const accountants = Runtime.get_instance().get_users(user => user.is_accountant());
+        for (const accounter of accountants) {
             const accounter_dialog = accounter.as_accounter() ?? [];
             for (const dialog of accounter_dialog) {
                 await dialog.mirror_deposit_changes(user.data, deposit, changes);
@@ -193,7 +194,8 @@ export class DepositActions {
         }
 
         // Notify accountants
-        for (const accounter of Runtime.get_instance().get_users().values()) {
+        const accountants = Runtime.get_instance().get_users(user => user.is_accountant());
+        for (const accounter of accountants) {
             const accounter_dialog = accounter.as_accounter() ?? [];
             for (const dialog of accounter_dialog) {
                 await dialog.mirror_reminder(user.data, amount);

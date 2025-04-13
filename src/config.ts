@@ -33,8 +33,9 @@ export class Config {
             reminders: Array<{
                 day_of_month: number,      // 1-31
                 hour_utc: number           // 0-23
-            }>
+            }>,
             reminder_cooldown_hours: number,
+            startup_reminders_freeze_sec: number,
             accounts: Array<{
                 title: string,
                 account: string,
@@ -244,8 +245,8 @@ export class Config {
                 if (cfg.reminder_cooldown_hours == undefined) {
                     return Status.fail(`${fail_prefix}: 'reminder_cooldown_hours' MUST be specified`);
                 }
-                if (cfg.reminder_cooldown_hours < 1) {
-                    return Status.fail(`${fail_prefix}: 'reminder_cooldown_hours' MUST be at least 1 hour`);
+                if (cfg.startup_reminders_freeze_sec == undefined) {
+                    return Status.fail(`${fail_prefix}: 'startup_reminders_freeze_sec' MUST be specified`);
                 }
             }
 

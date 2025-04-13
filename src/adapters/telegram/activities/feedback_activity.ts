@@ -147,9 +147,7 @@ export class FeedbackActivity implements AbstractActivity {
             case "failed":
                 return this.user.edit_message(this.message_id, {
                     text: Messages.failed_widget_text(this.user.info().lang),
-                    inline_keyboard: [
-                        [this.buttons().cancel],
-                    ]
+                    inline_keyboard: undefined
                 });
             default:
                 return Status.ok();
@@ -163,7 +161,10 @@ export class FeedbackActivity implements AbstractActivity {
 
     private async set_privacy(mode: "by_user" | "by_party" | "anonymous"): Promise<Status> {
         if (mode == "by_user") {
-            this.feedback.who = `${this.user.info().name} ${this.user.info().surname} (@${this.user.userid()})`;
+            this.feedback.who = {
+                name_surname: `${this.user.info().name} ${this.user.info().surname}`,
+                tgid: this.user.userid()
+            };
         }
         if (mode == "by_party" || mode == "by_user") {
             this.feedback.voice = this.user.info().voice;
@@ -330,7 +331,7 @@ class Messages {
 
         let who: string = parts.anonymously;
         if (feedback.who) {
-            who = feedback.who;
+            who = `${feedback.who.name_surname} (@${feedback.who.tgid})`;
         } else if (feedback.voice) {
             who = feedback.voice;
         }

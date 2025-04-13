@@ -130,7 +130,7 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         }
 
         // TODO: replace with configurable value
-        if (Runtime.get_instance().running_time_sec() < 3600) {
+        if (Runtime.get_instance().running_time_sec() < cfg.startup_reminders_freeze_sec) {
             // Do not produce any reminders during the hour after restart
             return false;
         }
