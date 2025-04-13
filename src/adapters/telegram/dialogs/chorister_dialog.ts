@@ -32,9 +32,12 @@ export class ChoristerDialog implements IChorister {
     }
 
     async on_message(msg: TelegramBot.Message): Promise<Status> {
-        const text = msg.text;
+        let text = msg.text;
         if (!text) {
             return Status.ok();
+        }
+        if (text == "/start") {
+            text = Messages.again();
         }
 
         // Check for service messages
@@ -361,10 +364,16 @@ class Messages {
         ];
 
         if (feedback.who) {
-            message.push(`${GlobalFormatter.instance().bold("Author:")} ${feedback.who}`);
+            message.push([
+                GlobalFormatter.instance().bold("Author:"),
+                `${feedback.who.name_surname} (@${feedback.who.tgid})`
+            ].join(" "));
         }
         if (feedback.voice) {
-            message.push(`${GlobalFormatter.instance().bold("Voice:")} ${feedback.voice}`);
+            message.push([
+                GlobalFormatter.instance().bold("Voice:"),
+                feedback.voice
+            ].join(" "));
         }
         if (!feedback.who && !feedback.voice) {
             message.push(GlobalFormatter.instance().italic("(anonymous feedback)"));

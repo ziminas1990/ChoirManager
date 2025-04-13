@@ -2,6 +2,7 @@ import { LocalJsonFileFeedbackStorage, Config as LocalJsonFileConfig } from "./l
 import { GoogleSpreadsheetFeedbackStorage, Config as GoogleSpreadsheetConfig } from "./google_spreadsheet.js";
 import { IFeedbackStorage } from "@src/interfaces/feedback_storage.js";
 import { Status, StatusWith } from "@src/status.js";
+import { Journal } from "@src/journal.js";
 
 export type FeedbackStorageConfig =
 { type: "local_json_file" } & LocalJsonFileConfig |
@@ -9,13 +10,15 @@ export type FeedbackStorageConfig =
 
 export class FeedbackStorageFactory {
 
-    static create(config: FeedbackStorageConfig): StatusWith<IFeedbackStorage> {
+    static create(config: FeedbackStorageConfig, parent_journal: Journal)
+    : StatusWith<IFeedbackStorage>
+    {
         switch (config.type) {
             case "local_json_file": {
                 return Status.ok().with(new LocalJsonFileFeedbackStorage(config));
             }
             case "google_spreadsheet": {
-                const storage = new GoogleSpreadsheetFeedbackStorage(config);
+                const storage = new GoogleSpreadsheetFeedbackStorage(config, parent_journal);
                 return Status.ok().with(storage);
             }
         }

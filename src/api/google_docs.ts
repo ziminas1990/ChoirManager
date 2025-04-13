@@ -27,7 +27,7 @@ export class GoogleDocsAPI {
         GoogleDocsAPI.auth = new google.auth.GoogleAuth({
             credentials: credentials,
             scopes: [
-                "https://www.googleapis.com/auth/spreadsheets.readonly",
+                "https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/documents.readonly"
             ],
         });
@@ -76,6 +76,24 @@ export class GoogleSpreadsheet {
             return Status.ok().with(sheet.data.values);
         } catch (err) {
             return Status.exception(err).wrap("Failed to read sheet");
+        }
+    }
+
+    public async append(range: string, row: Row): Promise<Status> {
+        try {
+            const sheet = await GoogleDocsAPI.get_sheets().spreadsheets.values.append({
+                spreadsheetId: this.sheet_id,
+                range: range,
+                valueInputOption: "USER_ENTERED",
+                insertDataOption: "INSERT_ROWS",
+                requestBody: { values: [row] }
+            });
+            if (sheet.status !== 200) {
+                return Status.fail(`Failed to append row: ${sheet.status}`);
+            }
+            return Status.ok();
+        } catch (err) {
+            return Status.exception(err).wrap("Failed to append row");
         }
     }
 }

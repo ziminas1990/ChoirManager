@@ -146,7 +146,8 @@ export class Runtime {
         );
 
         if (Config.data.feedback_storage) {
-            const status = FeedbackStorageFactory.create(Config.data.feedback_storage);
+            const status = FeedbackStorageFactory.create(
+                Config.data.feedback_storage, this.journal);
             if (!status.ok()) {
                 return status.wrap("Failed to create feedback storage");
             }
@@ -156,8 +157,12 @@ export class Runtime {
         return Status.ok();
     }
 
-    get_users(): Map<string, UserLogic> {
-        return this.users;
+    get_users(filter?: (user: UserLogic) => boolean): UserLogic[] {
+        const all = Array.from(this.users.values());
+        if (filter) {
+            return all.filter(filter);
+        }
+        return all;
     }
 
     get_database(): Database {
