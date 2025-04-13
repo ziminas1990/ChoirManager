@@ -9,12 +9,12 @@
         "formatting": "html"
     },
     "users_fetcher": {
-        "google_sheet_id": "1gvVUsCn3xTyav2xMBvaFqs-uBtIL68ucvu2km9A1wMs",
+        "google_sheet_id": "1P1X5cyoODKTaVc86Yuqbv27y9hScdllryRADKr00PhY",
         "range": "Users!A:Z",
         "fetch_interval_sec": 60
     },
     "scores_fetcher": {
-        "google_sheet_id": "1gvVUsCn3xTyav2xMBvaFqs-uBtIL68ucvu2km9A1wMs",
+        "google_sheet_id": "1P1X5cyoODKTaVc86Yuqbv27y9hScdllryRADKr00PhY",
         "range": "Scores!A:Z",
         "fetch_interval_sec": 3600
     },
@@ -26,6 +26,7 @@
             { "day_of_month": 15, "hour_utc": 12 },
             { "day_of_month": 25, "hour_utc": 12 }
         ],
+        "startup_reminders_freeze_sec": 3600,
         "reminder_cooldown_hours": 24,
         "membership_fee": 70,
         "accounts": [
@@ -48,7 +49,8 @@
         "faq_document_id": "1Voaud1Thf71QuATIOC_2zDK29o-aVcmi5Fnz_3RoBes"
     },
     "feedback_storage": {
-        "type": "local_json_file",
-        "filename": "./config/feedbacks.json"
+        "type": "google_spreadsheet",
+        "spreadsheet_id": "1P1X5cyoODKTaVc86Yuqbv27y9hScdllryRADKr00PhY",
+        "sheet_name": "Feedbacks"
     }
 }
