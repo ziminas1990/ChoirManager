@@ -1,23 +1,25 @@
-FROM ubuntu:24.04
-
-ENV DEBIAN_FRONTEND=noninteractive
+# Image for building and bundling application:
+FROM node:18 AS builder
 
 WORKDIR /app
-
 COPY package*.json ./
+COPY tsconfig.json ./
+COPY build.js ./
 COPY src ./src
-COPY files ./files
-COPY tsconfig.json ./tsconfig.json
 
-# Setting up the environment
-RUN apt update && \
-    apt install -y curl gnupg && \
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt install -y nodejs && \
-    rm -rf /var/lib/apt/lists/* && \
-    ln -s /mnt/config ./config
+RUN npm install && npm run build-app
 
-# Building the application
-RUN npm install && npm run compile
+# Minimal runtime image:
+FROM node:18-slim
 
-CMD ["sh", "-c", "npm run app | tee -a /mnt/logs/bot.log"]
+# App lives here
+WORKDIR /app
+
+# Copy compiled and bundled file from builder
+COPY --from=builder /app/dist/app.cjs ./app.cjs
+
+# Optionally link config dir (your original intent)
+RUN npm install request && ln -s /mnt/config ./config
+
+# Run app and pipe logs
+CMD ["sh", "-c", "node app.cjs | tee -a /mnt/logs/bot.log"]
