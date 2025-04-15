@@ -28,10 +28,10 @@ export class RehersalsTracker {
             const rehersal = this.database.add_rehersal(date);
             for (const { name, minutes } of songs) {
                 const song = this.database.add_song(name);
-                this.database.add_song_to_rehersal(rehersal.id, song.id, minutes);
+                this.database.add_song_to_rehersal(rehersal, song.id, minutes);
             }
             for (const { tgid, minutes } of participants) {
-                this.database.add_participant_to_rehersal(rehersal.id, tgid, minutes);
+                this.database.add_participant_to_rehersal(rehersal, tgid, minutes);
             }
         }
     }
