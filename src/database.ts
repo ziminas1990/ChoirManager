@@ -202,12 +202,12 @@ export class Database {
         return song;
     }
 
-    public add_rehersal(date: Date): RehersalData {
+    public add_rehersal(date: Date): Rehersal {
         {
             // Check if already exists (not a problem)
             const rehersal_id = this.rehersals_index.get(date.getTime());
             if (rehersal_id) {
-                return this.rehersals.get(rehersal_id)!;
+                return new Rehersal(this.rehersals.get(rehersal_id)!);
             }
         }
 
@@ -218,46 +218,46 @@ export class Database {
         };
         this.rehersals.set(rehersal.rehersal_id, rehersal);
         this.rehersals_index.set(date.getTime(), rehersal.rehersal_id);
-        return rehersal;
+        return new Rehersal(rehersal);
     }
 
-    public add_song_to_rehersal(rehersal_id: number, song_id: number, minutes: number): Status {
-        if (!this.rehersals.has(rehersal_id)) {
-            return Status.fail(`rehersal ${rehersal_id} not found`);
+    public add_song_to_rehersal(rehersal: Rehersal, song_id: number, minutes: number): Status {
+        if (!this.rehersals.has(rehersal.id())) {
+            return Status.fail(`rehersal ${rehersal.id()} not found`);
         }
         if (!this.songs.has(song_id)) {
             return Status.fail(`song ${song_id} not found`);
         }
-        let rehersal_songs = this.rehersal_songs.get(rehersal_id);
+        let rehersal_songs = this.rehersal_songs.get(rehersal.id());
         if (!rehersal_songs) {
             rehersal_songs = new Map();
-            this.rehersal_songs.set(rehersal_id, rehersal_songs);
+            this.rehersal_songs.set(rehersal.id(), rehersal_songs);
         }
         rehersal_songs.set(song_id, minutes);
         return Status.ok();
     }
 
-    public add_participant_to_rehersal(rehersal_id: number, tgid: string, minutes: number): Status {
-        if (!this.rehersals.has(rehersal_id)) {
-            return Status.fail(`rehersal ${rehersal_id} not found`);
+    public add_participant_to_rehersal(rehersal: Rehersal, tgid: string, minutes: number): Status {
+        if (!this.rehersals.has(rehersal.id())) {
+            return Status.fail(`rehersal ${rehersal.id()} not found`);
         }
         if (!this.users.has(tgid)) {
             return Status.fail(`user ${tgid} not found`);
         }
-        let rehersal_participants = this.rehersal_participants.get(rehersal_id);
+        let rehersal_participants = this.rehersal_participants.get(rehersal.id());
         if (!rehersal_participants) {
             rehersal_participants = new Map();
-            this.rehersal_participants.set(rehersal_id, rehersal_participants);
+            this.rehersal_participants.set(rehersal.id(), rehersal_participants);
         }
         rehersal_participants.set(tgid, minutes);
 
         const chorister = this.users.get(tgid);
-        const rehersal = this.rehersals.get(rehersal_id);
-        if (chorister && rehersal) {
+        const rehersal_data = this.rehersals.get(rehersal.id());
+        if (chorister && rehersal_data) {
             const voice = chorister.voice;
-            const duration_minutes = rehersal.duration_minutes.get(voice);
+            const duration_minutes = rehersal_data.duration_minutes.get(voice);
             if (duration_minutes == undefined || duration_minutes < minutes) {
-                rehersal.duration_minutes.set(voice, minutes);
+                rehersal_data.duration_minutes.set(voice, minutes);
             }
         }
         return Status.ok();
