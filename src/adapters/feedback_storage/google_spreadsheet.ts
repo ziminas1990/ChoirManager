@@ -124,7 +124,7 @@ export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
     }
 
     private async load_feedbacks(): Promise<Status> {
-        const sheet_status = await this.sheet.read("Feedbacks!A:F");
+        const sheet_status = await this.sheet.read(`${this.config.sheet_name}!A:F`);
         if (!sheet_status.ok()) {
             return sheet_status.wrap("can't fetch sheet data");
         }

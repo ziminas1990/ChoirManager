@@ -52,5 +52,10 @@
         "type": "google_spreadsheet",
         "spreadsheet_id": "1P1X5cyoODKTaVc86Yuqbv27y9hScdllryRADKr00PhY",
         "sheet_name": "Feedbacks"
+    },
+    "rehersals_storage": {
+        "type": "google_spreadsheet",
+        "spreadsheet_id": "1C5sfjlZgsZzRax15sizsTIucEyirAWstA0Sca-PJ-F0",
+        "sheet_name": "main"
     }
 }
