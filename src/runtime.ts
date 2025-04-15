@@ -19,6 +19,9 @@ import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
 import { update_v2_v3 } from "./configuration/update_v2_v3.js";
 import { IAdapter } from "./interfaces/adapter.js";
+import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
+import { RehersalsStorageFactory } from "./adapters/rehersals_storage/factory.js";
+import { RehersalsTracker } from "./logic/rehersals_tracker.js";
 
 export class Runtime {
 
@@ -47,6 +50,9 @@ export class Runtime {
     private documents_fetcher?: DocumentsFetcher;
     private scores_fetcher?: ScoresFetcher;
     private feedback_storage?: IFeedbackStorage;
+    private rehersals_storage?: IRehersalsStorage;
+
+    private rehersals_tracker?: RehersalsTracker;
 
     private tg_adapter?: TgAdapter;
 
@@ -146,12 +152,36 @@ export class Runtime {
         );
 
         if (Config.data.feedback_storage) {
-            const status = FeedbackStorageFactory.create(
+            this.journal.log().info("Initializing feedback storage...");
+            let status = FeedbackStorageFactory.create(
                 Config.data.feedback_storage, this.journal);
-            if (!status.ok()) {
+            if (!status.ok() || !status.value) {
                 return status.wrap("Failed to create feedback storage");
             }
             this.feedback_storage = status.value;
+            status = await this.feedback_storage.init();
+            if (!status.ok()) {
+                return status.wrap("Failed to initialize feedback storage");
+            }
+        }
+
+        if (Config.data.rehersals_storage) {
+            this.journal.log().info("Initializing rehersals storage...");
+            let status = RehersalsStorageFactory.create(Config.data.rehersals_storage);
+            if (!status.ok() || !status.value) {
+                return status.wrap("Failed to create rehersals storage");
+            }
+            this.rehersals_storage = status.value;
+            status = await this.rehersals_storage.init();
+            if (!status.ok()) {
+                return status.wrap("Failed to initialize rehersals storage");
+            }
+            this.rehersals_tracker = new RehersalsTracker(
+                this.rehersals_storage, this.database, this.journal);
+            status = await this.rehersals_tracker.init();
+            if (!status.ok()) {
+                return status.wrap("Failed to initialize rehersals tracker");
+            }
         }
 
         return Status.ok();

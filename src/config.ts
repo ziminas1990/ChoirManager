@@ -2,6 +2,7 @@ import fs from "fs"
 import { Status } from "@src/status.js";
 import { Formatting } from "@src/utils.js";
 import { FeedbackStorageConfig, FeedbackStorageFactory } from "@src/adapters/feedback_storage/factory.js";
+import { RehersalsStorageConfig, RehersalsStorageFactory } from "@src/adapters/rehersals_storage/factory.js";
 
 export class Config {
 
@@ -50,6 +51,7 @@ export class Config {
             faq_document_id: string
         },
         feedback_storage: FeedbackStorageConfig;
+        rehersals_storage: RehersalsStorageConfig;
     }
 
     static Load(path: string): Status {
@@ -299,6 +301,13 @@ export class Config {
             const status = FeedbackStorageFactory.verify(this.data.feedback_storage);
             if (!status.ok()) {
                 return status.wrap("feedback_storage misconfiguration");
+            }
+        }
+
+        if (this.data.rehersals_storage) {
+            const status = RehersalsStorageFactory.verify(this.data.rehersals_storage);
+            if (!status.ok()) {
+                return status.wrap("rehersals_storage misconfiguration");
             }
         }
 
