@@ -2,7 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 
 import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
-import { AbstractActivity } from "@src/adapters/telegram/activities/abstract.js";
+import { AbstractWidget as AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { Status } from "@src/status.js";
 import { Language } from "@src/database.js";
 import { GlobalFormatter, log_and_return } from "@src/utils.js";
@@ -11,7 +11,7 @@ import { Feedback } from "@src/entities/feedback.js";
 
 type State = "initial" | "waiting_details" | "choose_privacy" | "waiting_confirmation" | "finished" | "failed";
 
-export class FeedbackActivity implements AbstractActivity {
+export class FeedbackWidget implements AbstractWidget {
 
     private journal: Journal;
     private state: State = "initial";

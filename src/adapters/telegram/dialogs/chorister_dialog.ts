@@ -10,8 +10,8 @@ import { AdminActions } from "@src/use_cases/admin_actions.js";
 import { GlobalFormatter, return_exception, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
 import { ChoristerAssistant, Response } from "@src/ai_assistants/chorister_assistant.js";
 import { Language, Scores } from "@src/database.js";
-import { AbstractActivity } from "@src/adapters/telegram/activities/abstract.js";
-import { FeedbackActivity } from "@src/adapters/telegram/activities/feedback_activity.js";
+import { AbstractActivity } from "@src/adapters/telegram/widgets/abstract.js";
+import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
 import { ChoristerStatistics } from "@src/entities/statistics.js";
@@ -233,7 +233,7 @@ export class ChoristerDialog implements IChorister {
         if (this.current_activity) {
             await this.current_activity.interrupt();
         }
-        const feedback_activity = new FeedbackActivity(this.user, this.journal);
+        const feedback_activity = new FeedbackWidget(this.user, this.journal);
         if (details) {
             feedback_activity.on_details_provided(details);
         }

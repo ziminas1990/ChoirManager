@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { Status } from "@src/status.js";
 
-export interface AbstractActivity {
+export interface AbstractWidget {
 
     start(): Promise<Status>;
 
