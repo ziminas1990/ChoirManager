@@ -20,18 +20,28 @@ export function seconds_since(date: Date): number {
 // Applies the specified 'interval' to the specified 'date' inplace(!). Return 'date'
 // object.
 export function apply_interval(
-    date: Date, interval: { months?: number; milliseconds?: number; seconds?: number }): Date
-{
+    date: Date,
+    interval: {
+        months?: number;
+        days?: number;
+        milliseconds?: number;
+        seconds?: number;
+    }
+): Date {
     if (interval.months) {
         date.setMonth(date.getMonth() + interval.months);
     }
 
-    if (interval.milliseconds) {
-        date.setMilliseconds(date.getMilliseconds() + interval.milliseconds);
+    if (interval.days) {
+        date.setDate(date.getDate() + interval.days);
     }
 
     if (interval.seconds) {
         date.setSeconds(date.getSeconds() + interval.seconds);
+    }
+
+    if (interval.milliseconds) {
+        date.setMilliseconds(date.getMilliseconds() + interval.milliseconds);
     }
 
     return date;

@@ -14,6 +14,8 @@ import { AbstractActivity } from "@src/adapters/telegram/activities/abstract.js"
 import { FeedbackActivity } from "@src/adapters/telegram/activities/feedback_activity.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
+import { ChoristerStatistics } from "@src/entities/statistics.js";
+import { Analytic } from "@src/use_cases/analytic";
 
 
 export class ChoristerDialog implements IChorister {
@@ -67,7 +69,8 @@ export class ChoristerDialog implements IChorister {
             );
         } else if (text == Messages.feedback_button(lang)) {
             return await this.start_feedback_activity();
-
+        } else if (text == Messages.statistics_button(lang)) {
+            return await Analytic.chorister_statistic_request(this.user, 30);
         } else if (this.current_activity) {
             // Check if any activity is running and waits for message
             if (this.current_activity.finished()) {
@@ -125,6 +128,12 @@ export class ChoristerDialog implements IChorister {
         this.journal.log().info({ feedback }, "feedback received");
         return this.user.send_message(
             Messages.feedback_received(feedback, this.user.info().lang));
+    }
+
+    // From IChorister
+    async send_statistics(statistics: ChoristerStatistics): Promise<Status> {
+        return this.user.send_message(
+            Messages.statistics(statistics, this.user.info().lang));
     }
 
     private async send_welcome(): Promise<Status> {
@@ -277,7 +286,8 @@ export class ChoristerDialog implements IChorister {
         return {
             keyboard: [
                 [{ text: Messages.again() },
-                 { text: Messages.get_deposit_info(lang)}],
+                 { text: Messages.get_deposit_info(lang)},
+                 { text: Messages.statistics_button(lang)}],
                 [{ text: Messages.feedback_button(lang)},
                  { text: Messages.download_scores(lang)}]
             ],
@@ -317,6 +327,15 @@ class Messages {
             case Language.EN:
             default:
                 return "Leave a feedback";
+        }
+    }
+
+    static statistics_button(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Статистика";
+            case Language.EN:
+            default:
+                return "Statistics";
         }
     }
 
@@ -380,5 +399,50 @@ class Messages {
         }
 
         return message.join("\n");
+    }
+
+    static statistics(statistics: ChoristerStatistics, lang: Language): string {
+        const parts = (() => {
+            switch (lang) {
+                case Language.RU:
+                    return {
+                        header: "Твоя статистика посещений за последние",
+                        days: "дней",
+                        rehersals_status: "Ты посетил(а) {visited_rehersals} из {total_rehersals} репетиций",
+                        hours_status: "Ты репетировал(а) {visited_hours} часов из {total_hours} часов",
+                        attendance: "Твоя посещаемость",
+                    }
+                case Language.EN:
+                default:
+                    return {
+                        header: "Your statistics for the last",
+                        days: "days",
+                        rehersals_status: "You visited {visited_rehersals} out of {total_rehersals} rehearsals",
+                        hours_status: "You spent {visited_hours} hours out of {total_hours} hours",
+                        attendance: "Your attendance",
+                    }
+            }
+        })();
+
+        const formatter = GlobalFormatter.instance();
+
+        const attendance = statistics.visited_hours / statistics.total_hours * 100;
+        const diff_ms = statistics.period.to.getTime() - statistics.period.from.getTime();
+        const days = Math.ceil(diff_ms / (1000 * 60 * 60 * 24));
+
+        const rehersals_stat = parts.rehersals_status
+            .replace("{visited_rehersals}", statistics.visited_rehersals.toFixed(0))
+            .replace("{total_rehersals}", statistics.total_rehersals.toFixed(0));
+
+        const hours_stat = parts.hours_status
+            .replace("{visited_hours}", statistics.visited_hours.toFixed(0))
+            .replace("{total_hours}", statistics.total_hours.toFixed(0));
+
+        return [
+            formatter.bold(`${parts.header} ${days} ${parts.days}:`),
+            rehersals_stat,
+            hours_stat,
+            `${parts.attendance}: ${attendance.toFixed(0)}%`,
+        ].join("\n");
     }
 }
