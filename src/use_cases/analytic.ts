@@ -1,5 +1,6 @@
 import { Database } from "@src/database.js";
 import { ChoristerStatistics } from "@src/entities/statistics.js";
+import { StatusWith } from "@src/status";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Runtime } from "@src/runtime.js";
 import { Status } from "@src/status.js";
@@ -7,7 +8,8 @@ import { apply_interval } from "@src/utils.js";
 
 export class Analytic {
 
-    static async chorister_statistic_request(agent: IUserAgent, days: number): Promise<Status>
+    static chorister_statistic_request(agent: IUserAgent, days: number)
+    : StatusWith<ChoristerStatistics>
     {
         const now = new Date();
         const since = new Date();
@@ -34,7 +36,7 @@ export class Analytic {
             }
         });
 
-        const statistics: ChoristerStatistics = {
+        return Status.ok().with({
             period: {
                 from: since,
                 to: now
@@ -43,8 +45,7 @@ export class Analytic {
             total_hours: rehersals_minutes / 60,
             visited_rehersals: visited_rehersals,
             visited_hours: visited_minutes / 60
-        };
-        return await agent.as_chorister().send_statistics(statistics);
+        });
     }
 
 }

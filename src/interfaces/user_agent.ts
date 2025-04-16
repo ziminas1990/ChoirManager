@@ -2,7 +2,6 @@ import { Status } from "@src/status.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { Scores, User } from "@src/database.js";
 import { Feedback } from "@src/entities/feedback.js";
-import { ChoristerStatistics } from "@src/entities/statistics.js";
 
 
 export interface IUserAgent
@@ -33,8 +32,6 @@ export interface IChorister {
     send_scores_list(scores: Scores[]): Promise<Status>;
 
     on_feedback_received(feedback: Feedback): Promise<Status>;
-
-    send_statistics(statistics: ChoristerStatistics): Promise<Status>;
 }
 
 // Someone who has deposit account
