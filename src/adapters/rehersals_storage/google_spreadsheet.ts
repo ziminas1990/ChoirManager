@@ -137,13 +137,16 @@ function try_parse_user_row(row_id: number, row: string[], columns: TableColumns
 
 export class GoogleSpreadsheetRehersalsStorage implements IRehersalsStorage {
     private sheet: GoogleSpreadsheet;
-    private rehersals: RehersalInfo[] = [];
 
     constructor(private config: Config) {
         this.sheet = new GoogleSpreadsheet(config.spreadsheet_id)
     }
 
     async init(): Promise<Status> {
+        return Status.ok();
+    }
+
+    async fetch(): Promise<StatusWith<RehersalInfo[]>> {
         const sheet_status = await this.sheet.read(`${this.config.sheet_name}`);
         if (!sheet_status.ok()) {
             return sheet_status.wrap("can't fetch sheet data");
@@ -165,6 +168,7 @@ export class GoogleSpreadsheetRehersalsStorage implements IRehersalsStorage {
             }
         });
 
+        const rehersals: RehersalInfo[] = [];
         for (const rehersal_column of rehersals_columns) {
             const rehersal_info: RehersalInfo = {
                 date: rehersal_column.date,
@@ -191,12 +195,8 @@ export class GoogleSpreadsheetRehersalsStorage implements IRehersalsStorage {
                     }
                 }
             }
-            this.rehersals.push(rehersal_info);
+            rehersals.push(rehersal_info);
         }
-        return StatusWith.ok();
-    }
-
-    get_rehersals(): RehersalInfo[] {
-        return this.rehersals;
+        return StatusWith.ok().with(rehersals);
     }
 }

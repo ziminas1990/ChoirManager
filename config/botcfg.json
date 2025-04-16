@@ -42,6 +42,9 @@
             }
         ]
     },
+    "rehersals_tracker": {
+        "fetch_interval_sec": 3600
+    },
     "assistant": {
         "openai_api": "vanilla",
         "model": "gpt-4o",

@@ -253,21 +253,28 @@ export class Runtime {
         if (this.tg_adapter) {
             const status = await this.tg_adapter.proceed(now);
             if (!status.ok()) {
-                this.journal.log().error(status.what());
+                this.journal.log().error(`Tg adapter proceed failed: ${status.what()}`);
             }
         }
 
         if (this.users_fetcher) {
             const users_status = await this.users_fetcher.proceed();
             if (!users_status.ok()) {
-                this.journal.log().error(users_status.what());
+                this.journal.log().error(`Users fetcher proceed failed: ${users_status.what()}`);
             }
         }
 
         if (this.deposits_fetcher) {
             const deposits_status = await this.deposits_fetcher.proceed();
             if (!deposits_status.ok()) {
-                this.journal.log().error(deposits_status.what());
+                this.journal.log().error(`Deposits fetcher proceed failed: ${deposits_status.what()}`);
+            }
+        }
+
+        if (this.rehersals_tracker) {
+            const rehersals_status = await this.rehersals_tracker.proceed(now);
+            if (!rehersals_status.ok()) {
+                this.journal.log().error(`Rehersals tracker proceed failed: ${rehersals_status.what()}`);
             }
         }
 

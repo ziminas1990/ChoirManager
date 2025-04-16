@@ -44,6 +44,9 @@ export class Config {
                 comment: string
             }>
         },
+        rehersals_tracker?: {
+            fetch_interval_sec: number  // not less than 60 seconds
+        },
         assistant?: {
             openai_api: "vanilla" | "assistant"
             model: "gpt-4o-mini" | "gpt-4o"
@@ -308,6 +311,19 @@ export class Config {
             const status = RehersalsStorageFactory.verify(this.data.rehersals_storage);
             if (!status.ok()) {
                 return status.wrap("rehersals_storage misconfiguration");
+            }
+        }
+
+        if (this.data.rehersals_tracker) {
+            if (!this.data.rehersals_storage) {
+                return Status.fail("'rehersals_tracker' is specified, but 'rehersals_storage' is not specified");
+            }
+            const cfg = this.data.rehersals_tracker;
+            if (!cfg.fetch_interval_sec) {
+                return Status.fail("'rehersals_tracker.fetch_interval_sec' MUST be specified");
+            }
+            if (cfg.fetch_interval_sec < 10) {
+                return Status.fail("'rehersals_tracker.fetch_interval_sec' MUST be at least 10 seconds");
             }
         }
 
