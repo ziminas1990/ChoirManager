@@ -147,7 +147,10 @@ export type RehersalData = {
 };
 
 export class Rehersal {
-    constructor(private data: RehersalData) {}
+    constructor(
+        private database: Database,
+        private readonly data: RehersalData,
+    ) {}
 
     public id(): number {
         return this.data.rehersal_id;
@@ -157,102 +160,115 @@ export class Rehersal {
         return this.data.duration_minutes.get(voice) || 0;
     }
 
+    public minutes_of_presence(tgid: string): number {
+        return this.database.lowlevel().rehersal_participants.get(this.id())?.get(tgid) || 0;
+    }
+
     public when(): Date {
         return new Date(this.data.date);
     }
 }
 
+export type Data = {
+    users: Map<string, User>;
+    scores: Map<string, Scores>;
+    songs: Map<number, Song>;
+    rehersals: Map<number, RehersalData>;
+    rehersal_songs: Map<number, Map<number, number>>;
+    rehersal_participants: Map<number, Map<string, number>>;
+    rehersals_index: Map<number, number>;
+    songs_index: Map<string, number>;
+};
+
 export class Database {
-    // tg_id -> user
-    private users: Map<string, User> = new Map();
-    private scores: Map<string, Scores> = new Map();
-    private songs: Map<number, Song> = new Map();
-    private rehersals: Map<number, RehersalData> = new Map();
-
-    // rehersal_id -> song_id -> minutes
-    private rehersal_songs: Map<number, Map<number, number>> = new Map();
-    // rehersal_id -> tgid -> minutes
-    private rehersal_participants: Map<number, Map<string, number>> = new Map();
-
-    // rehersal date (timestamp) -> rehersal_id
-    private rehersals_index: Map<number, number> = new Map();
-    // song_name -> song_id
-    private songs_index: Map<string, number> = new Map();
+    private data: Data = {
+        users: new Map(),
+        scores: new Map(),
+        songs: new Map(),
+        rehersals: new Map(),
+        rehersal_songs: new Map(),
+        rehersal_participants: new Map(),
+        rehersals_index: new Map(),
+        songs_index: new Map()
+    };
 
     public add_user(user: User): void {
-        this.users.set(user.tgid, user);
+        this.data.users.set(user.tgid, user);
     }
 
     public add_scores(scores: Scores): void {
-        this.scores.set(scores.get_key(), scores);
+        this.data.scores.set(scores.get_key(), scores);
     }
 
     public add_song(name: string): Song {
         {
             // Check if already exists (not a problem)
-            const song_id = this.songs_index.get(name);
+            const song_id = this.data.songs_index.get(name);
             if (song_id) {
-                return this.songs.get(song_id)!;
+                return this.data.songs.get(song_id)!;
             }
         }
 
-        const song = new Song(this.songs.size + 1, name);
-        this.songs.set(song.id, song);
-        this.songs_index.set(name, song.id);
+        const song = new Song(this.data.songs.size + 1, name);
+        this.data.songs.set(song.id, song);
+        this.data.songs_index.set(name, song.id);
         return song;
     }
 
     public add_rehersal(date: Date): Rehersal {
         {
             // Check if already exists (not a problem)
-            const rehersal_id = this.rehersals_index.get(date.getTime());
+            const rehersal_id = this.data.rehersals_index.get(date.getTime());
             if (rehersal_id) {
-                return new Rehersal(this.rehersals.get(rehersal_id)!);
+                const rehersal = this.get_rehersal(rehersal_id);
+                if (rehersal) {
+                    return rehersal;
+                }
             }
         }
 
         const rehersal = {
-            rehersal_id: this.rehersals.size + 1,
+            rehersal_id: this.data.rehersals.size + 1,
             date,
             duration_minutes: new Map(),
         };
-        this.rehersals.set(rehersal.rehersal_id, rehersal);
-        this.rehersals_index.set(date.getTime(), rehersal.rehersal_id);
-        return new Rehersal(rehersal);
+        this.data.rehersals.set(rehersal.rehersal_id, rehersal);
+        this.data.rehersals_index.set(date.getTime(), rehersal.rehersal_id);
+        return this.get_rehersal(rehersal.rehersal_id)!;
     }
 
     public add_song_to_rehersal(rehersal: Rehersal, song_id: number, minutes: number): Status {
-        if (!this.rehersals.has(rehersal.id())) {
+        if (!this.data.rehersals.has(rehersal.id())) {
             return Status.fail(`rehersal ${rehersal.id()} not found`);
         }
-        if (!this.songs.has(song_id)) {
+        if (!this.data.songs.has(song_id)) {
             return Status.fail(`song ${song_id} not found`);
         }
-        let rehersal_songs = this.rehersal_songs.get(rehersal.id());
+        let rehersal_songs = this.data.rehersal_songs.get(rehersal.id());
         if (!rehersal_songs) {
             rehersal_songs = new Map();
-            this.rehersal_songs.set(rehersal.id(), rehersal_songs);
+            this.data.rehersal_songs.set(rehersal.id(), rehersal_songs);
         }
         rehersal_songs.set(song_id, minutes);
         return Status.ok();
     }
 
     public add_participant_to_rehersal(rehersal: Rehersal, tgid: string, minutes: number): Status {
-        if (!this.rehersals.has(rehersal.id())) {
+        if (!this.data.rehersals.has(rehersal.id())) {
             return Status.fail(`rehersal ${rehersal.id()} not found`);
         }
-        if (!this.users.has(tgid)) {
+        if (!this.data.users.has(tgid)) {
             return Status.fail(`user ${tgid} not found`);
         }
-        let rehersal_participants = this.rehersal_participants.get(rehersal.id());
+        let rehersal_participants = this.data.rehersal_participants.get(rehersal.id());
         if (!rehersal_participants) {
             rehersal_participants = new Map();
-            this.rehersal_participants.set(rehersal.id(), rehersal_participants);
+            this.data.rehersal_participants.set(rehersal.id(), rehersal_participants);
         }
         rehersal_participants.set(tgid, minutes);
 
-        const chorister = this.users.get(tgid);
-        const rehersal_data = this.rehersals.get(rehersal.id());
+        const chorister = this.data.users.get(tgid);
+        const rehersal_data = this.data.rehersals.get(rehersal.id());
         if (chorister && rehersal_data) {
             const voice = chorister.voice;
             const duration_minutes = rehersal_data.duration_minutes.get(voice);
@@ -263,50 +279,50 @@ export class Database {
         return Status.ok();
     }
 
-    public get_visited_rehersals(tg_id: string): Rehersal[] {
+    public get_rehersals_in_period(since: Date, to: Date): Rehersal[] {
         const rehersals: Rehersal[] = [];
-        for (const [rehersal_id, visitors] of this.rehersal_participants) {
-            if (visitors.has(tg_id)) {
-                rehersals.push(new Rehersal(this.rehersals.get(rehersal_id)!));
+        for (const [rehersal_id, rehersal] of this.data.rehersals) {
+            if (rehersal.date >= since && rehersal.date < to) {
+                rehersals.push(this.get_rehersal(rehersal_id)!);
             }
         }
         return rehersals;
     }
 
-    // How much time a user with the specified 'tg_id' spent on the rehersal with the
-    // specified 'rehersal_id' (in minutes)
-    public time_on_rehersal(tg_id: string, rehersal_id: number): number {
-        const rehersal = this.rehersals.get(rehersal_id);
-        if (!rehersal) {
-            return 0;
+    public get_rehersal(rehersal_id: number): Rehersal | undefined {
+        const rehersal_data = this.data.rehersals.get(rehersal_id);
+        if (!rehersal_data) {
+            return undefined;
         }
-        return this.rehersal_participants.get(rehersal_id)?.get(tg_id) || 0;
+        return new Rehersal(this, rehersal_data);
     }
 
     public get_user(tg_id: string): User | undefined {
-        return this.users.get(tg_id);
+        return this.data.users.get(tg_id);
     }
 
     public create_guest_user(tg_id: string): User {
         const guest = new User(tg_id, "", "", Language.EN, Voice.Unknown, [Role.Guest]);
-        this.users.set(tg_id, guest);
+        this.data.users.set(tg_id, guest);
         return guest;
     }
 
     public find_scores(what: Partial<Scores>): Scores | undefined {
-        return find(this.scores.values(), what);
+        return find(this.data.scores.values(), what);
     }
 
     public all_users(): IterableIterator<User> {
-        return this.users.values();
+        return this.data.users.values();
     }
 
     public all_scores(): IterableIterator<Scores> {
-        return this.scores.values();
+        return this.data.scores.values();
     }
 
+    public lowlevel(): Data { return this.data; }
+
     public verify(): Status {
-        if (this.users.size == 0) {
+        if (this.data.users.size == 0) {
             return Status.fail("no users found in database");
         }
         return Status.ok();
