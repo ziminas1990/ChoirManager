@@ -14,7 +14,7 @@ function parse_date(date: string): Date | undefined {
     if (year < 2000) {
         year += 2000;
     }
-    const date_js = new Date(year, month, day);
+    const date_js = new Date(Date.UTC(year, month, day));
     return date_js;
 }
 
