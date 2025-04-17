@@ -6,8 +6,8 @@ import { Status } from "@src/status.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Journal } from "@src/journal.js";
 import { Language } from "@src/database.js";
-import { GlobalFormatter } from "@src/utils.js";
-import { Analytic } from "@src/use_cases/analytic";
+import { GlobalFormatter, shorten } from "@src/utils.js";
+import { Analytic } from "@src/use_cases/analytic.js";
 
 
 export class ChoristerStatisticsWidget implements AbstractWidget {
@@ -181,6 +181,8 @@ class Messages {
                         rehersals_status: "Ты посетил(а) {visited_rehersals} из {total_rehersals} репетиций",
                         hours_status: "Ты репетировал(а) {visited_hours} из {total_hours} часов",
                         attendance: "Твоя посещаемость",
+                        songs: "Твоя статистика по произведениям",
+                        of: "из",
                     }
                 case Language.EN:
                 default:
@@ -190,6 +192,8 @@ class Messages {
                         rehersals_status: "You visited {visited_rehersals} out of {total_rehersals} rehearsals",
                         hours_status: "You spent {visited_hours} out of {total_hours} hours",
                         attendance: "Your attendance",
+                        songs: "Your statistics by songs",
+                        of: "out of",
                     }
             }
         })();
@@ -208,11 +212,26 @@ class Messages {
             .replace("{visited_hours}", data.visited_hours.toFixed(0))
             .replace("{total_hours}", data.total_hours.toFixed(0));
 
+        const songs_stat = Array.from(data.songs.entries())
+        .sort((a, b) => b[1].actual - a[1].actual)
+        .map(([name, stat]) => {
+            return [
+                shorten(name, 16).padEnd(16),
+                (stat.actual / 60).toFixed(1).padStart(4),
+                parts.of,
+                (stat.ideal / 60).toFixed(1).padEnd(4),
+                `~${((stat.actual / stat.ideal) * 100).toFixed(0)}%`.padStart(5),
+            ].join(" ");
+        }).join("\n");
+
         return [
             formatter.bold(`${parts.header} ${days} ${parts.days}:`),
             rehersals_stat,
             hours_stat,
             `${parts.attendance}: ${attendance.toFixed(0)}%`,
+            "",
+            parts.songs,
+            formatter.preformatted(songs_stat),
         ].join("\n");
     }
 

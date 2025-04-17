@@ -8,4 +8,8 @@ export type ChoristerStatistics = {
     visited_rehersals: number;
     total_hours: number;
     visited_hours: number;
+    songs: Map<string, {
+        ideal: number;
+        actual: number;
+    }>;
 }
