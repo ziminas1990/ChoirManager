@@ -55,6 +55,13 @@ export function split_to_columns<T>(list: T[], columns: number): T[][] {
     return result;
 }
 
+export function shorten(text: string, max_length: number): string {
+    if (text.length <= max_length) {
+        return text;
+    }
+    return text.slice(0, max_length - 3) + "...";
+}
+
 export function return_fail(what: string, logger: pino.Logger): Status {
     logger.error(what);
     return Status.fail(what);
@@ -130,6 +137,22 @@ export class Formatter {
         switch (Formatter.formatting) {
             case "markdown": return `> ${text}`;
             case "html": return `<blockquote>${text}</blockquote>`;
+            default: return text;
+        }
+    }
+
+    monospace(text: string): string {
+        switch (Formatter.formatting) {
+            case "markdown": return `\`${text}\``;
+            case "html": return `<code>${text}</code>`;
+            default: return text;
+        }
+    }
+
+    preformatted(text: string): string {
+        switch (Formatter.formatting) {
+            case "markdown": return `\`\`\`${text}\`\`\``;
+            case "html": return `<pre>${text}</pre>`;
             default: return text;
         }
     }

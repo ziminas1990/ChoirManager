@@ -164,6 +164,21 @@ export class Rehersal {
         return this.database.lowlevel().rehersal_participants.get(this.id())?.get(tgid) || 0;
     }
 
+    public songs(): { name: string, minutes: number }[] {
+        const rehersal_songs = this.database.lowlevel().rehersal_songs.get(this.id());
+        if (!rehersal_songs) {
+            return [];
+        }
+        const songs: { name: string, minutes: number }[] = [];
+        for (const [song_id, minutes] of rehersal_songs) {
+            const song = this.database.lowlevel().songs.get(song_id);
+            if (song) {
+                songs.push({ name: song.name, minutes });
+            }
+        }
+        return songs;
+    }
+
     public when(): Date {
         return new Date(this.data.date);
     }
@@ -174,7 +189,9 @@ export type Data = {
     scores: Map<string, Scores>;
     songs: Map<number, Song>;
     rehersals: Map<number, RehersalData>;
+    // rehersal_id -> song_id -> minutes
     rehersal_songs: Map<number, Map<number, number>>;
+    // rehersal_id -> tgid -> minutes
     rehersal_participants: Map<number, Map<string, number>>;
     rehersals_index: Map<number, number>;
     songs_index: Map<string, number>;
