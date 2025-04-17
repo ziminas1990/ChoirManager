@@ -19,6 +19,7 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
         month: TelegramBot.InlineKeyboardButton;
         two_month: TelegramBot.InlineKeyboardButton;
         three_month: TelegramBot.InlineKeyboardButton;
+        six_month: TelegramBot.InlineKeyboardButton;
         all_time: TelegramBot.InlineKeyboardButton;
         close: TelegramBot.InlineKeyboardButton;
     };
@@ -57,6 +58,7 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
                         month: "За 30 дней",
                         two_month: "За 60 дней",
                         three_month: "За 90 дней",
+                        six_month: "За 180 дней",
                         all_time: "За все время",
                         close: "❌",
                     };
@@ -66,6 +68,7 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
                         month: "For 30 days",
                         two_month: "For 60 days",
                         three_month: "For 90 days",
+                        six_month: "For 180 days",
                         all_time: "All time",
                         close: "❌",
                     }
@@ -85,6 +88,10 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
                 text.three_month,
                 "three_month",
                 () => this.show_statictics(90)),
+            six_month: this.user.create_keyboard_button(
+                text.six_month,
+                "six_month",
+                () => this.show_statictics(180)),
             all_time: this.user.create_keyboard_button(
                 text.all_time,
                 "all_time",
@@ -106,9 +113,10 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
             ],
             [
                 buttons.three_month,
-                buttons.all_time,
+                buttons.six_month,
             ],
             [
+                buttons.all_time,
                 buttons.close,
             ],
         ];

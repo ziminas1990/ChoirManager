@@ -23,16 +23,30 @@ export class Analytic {
             return Status.fail(`User ${user_id} not found`);
         }
 
+        // Total number of rehersals that chorister has visited
         const rehersals = database.get_rehersals_in_period(since, now);
-        let rehersals_minutes = 0;
         let visited_minutes = 0;
         let visited_rehersals = 0;
+        let first_rehersal: Date = now;
         rehersals.forEach(rehersal => {
-            rehersals_minutes += rehersal.duration(user.voice);
             const minutes = rehersal.minutes_of_presence(user_id);
             if (minutes > 0) {
                 visited_minutes += minutes;
                 visited_rehersals++;
+                if (first_rehersal > rehersal.when()) {
+                    first_rehersal = rehersal.when();
+                }
+            }
+        });
+
+        // Total number of minutes of rehersals that choristed would have visited,
+        // if he would have visited all rehersals since first_rehersal
+        let rehersals_minutes = 0;
+        let total_rehersals = 0;
+        rehersals.forEach(rehersal => {
+            if (rehersal.when() >= first_rehersal) {
+                rehersals_minutes += rehersal.duration(user.voice);
+                total_rehersals++;
             }
         });
 
@@ -41,7 +55,7 @@ export class Analytic {
                 from: since,
                 to: now
             },
-            total_rehersals: rehersals.length,
+            total_rehersals: total_rehersals,
             total_hours: rehersals_minutes / 60,
             visited_rehersals: visited_rehersals,
             visited_hours: visited_minutes / 60
