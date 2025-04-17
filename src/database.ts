@@ -279,6 +279,14 @@ export class Database {
         return Status.ok();
     }
 
+    public get_rehersals(): Rehersal[] {
+        const rehersals: Rehersal[] = [];
+        for (const [rehersal_id, _] of this.data.rehersals) {
+            rehersals.push(this.get_rehersal(rehersal_id)!);
+        }
+        return rehersals;
+    }
+
     public get_rehersals_in_period(since: Date, to: Date): Rehersal[] {
         const rehersals: Rehersal[] = [];
         for (const [rehersal_id, rehersal] of this.data.rehersals) {
