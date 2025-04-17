@@ -95,7 +95,7 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
             all_time: this.user.create_keyboard_button(
                 text.all_time,
                 "all_time",
-                () => this.show_statictics(365)),
+                () => this.show_statictics()),
             close: this.user.create_keyboard_button(
                 text.close,
                 "close",
@@ -129,10 +129,10 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
         return Status.ok();
     }
 
-    private async show_statictics(period_days: number): Promise<Status> {
+    private async show_statictics(period_days?: number): Promise<Status> {
         this.journal.log().info({ period_days }, "show statistics");
 
-        const statistic = Analytic.chorister_statistic_request(this.user, period_days);
+        const statistic = Analytic.chorister_statistic_request(this.user.userid(), period_days);
         if (!statistic.ok() || !statistic.value) {
             const status = await this.update_widget(Messages.fail_message(
                 this.user.info().lang
