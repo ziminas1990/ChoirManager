@@ -226,6 +226,8 @@ export class ChoristerDialog implements IChorister {
             return AdminActions.send_runtime_backup(user.value, this.journal);
         } else if (command == "/get_logs") {
             return AdminActions.send_logs(user.value, this.journal);
+        } else if (command == "/stop") {
+            return AdminActions.stop_application(this.journal);
         } else {
             return return_fail(`unknown service command: ${command}`, this.journal.log());
         }

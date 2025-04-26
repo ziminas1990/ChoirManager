@@ -4,6 +4,7 @@ import { Runtime } from "@src/runtime.js";
 import { Config } from "@src/config.js";
 import { return_fail } from "@src/utils.js";
 import { User } from "@src/database.js";
+import { exit } from "process";
 
 export class AdminActions {
 
@@ -68,6 +69,11 @@ export class AdminActions {
         }
 
         return Status.ok();
+    }
+
+    static stop_application(journal: Journal): Promise<Status> {
+        journal.log().info("Stopping application...");
+        exit(0);
     }
 }
 
