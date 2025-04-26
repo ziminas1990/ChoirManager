@@ -367,10 +367,8 @@ export class Runtime {
     }
 
     private async on_user_added(user: UserLogic, startup: boolean): Promise<void> {
-        if (!user.is_guest()) {
-            if (this.deposits_fetcher) {
-                user.attach_deposit_fetcher(this.deposits_fetcher);
-            }
+        if (this.deposits_fetcher) {
+            user.attach_deposit_fetcher(this.deposits_fetcher);
         }
 
         // Notify admins:

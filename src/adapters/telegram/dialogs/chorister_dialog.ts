@@ -15,7 +15,7 @@ import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
-import { ChoristerStatisticsWidget } from "../widgets/chorister_statistics";
+import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/chorister_statistics.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -217,7 +217,7 @@ export class ChoristerDialog implements IChorister {
     private async on_service_message(command: string): Promise<Status> {
         this.journal.log().info(`Processing service message: ${command}`);
 
-        const user = CoreAPI.get_user_by_tg_id(this.user.userid());
+        const user = CoreAPI.get_user_by_tg_id(this.user.userid(), false);
         if (!user || !user.value) {
             return Status.fail(`User ${this.user.userid()} not found`);
         }
