@@ -13,7 +13,7 @@ export class CoreAPI {
         this.journal = journal;
     }
 
-    public static get_user_by_tg_id(tg_id: string, create_guest: boolean = true): StatusWith<User> {
+    public static get_user_by_tg_id(tg_id: string, create_guest: boolean = false): StatusWith<User> {
         const runtime = Runtime.get_instance();
         const user = runtime.get_database().get_user(tg_id);
         if (user) {

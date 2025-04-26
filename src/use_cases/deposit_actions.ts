@@ -23,10 +23,8 @@ export class DepositActions {
             return return_fail(`user ${agent.userid()} is a guest`, journal.log());
         }
 
-
-
         return await agent.as_deposit_owner().send_deposit_info(
-            user.get_deposit_tracker()?.get_deposit()
+            user.get_deposit_tracker().get_deposit()
         );
     }
 

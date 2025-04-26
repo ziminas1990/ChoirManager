@@ -26,6 +26,7 @@ export class UserLogic extends Logic<void> {
         }
 
         this.journal = parent_journal.child(`@${data.tgid}`, additional_tags);
+        this.journal.log().info(`UserLogic created for ${data.tgid}`);
 
         this.deposit_tracker = new DepositsTracker(this.data.tgid, this.journal);
     }
@@ -106,7 +107,7 @@ export class UserLogic extends Logic<void> {
             .filter(agent => agent !== undefined);
     }
 
-    get_deposit_tracker(): DepositsTracker | undefined {
+    get_deposit_tracker(): DepositsTracker {
         return this.deposit_tracker;
     }
 
