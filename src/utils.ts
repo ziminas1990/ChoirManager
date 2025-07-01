@@ -156,6 +156,14 @@ export class Formatter {
             default: return text;
         }
     }
+
+    link(text: string, url: string): string {
+        switch (Formatter.formatting) {
+            case "markdown": return `[${text}](${url})`;
+            case "html": return `<a href="${url}">${text}</a>`;
+            default: return text;
+        }
+    }
 }
 
 export class GlobalFormatter extends Formatter {
