@@ -1,15 +1,9 @@
-import path from "path";
-import fs from "fs";
-
 import { Status } from "@src/status.js";
 import { Scores } from "@src/database.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Journal } from "@src/journal.js";
 import { Runtime } from "@src/runtime.js";
-import { return_exception, return_fail } from "@src/utils.js";
-
-
-const SCORES_DIR = path.join(process.cwd(), 'files/scores');
+import { GlobalFormatter, return_exception, return_fail } from "@src/utils.js";
 
 export class ScoresActions {
 
@@ -69,11 +63,9 @@ export class ScoresActions {
         }
 
         try {
-            const filepath = path.join(SCORES_DIR, score.file);
-            if (!fs.existsSync(filepath)) {
-                return return_fail(`score file ${filepath} not found`, journal.log());
-            }
-            return await agent.send_file(filepath, `Scores for ${score.name}`, "application/pdf");
+            return agent.send_message(GlobalFormatter.instance().link(
+                `"${score.name}" by ${score.author}`,
+                score.file));
         } catch (err) {
             return return_exception(err, journal.log());
         }
