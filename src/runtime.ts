@@ -22,6 +22,8 @@ import { IAdapter } from "./interfaces/adapter.js";
 import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
 import { RehersalsStorageFactory } from "./adapters/rehersals_storage/factory.js";
 import { RehersalsTracker } from "./logic/rehersals_tracker.js";
+import { IMessagesBacklog } from "./interfaces/messages_backlog.js";
+import { MessagesStorageFactory } from "./adapters/messages_storage/factory.js";
 
 export class Runtime {
 
@@ -51,6 +53,7 @@ export class Runtime {
     private scores_fetcher?: ScoresFetcher;
     private feedback_storage?: IFeedbackStorage;
     private rehersals_storage?: IRehersalsStorage;
+    private managers_chat_backlog?: IMessagesBacklog;
 
     private rehersals_tracker?: RehersalsTracker;
 
@@ -184,6 +187,18 @@ export class Runtime {
             }
         }
 
+        if (Config.data.managers_chat_backlog) {
+            this.journal.log().info("Initializing managers chat backlog...");
+            let status = MessagesStorageFactory.create(Config.data.managers_chat_backlog);
+            if (!status.ok() || !status.value) {
+                return status.wrap("Failed to create managers chat backlog");
+            }
+            this.managers_chat_backlog = status.value;
+            status = await this.managers_chat_backlog.init();
+            if (!status.ok()) {
+                return status.wrap("Failed to initialize managers chat backlog");
+            }
+        }
         return Status.ok();
     }
 
@@ -201,6 +216,10 @@ export class Runtime {
 
     get_feedback_storage(): IFeedbackStorage | undefined {
         return this.feedback_storage;
+    }
+
+    get_managers_chat_backlog(): IMessagesBacklog | undefined {
+        return this.managers_chat_backlog;
     }
 
     attach_users_fetcher(fetcher: UsersFetcher): void {
