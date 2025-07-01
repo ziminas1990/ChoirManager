@@ -1,60 +1,5 @@
-import fs from "fs";
-import { google, Auth, sheets_v4, docs_v1 } from "googleapis";
-
-
 import { Status, StatusWith } from "@src/status.js";
-
-
-export class GoogleDocsAPI {
-
-    private static auth: Auth.GoogleAuth | undefined = undefined;
-
-    private static sheets?: sheets_v4.Sheets;
-    private static documents?: docs_v1.Docs;
-
-    public static authenticate(google_cloud_key_file: string): Status {
-
-        let credentials: any | undefined = undefined;
-        try {
-            credentials = JSON.parse(fs.readFileSync(google_cloud_key_file, "utf8"));
-        } catch (error) {
-            return Status.fail(`Failed to load credentials: ${error}`);
-        }
-        if (!credentials) {
-            return Status.fail("Failed to load credentials. File is empty?");
-        }
-
-        GoogleDocsAPI.auth = new google.auth.GoogleAuth({
-            credentials: credentials,
-            scopes: [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/documents.readonly"
-            ],
-        });
-        return Status.ok();
-    }
-
-    public static get_sheets(): sheets_v4.Sheets {
-        if (!GoogleDocsAPI.sheets) {
-            GoogleDocsAPI.sheets = google.sheets({ version: "v4", auth: GoogleDocsAPI.get_auth() });
-        }
-        return GoogleDocsAPI.sheets;
-    }
-
-    public static get_documents(): docs_v1.Docs {
-        if (!GoogleDocsAPI.documents) {
-            GoogleDocsAPI.documents = google.docs({ version: "v1", auth: GoogleDocsAPI.get_auth() });
-        }
-        return GoogleDocsAPI.documents;
-    }
-
-    private static get_auth(): Auth.GoogleAuth {
-        if (!GoogleDocsAPI.auth) {
-            throw new Error("Google Docs API is not initialized");
-        }
-        return GoogleDocsAPI.auth;
-    }
-}
+import { GoogleAuth } from "./google_auth";
 
 export type Row = string[];
 export type Table = Row[];
@@ -66,7 +11,7 @@ export class GoogleSpreadsheet {
 
     public async read(range: string): Promise<StatusWith<Table>> {
         try {
-            const sheet = await GoogleDocsAPI.get_sheets().spreadsheets.values.get({
+            const sheet = await GoogleAuth.get_sheets().spreadsheets.values.get({
                 spreadsheetId: this.sheet_id,
                 range: range
             });
@@ -81,7 +26,7 @@ export class GoogleSpreadsheet {
 
     public async append(range: string, row: Row): Promise<Status> {
         try {
-            const sheet = await GoogleDocsAPI.get_sheets().spreadsheets.values.append({
+            const sheet = await GoogleAuth.get_sheets().spreadsheets.values.append({
                 spreadsheetId: this.sheet_id,
                 range: range,
                 valueInputOption: "USER_ENTERED",
@@ -119,7 +64,7 @@ export class GoogleDocument {
     constructor(private document_id: string) {}
 
     public async read(): Promise<StatusWith<string>> {
-        const res = await GoogleDocsAPI.get_documents().documents.get({
+        const res = await GoogleAuth.get_documents().documents.get({
             documentId: this.document_id
         });
         const content = res.data.body?.content || [];
@@ -140,7 +85,7 @@ export class GoogleDocument {
     // rewritten to be more readable and maintainable.
     public async read_as_simple_markdown(): Promise<StatusWith<string[]>> {
         try {
-            const res = await GoogleDocsAPI.get_documents().documents.get({
+            const res = await GoogleAuth.get_documents().documents.get({
                 documentId: this.document_id
             });
             const content = res.data.body?.content || [];

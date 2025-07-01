@@ -15,6 +15,8 @@ import { GroupChat } from "@src/adapters/telegram/group_chat.js";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { ManagersGroup } from "@src/adapters/telegram/dialogs/managers_group.js";
+import { ManagersChat } from "@src/use_cases/managers_chat";
+import { Message } from "@src/interfaces/messages_backlog";
 
 export type Config = {
     token_file: string;
@@ -209,20 +211,33 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         const is_announce     = msg.chat.id == this.choir_chat_id &&
                                 msg.message_thread_id == this.announce_thread_id;
         const sent_by_manager = user_info.roles.includes(Role.Manager);
+        const sent_to_managers_chat = msg.chat.id == this.managers_chat_id;
 
         if (sent_to_bot || is_announce) {
             this.log_message(msg, "group");
         }
 
         if (sent_by_admin && sent_to_bot) {
-            this.pending_actions.push(async () => await this.handle_admin_message(msg));
+            this.pending_actions.push(async () => {
+                return (await this.handle_admin_message(msg))
+                    .wrap("failed to handle admin message");
+            });
         }
 
         if (is_announce && sent_by_manager && msg.text != undefined) {
             this.pending_actions.push(async () => {
-                return await Translator.translate_announce(user_info, msg.text!, this.journal)
+                return (await Translator.translate_announce(user_info, msg.text!, this.journal))
+                    .wrap("failed to translate announce");
             });
         }
+
+        if (sent_to_managers_chat) {
+            this.pending_actions.push(async () => {
+                return (await this.handle_managers_chat_message(msg))
+                    .wrap("failed to handle managers chat message");
+            });
+        }
+
         return Status.ok();
     }
 
@@ -255,6 +270,30 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return this.on_set_manager_chat_message(msg);
         }
         return return_fail("unexpected message", this.journal.log());
+    }
+
+    async handle_managers_chat_message(msg: TelegramBot.Message): Promise<Status> {
+        const username = msg.from?.username;
+        if (msg.text == undefined || username == undefined) {
+            // Ignoring message
+            return Status.ok();
+        }
+
+        const user_info = CoreAPI.get_user_by_tg_id(username, true);
+        if (!user_info.ok() || user_info.value == undefined) {
+            return Status.fail(`user ${username} not found`);
+        }
+
+        const message: Message = {
+            time: new Date(msg.date * 1000),
+            sender: `${user_info.value.name} ${user_info.value.surname}`,
+            text: msg.text,
+        }
+        const status = await ManagersChat.on_new_message(message);
+        if (!status.ok()) {
+            return status.wrap("failed to store message in backlog");
+        }
+        return Status.ok();
     }
 
     private async on_set_announce_thread_message(msg: TelegramBot.Message): Promise<Status> {

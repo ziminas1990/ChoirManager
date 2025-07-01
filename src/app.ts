@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { Status, StatusWith } from '@src/status.js';
-import { GoogleDocsAPI } from '@src/api/google_docs.js';
+import { GoogleAuth } from '@src/api/google_auth.js';
 import { GoogleTranslate } from '@src/api/google_translate.js';
 import { Runtime } from '@src/runtime.js';
 import { Config } from '@src/config.js';
@@ -62,11 +62,11 @@ async function main() {
     const operations_journal = root_logger.child("operations");
     CoreAPI.attach_journal(operations_journal.child("core_api"));
 
-    root_logger.log().info("Initializing Google Docs API...");
+    root_logger.log().info("Initializing Google Auth...");
     {
-        const status = GoogleDocsAPI.authenticate(Config.data.google_cloud_key_file);
+        const status = await GoogleAuth.authenticate(Config.data.google_cloud_key_file);
         if (!status.ok()) {
-            root_logger.log().error(`Failed to initialize Google Docs API: ${status.what()}`);
+            root_logger.log().error(`Google auth failed: ${status.what()}`);
             await wait_and_exit(10000, 1);
         }
     }

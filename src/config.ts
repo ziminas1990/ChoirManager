@@ -3,6 +3,7 @@ import { Status } from "@src/status.js";
 import { Formatting } from "@src/utils.js";
 import { FeedbackStorageConfig, FeedbackStorageFactory } from "@src/adapters/feedback_storage/factory.js";
 import { RehersalsStorageConfig, RehersalsStorageFactory } from "@src/adapters/rehersals_storage/factory.js";
+import { MessagesStorageConfig, MessagesStorageFactory } from "@src/adapters/messages_storage/factory.js";
 
 export class Config {
 
@@ -12,6 +13,7 @@ export class Config {
         runtime_dump_interval_sec: number;
         openai_api_key_file?: string;
         logs_file: string;
+        firestore_database_id: string;
         tg_adapter: {
             token_file: string;
             formatting: Formatting;
@@ -55,6 +57,7 @@ export class Config {
         },
         feedback_storage: FeedbackStorageConfig;
         rehersals_storage: RehersalsStorageConfig;
+        managers_chat_backlog?: MessagesStorageConfig
     }
 
     static Load(path: string): Status {
@@ -324,6 +327,13 @@ export class Config {
             }
             if (cfg.fetch_interval_sec < 10) {
                 return Status.fail("'rehersals_tracker.fetch_interval_sec' MUST be at least 10 seconds");
+            }
+        }
+
+        if (this.data.managers_chat_backlog) {
+            const status = MessagesStorageFactory.verify(this.data.managers_chat_backlog);
+            if (!status.ok()) {
+                return status.wrap("managers_chat_backlog misconfiguration");
             }
         }
 
