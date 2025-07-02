@@ -13,6 +13,9 @@ export class OpenaiAPI {
         if (!Config.HasOpenAI()) {
             return Status.fail("OpenAI API key is not specified");
         }
+        if (this._instance) {
+            return Status.fail("OpenAI API is already initialized");
+        }
         const api_key = fs.readFileSync(Config.data.openai_api_key_file!, "utf-8").trim();
         this._instance = new OpenAI({ apiKey: api_key, });
         return Status.ok();

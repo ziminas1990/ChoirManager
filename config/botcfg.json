@@ -63,7 +63,8 @@
     },
     "managers_chat_backlog": {
         "type": "google_firestore",
-        "database_id": "ursa-major-test-db",
-        "collection_name": "managers_chat_debug"
+        "read_only": true,
+        "database_id": "ursa-major-db",
+        "collection_name": "managers_chat_backlog"
     }
 }

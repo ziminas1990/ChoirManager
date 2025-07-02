@@ -13,7 +13,7 @@ export class GoogleFirestore implements IMessagesBacklog {
     private db: Firestore;
     private collection: CollectionReference;
 
-    constructor(private config: Config)
+    constructor(private config: Config, private read_only: boolean)
     {
         this.db = GoogleAuth.get_firestore(this.config.database_id);
         this.collection = this.db.collection(this.config.collection_name);
@@ -25,10 +25,13 @@ export class GoogleFirestore implements IMessagesBacklog {
 
     async add_message(message: Message): Promise<Status> {
         try {
-        await this.collection.add({
-            time: message.time,
-                sender: message.sender,
-                text: message.text
+            if (this.read_only) {
+                return Status.fail("Read-only mode");
+            }
+            await this.collection.add({
+                time: message.time,
+                    sender: message.sender,
+                    text: message.text
             });
         } catch (error) {
             return Status.exception(error);
@@ -44,9 +47,10 @@ export class GoogleFirestore implements IMessagesBacklog {
                 .orderBy("time", "asc")
                 .get();
             const result: Message[] = [];
+
             messages.forEach((doc) => {
                 result.push({
-                    time: doc.data().time,
+                    time: new Date(doc.data().time._seconds * 1000),
                     sender: doc.data().sender,
                     text: doc.data().text
                 })

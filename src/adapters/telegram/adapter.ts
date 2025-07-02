@@ -217,7 +217,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             this.log_message(msg, "group");
         }
 
-        if (sent_by_admin && sent_to_bot) {
+        if (sent_by_admin && sent_to_bot && !sent_to_managers_chat) {
             this.pending_actions.push(async () => {
                 return (await this.handle_admin_message(msg))
                     .wrap("failed to handle admin message");
@@ -289,10 +289,27 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             sender: `${user_info.value.name} ${user_info.value.surname}`,
             text: msg.text,
         }
+
+        if (msg.text.startsWith("@ursa_major_choir")) {
+            this.bot!.sendMessage(msg.chat.id, "Пошёл думать, скоро вернусь...");
+            const status = await ManagersChat.answer_question(msg.text);
+            if (!status.ok()) {
+                this.bot!.sendMessage(msg.chat.id,
+                    `Не могу обработать твой запрос и вот почему:\n\n${status.what()}`);
+                this.journal.log().error(`Failed to answer question: ${status.what()}`);
+            } else {
+                this.bot!.sendMessage(msg.chat.id, status.value!, {
+                    parse_mode: "HTML",
+                });
+            }
+            return Status.ok();
+        }
+
         const status = await ManagersChat.on_new_message(message);
         if (!status.ok()) {
             return status.wrap("failed to store message in backlog");
         }
+
         return Status.ok();
     }
 
