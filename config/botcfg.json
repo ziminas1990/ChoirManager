@@ -61,10 +61,20 @@
         "spreadsheet_id": "1C5sfjlZgsZzRax15sizsTIucEyirAWstA0Sca-PJ-F0",
         "sheet_name": "main"
     },
-    "managers_chat_backlog": {
-        "type": "google_firestore",
-        "read_only": true,
-        "database_id": "ursa-major-db",
-        "collection_name": "managers_chat_backlog"
+    "managers_chat": {
+        "backlog": {
+            "type": "google_firestore",
+            "read_only": true,
+            "database_id": "ursa-major-db",
+            "collection_name": "managers_chat_backlog"
+        }
+    },
+    "announce_chat": {
+        "backlog": {
+            "type": "google_firestore",
+            "read_only": false,
+            "database_id": "ursa-major-test-db",
+            "collection_name": "announce_chat_backlog"
+        }
     }
 }

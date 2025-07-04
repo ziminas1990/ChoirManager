@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 import { Status, StatusWith } from "@src/status.js";
 import { IMessagesBacklog, Message } from "@src/interfaces/messages_backlog.js";
 import { CollectionReference, Firestore } from "@google-cloud/firestore";
@@ -6,6 +8,14 @@ import { GoogleAuth } from "@src/api/google_auth";
 export type Config = {
     database_id: string,
     collection_name: string,
+}
+
+function message_id_to_doc_id(message_id: string): string {
+    const hash = crypto.createHash('sha1');
+    hash.update(message_id);
+    const hashBuffer = hash.digest();
+    const hashArray = Array.from(hashBuffer).slice(0, 12);
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 export class GoogleFirestore implements IMessagesBacklog {
@@ -24,14 +34,31 @@ export class GoogleFirestore implements IMessagesBacklog {
     }
 
     async add_message(message: Message): Promise<Status> {
+        const doc_id = message_id_to_doc_id(message.message_id);
         try {
             if (this.read_only) {
                 return Status.fail("Read-only mode");
             }
-            await this.collection.add({
+            await this.collection.doc(doc_id).create({
                 time: message.time,
-                    sender: message.sender,
-                    text: message.text
+                message_id: message.message_id,
+                sender: message.sender_id,
+                text: message.text
+            });
+        } catch (error) {
+            return Status.exception(error);
+        }
+        return Status.ok();
+    }
+
+    async update_message(message: Message): Promise<Status> {
+        const doc_id = message_id_to_doc_id(message.message_id);
+        try {
+            if (this.read_only) {
+                return Status.fail("Read-only mode");
+            }
+            await this.collection.doc(doc_id).update({
+                text: message.text
             });
         } catch (error) {
             return Status.exception(error);
@@ -51,7 +78,8 @@ export class GoogleFirestore implements IMessagesBacklog {
             messages.forEach((doc) => {
                 result.push({
                     time: new Date(doc.data().time._seconds * 1000),
-                    sender: doc.data().sender,
+                    message_id: doc.data().message_id ?? "",
+                    sender_id: doc.data().sender,
                     text: doc.data().text
                 })
             });

@@ -57,7 +57,12 @@ export class Config {
         },
         feedback_storage: FeedbackStorageConfig;
         rehersals_storage: RehersalsStorageConfig;
-        managers_chat_backlog?: MessagesStorageConfig
+        managers_chat?: {
+            backlog?: MessagesStorageConfig
+        }
+        announce_chat?: {
+            backlog?: MessagesStorageConfig
+        }
     }
 
     static Load(path: string): Status {
@@ -330,10 +335,21 @@ export class Config {
             }
         }
 
-        if (this.data.managers_chat_backlog) {
-            const status = MessagesStorageFactory.verify(this.data.managers_chat_backlog);
-            if (!status.ok()) {
-                return status.wrap("managers_chat_backlog misconfiguration");
+        if (this.data.managers_chat) {
+            if (this.data.managers_chat.backlog) {
+                const status = MessagesStorageFactory.verify(this.data.managers_chat.backlog);
+                if (!status.ok()) {
+                    return status.wrap("managers_chat_backlog misconfiguration");
+                }
+            }
+        }
+
+        if (this.data.announce_chat) {
+            if (this.data.announce_chat.backlog) {
+                const status = MessagesStorageFactory.verify(this.data.announce_chat.backlog);
+                if (!status.ok()) {
+                    return status.wrap("announce_chat_backlog misconfiguration");
+                }
             }
         }
 

@@ -22,8 +22,8 @@ import { IAdapter } from "./interfaces/adapter.js";
 import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
 import { RehersalsStorageFactory } from "./adapters/rehersals_storage/factory.js";
 import { RehersalsTracker } from "./logic/rehersals_tracker.js";
-import { IMessagesBacklog } from "./interfaces/messages_backlog.js";
 import { MessagesStorageFactory } from "./adapters/messages_storage/factory.js";
+import { GroupChat } from "./logic/group_chat.js";
 
 export class Runtime {
 
@@ -53,7 +53,9 @@ export class Runtime {
     private scores_fetcher?: ScoresFetcher;
     private feedback_storage?: IFeedbackStorage;
     private rehersals_storage?: IRehersalsStorage;
-    private managers_chat_backlog?: IMessagesBacklog;
+
+    private managers_chat?: GroupChat;
+    private announce_chat?: GroupChat;
 
     private rehersals_tracker?: RehersalsTracker;
 
@@ -187,18 +189,38 @@ export class Runtime {
             }
         }
 
-        if (Config.data.managers_chat_backlog) {
-            this.journal.log().info("Initializing managers chat backlog...");
-            let status = MessagesStorageFactory.create(Config.data.managers_chat_backlog);
-            if (!status.ok() || !status.value) {
-                return status.wrap("Failed to create managers chat backlog");
-            }
-            this.managers_chat_backlog = status.value;
-            status = await this.managers_chat_backlog.init();
-            if (!status.ok()) {
-                return status.wrap("Failed to initialize managers chat backlog");
+        if (Config.data.managers_chat) {
+            this.journal.log().info("Initializing managers chat...");
+            this.managers_chat = new GroupChat(this.journal);
+            if (Config.data.managers_chat.backlog) {
+                const backlog = MessagesStorageFactory.create(Config.data.managers_chat.backlog);
+                if (!backlog.ok() || !backlog.value) {
+                    return backlog.wrap("Failed to create managers chat backlog");
+                }
+                const status = await backlog.value.init();
+                if (!status.ok()) {
+                    return status.wrap("Failed to initialize managers chat backlog");
+                }
+                this.managers_chat.attach_to_backlog(backlog.value);
             }
         }
+
+        if (Config.data.announce_chat) {
+            this.journal.log().info("Initializing announce chat...");
+            this.announce_chat = new GroupChat(this.journal);
+            if (Config.data.announce_chat.backlog) {
+                const backlog = MessagesStorageFactory.create(Config.data.announce_chat.backlog);
+                if (!backlog.ok() || !backlog.value) {
+                    return backlog.wrap("Failed to create announce chat backlog");
+                }
+                const status = await backlog.value.init();
+                if (!status.ok()) {
+                    return status.wrap("Failed to initialize announce chat backlog");
+                }
+                this.announce_chat.attach_to_backlog(backlog.value);
+            }
+        }
+
         return Status.ok();
     }
 
@@ -218,8 +240,12 @@ export class Runtime {
         return this.feedback_storage;
     }
 
-    get_managers_chat_backlog(): IMessagesBacklog | undefined {
-        return this.managers_chat_backlog;
+    get_managers_chat(): GroupChat | undefined {
+        return this.managers_chat;
+    }
+
+    get_announce_chat(): GroupChat | undefined {
+        return this.announce_chat;
     }
 
     attach_users_fetcher(fetcher: UsersFetcher): void {
@@ -294,6 +320,20 @@ export class Runtime {
             const rehersals_status = await this.rehersals_tracker.proceed(now);
             if (!rehersals_status.ok()) {
                 this.journal.log().error(`Rehersals tracker proceed failed: ${rehersals_status.what()}`);
+            }
+        }
+
+        if (this.managers_chat) {
+            const managers_status = await this.managers_chat.proceed(now);
+            if (!managers_status.ok()) {
+                this.journal.log().error(`Managers chat proceed failed: ${managers_status.what()}`);
+            }
+        }
+
+        if (this.announce_chat) {
+            const announce_status = await this.announce_chat.proceed(now);
+            if (!announce_status.ok()) {
+                this.journal.log().error(`Announce chat proceed failed: ${announce_status.what()}`);
             }
         }
 

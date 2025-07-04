@@ -16,7 +16,8 @@ import { IGroupChat } from "@src/interfaces/group_chat.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { ManagersGroup } from "@src/adapters/telegram/dialogs/managers_group.js";
 import { ManagersChat } from "@src/use_cases/managers_chat";
-import { Message } from "@src/interfaces/messages_backlog";
+import { GroupChatMessage } from "@src/logic/group_chat";
+import { AnnouncesChat } from "@src/use_cases/announces_chat";
 
 export type Config = {
     token_file: string;
@@ -101,6 +102,15 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                     this.handle_group_message(msg);
                 if (!status.ok()) {
                     this.journal.log().warn(`failed to handle message: ${status.what()}`);
+                }
+            });
+            this.bot.on("edited_message", (msg) => {
+                if (msg.chat.type != "group") {
+                    return;
+                }
+                const status = this.handle_edited_group_message(msg);
+                if (!status.ok()) {
+                    this.journal.log().error(`failed to handle edited message: ${status.what()}`);
                 }
             });
             this.bot.on("callback_query", (query) => {
@@ -206,12 +216,14 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             user_info = status.value!;
         }
 
+        const general_thread  = msg.message_thread_id == undefined;
         const sent_by_admin   = user_info.roles.includes(Role.Admin);
         const sent_to_bot     = msg.text?.includes("@ursa_major_choir");
-        const is_announce     = msg.chat.id == this.choir_chat_id &&
+        const is_announce     = !general_thread &&
+                                msg.chat.id == this.choir_chat_id &&
                                 msg.message_thread_id == this.announce_thread_id;
         const sent_by_manager = user_info.roles.includes(Role.Manager);
-        const sent_to_managers_chat = msg.chat.id == this.managers_chat_id;
+        const sent_to_managers_chat = general_thread && msg.chat.id === this.managers_chat_id;
 
         if (sent_to_bot || is_announce) {
             this.log_message(msg, "group");
@@ -226,6 +238,10 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
         if (is_announce && sent_by_manager && msg.text != undefined) {
             this.pending_actions.push(async () => {
+                return (await this.handle_announce_chat_message(msg))
+                    .wrap("failed to handle announce chat message");
+            });
+            this.pending_actions.push(async () => {
                 return (await Translator.translate_announce(user_info, msg.text!, this.journal))
                     .wrap("failed to translate announce");
             });
@@ -238,6 +254,11 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             });
         }
 
+        return Status.ok();
+    }
+
+    private handle_edited_group_message(msg: TelegramBot.Message): Status {
+        this.log_message(msg, "group");
         return Status.ok();
     }
 
@@ -279,14 +300,15 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return Status.ok();
         }
 
-        const user_info = CoreAPI.get_user_by_tg_id(username, true);
-        if (!user_info.ok() || user_info.value == undefined) {
-            return Status.fail(`user ${username} not found`);
+        const user = this.get_user(username);
+        if (!user.ok() || user.value == undefined) {
+            return user.wrap(`can't get user ${username}`);
         }
 
-        const message: Message = {
+        const message: GroupChatMessage = {
             time: new Date(msg.date * 1000),
-            sender: `${user_info.value.name} ${user_info.value.surname}`,
+            message_id: msg.message_id.toString(),
+            user_id: username,
             text: msg.text,
         }
 
@@ -295,7 +317,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             const status = await ManagersChat.answer_question(msg.text);
             if (!status.ok()) {
                 this.bot!.sendMessage(msg.chat.id,
-                    `Не могу обработать твой запрос и вот почему:\n\n${status.what()}`);
+                    `Я потерпел фиаско:\n\n${status.what()}`);
                 this.journal.log().error(`Failed to answer question: ${status.what()}`);
             } else {
                 this.bot!.sendMessage(msg.chat.id, status.value!, {
@@ -305,9 +327,36 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return Status.ok();
         }
 
-        const status = await ManagersChat.on_new_message(message);
+        const status = await ManagersChat.on_new_message(user.value, message);
         if (!status.ok()) {
-            return status.wrap("failed to store message in backlog");
+            return status;
+        }
+
+        return Status.ok();
+    }
+
+    async handle_announce_chat_message(msg: TelegramBot.Message): Promise<Status> {
+        const username = msg.from?.username;
+        if (msg.text == undefined || username == undefined) {
+            // Ignoring message
+            return Status.ok();
+        }
+
+        const user = this.get_user(username);
+        if (!user.ok() || user.value == undefined) {
+            return user.wrap(`can't get user ${username}`);
+        }
+
+        const message: GroupChatMessage = {
+            time: new Date(msg.date * 1000),
+            message_id: msg.message_id.toString(),
+            user_id: username,
+            text: msg.text,
+        }
+
+        const status = await AnnouncesChat.on_new_message(user.value, message);
+        if (!status.ok()) {
+            return status;
         }
 
         return Status.ok();

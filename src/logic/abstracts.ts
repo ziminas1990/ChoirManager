@@ -4,21 +4,31 @@ import { apply_interval } from "@src/utils.js";
 export abstract class Logic<Event> {
 
     private next_proceed: Date;
+    private last_proceed: Date;
 
     constructor(private proceed_interval_ms: number)
     {
         this.next_proceed = new Date();
+        this.last_proceed = new Date();
     }
 
     async proceed(now: Date): Promise<StatusWith<Event[]>> {
         if (this.next_proceed <= now) {
+            const interval_ms = now.getTime() - this.last_proceed.getTime();
+            this.last_proceed = now;
             apply_interval(this.next_proceed, { milliseconds: this.proceed_interval_ms });
-            return this.proceed_impl(now);
+            return this.proceed_impl(now, interval_ms);
         }
         return Status.ok().with<Event[]>([]);
     }
 
-    protected abstract proceed_impl(now: Date): Promise<StatusWith<Event[]>>;
+    protected abstract proceed_impl(now: Date, interval_ms: number): Promise<StatusWith<Event[]>>;
+
+    // Should be called if logic got some event, that should be processed immediately,
+    // without waiting for the next proceed interval
+    protected proceed_asap(): void {
+        this.next_proceed = new Date();
+    }
 }
 
 
