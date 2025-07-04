@@ -39,8 +39,7 @@ export async function answer_question(
 
     // Add conversation messages
     conversation.forEach((c) => {
-        const name = c.author.split(" ")[0];
-        messages.push({ role: "user", content: c.content, name });
+        messages.push({ role: "user", content: c.content, name: c.author });
     });
 
     // Add question

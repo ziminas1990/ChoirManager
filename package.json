@@ -12,7 +12,8 @@
     "build_and_run": "npm run build && npm run app",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-app": "npm run compile && node build.js",
-    "app": "node dist/app.cjs"
+    "app": "node dist/app.cjs",
+    "firestore-updater": "node dist/tools/firestore_updater.js"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.16",
