@@ -6,6 +6,7 @@
     "runtime_dump_interval_sec": 10,
     "tg_adapter": {
         "token_file": "./config/tgbot_token",
+        "bot_id": "ursa_major_test_bot",
         "formatting": "html"
     },
     "users_fetcher": {

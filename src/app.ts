@@ -72,7 +72,7 @@ async function main() {
     }
 
     const database = new Database();
-    const users_fetcher = new UsersFetcher(database);
+    const users_fetcher = new UsersFetcher(database, root_logger);
 
     root_logger.log().info("Loading database...");
     const database_status = await load_database(database, users_fetcher);
