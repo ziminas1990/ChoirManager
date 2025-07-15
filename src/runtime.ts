@@ -323,6 +323,13 @@ export class Runtime {
             }
         }
 
+        if (this.scores_fetcher) {
+            const scores_status = await this.scores_fetcher.proceed();
+            if (!scores_status.ok()) {
+                this.journal.log().error(`Scores fetcher proceed failed: ${scores_status.what()}`);
+            }
+        }
+
         if (this.managers_chat) {
             const managers_status = await this.managers_chat.proceed(now);
             if (!managers_status.ok()) {
