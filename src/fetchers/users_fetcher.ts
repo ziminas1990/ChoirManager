@@ -2,6 +2,7 @@ import { Status, StatusWith } from '@src/status.js';
 import { Config } from '@src/config.js';
 import { GoogleSpreadsheet } from '@src/api/google_docs.js';
 import { Database, Language, Role, User, Voice } from '@src/database.js';
+import { Journal } from '@src/journal';
 
 type TableColumns = {
     tgid: number,
@@ -17,26 +18,30 @@ type TableColumns = {
 }
 
 function try_parse_header(header: string[]): StatusWith<TableColumns> {
-    const columns = header.map(h => h.toLowerCase().trim());
+    try {
+        const columns = header.map(h => h.toLowerCase().trim());
 
-    const info: Partial<TableColumns> = {}
-    const names: (keyof TableColumns)[] = [
-        "tgid", "name", "language", "voice", "chorister", "manager", "admin", "ex_chorister",
-        "accountant", "conductor"];
+        const info: Partial<TableColumns> = {}
+        const names: (keyof TableColumns)[] = [
+            "tgid", "name", "language", "voice", "chorister", "manager", "admin", "ex_chorister",
+            "accountant", "conductor"];
 
-    columns.forEach((name, idx) => {
-        const column = names.find(n => n.toLowerCase() === name.toLowerCase());
-        if (column) {
-            info[column] = idx;
+        columns.forEach((name, idx) => {
+            const column = names.find(n => n.toLowerCase() === name.toLowerCase());
+            if (column) {
+                info[column] = idx;
+            }
+        })
+
+        for (const name of names) {
+            if (info[name] === undefined) {
+                return StatusWith.fail(`No '${name}' column found`);
+            }
         }
-    })
-
-    for (const name of names) {
-        if (info[name] === undefined) {
-            return StatusWith.fail(`No '${name}' column found`);
-        }
+        return StatusWith.ok().with(info as TableColumns);
+    } catch (e) {
+        return StatusWith.exception(e);
     }
-    return StatusWith.ok().with(info as TableColumns);
 }
 
 function get_voice(voice: string): Voice {
@@ -51,22 +56,22 @@ function get_voice(voice: string): Voice {
 
 function get_roles(row: string[], columns: TableColumns): Role[] {
     const roles: Role[] = [];
-    if (row[columns.chorister].toLowerCase() === "true") {
+    if (row[columns.chorister]?.toLowerCase() === "true") {
         roles.push(Role.Chorister);
     }
-    if (row[columns.manager].toLowerCase() === "true") {
+    if (row[columns.manager]?.toLowerCase() === "true") {
         roles.push(Role.Manager);
     }
-    if (row[columns.admin].toLowerCase() === "true") {
+    if (row[columns.admin]?.toLowerCase() === "true") {
         roles.push(Role.Admin);
     }
-    if (row[columns.ex_chorister].toLowerCase() === "true") {
+    if (row[columns.ex_chorister]?.toLowerCase() === "true") {
         roles.push(Role.ExChorister);
     }
-    if (row[columns.accountant].toLowerCase() === "true") {
+    if (row[columns.accountant]?.toLowerCase() === "true") {
         roles.push(Role.Accountant);
     }
-    if (row[columns.conductor].toLowerCase() === "true") {
+    if (row[columns.conductor]?.toLowerCase() === "true") {
         roles.push(Role.Conductor);
     }
     return roles;
@@ -81,26 +86,32 @@ function get_language(lang: string): Language {
 }
 
 function try_parse_row(row: string[], columns: TableColumns): StatusWith<User> {
-    const tgid = row[columns.tgid];
-    if (!tgid || tgid.length === 0) {
-        return StatusWith.fail("No 'tgid' column found");
+    try {
+        const tgid = row[columns.tgid];
+        if (!tgid || tgid.length === 0) {
+            return StatusWith.fail("No 'tgid' column found");
+        }
+
+        const [name, surname] = row[columns.name].split(" ");
+        const lang = get_language(row[columns.language]);
+        const voice = get_voice(row[columns.voice]);
+        const roles = get_roles(row, columns);
+
+        const user = new User(tgid, name, surname, lang, voice, roles);
+        return StatusWith.ok().with(user);
+    } catch (e) {
+        return StatusWith.exception(e);
     }
-
-    const [name, surname] = row[columns.name].split(" ");
-    const lang = get_language(row[columns.language]);
-    const voice = get_voice(row[columns.voice]);
-    const roles = get_roles(row, columns);
-
-    const user = new User(tgid, name, surname, lang, voice, roles);
-    return StatusWith.ok().with(user);
 }
 
 export class UsersFetcher {
     private last_fetch_date?: Date;
     private sheet: GoogleSpreadsheet;
+    private journal: Journal;
 
-    constructor(private database: Database) {
+    constructor(private database: Database, parent_journal: Journal) {
         this.sheet = new GoogleSpreadsheet(Config.UsersFetcher().google_sheet_id)
+        this.journal = parent_journal.child("users_fetcher");
     }
 
     async start(): Promise<Status> {
@@ -127,13 +138,17 @@ export class UsersFetcher {
         }
         const columns = header_status.value!;
 
-        const users = table.slice(1).map(row => try_parse_row(row, columns));
-
-        users.forEach((user) => {
-            if (user.ok()) {
-                this.update_database(user.value!);
+        const users: User[] = []
+        table.slice(1).forEach((row, idx) => {
+            const status = try_parse_row(row, columns);
+            if (!status.ok()) {
+                this.journal.log().error(`Error parsing user '${row[columns.tgid]}' at row ${idx}: ${status.what()}`);
+            } else {
+                users.push(status.value!);
             }
         });
+
+        users.forEach((user) => this.update_database(user));
         return Status.ok();
     }
 
@@ -144,7 +159,7 @@ export class UsersFetcher {
         } else {
             const diffs = existing_user.update(user);
             if (diffs.length > 0) {
-                console.log(`Updated user ${user.tgid}: ${diffs.join(", ")}`);
+                this.journal.log().info(`Updated user ${user.tgid}: ${diffs.join(", ")}`);
             }
         }
     }
