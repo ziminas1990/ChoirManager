@@ -162,9 +162,13 @@ export class GoogleSpreadsheetRehersalsStorage implements IRehersalsStorage {
 
         const rows: Row[] = [];
         table.slice(1).forEach((row, row_id) => {
-            const row_status = try_parse_user_row(row_id, row, columns.value!);
-            if (row_status) {
-                rows.push(row_status);
+            try {
+                const row_status = try_parse_user_row(row_id, row, columns.value!);
+                if (row_status) {
+                    rows.push(row_status);
+                }
+            } catch (e) {
+                console.error(`Error parsing row ${row_id}: ${e}`);
             }
         });
 
