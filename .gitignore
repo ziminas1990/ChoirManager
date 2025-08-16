@@ -4,3 +4,7 @@ dist
 openai_api_key
 tgbot_token
 google_cloud_key.json
+
+config/google_cloud_key.json
+config/openai_api_key
+config/tgbot_token
