@@ -1,0 +1,31 @@
+{
+  "version": 3,
+  "tg_adapter": {
+    "users": [
+      {
+        "tgid": "alexander_in_tg",
+        "chat_id": 89959802
+      },
+      {
+        "tgid": "Igorboq",
+        "chat_id": 377617433
+      }
+    ]
+  },
+  "users": [
+    [
+      "alexander_in_tg",
+      {
+        "tgid": "alexander_in_tg",
+        "deposit_tracker": {}
+      }
+    ],
+    [
+      "Igorboq",
+      {
+        "tgid": "Igorboq",
+        "deposit_tracker": {}
+      }
+    ]
+  ]
+}

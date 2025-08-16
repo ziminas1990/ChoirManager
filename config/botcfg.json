@@ -20,7 +20,7 @@
         "fetch_interval_sec": 3600
     },
     "deposit_tracking": {
-        "google_sheet_id": "1F-ZlOD8ags8A-r40V700qBCbJrXTG07Dbet9wFmWtYc",
+        "google_sheet_id": "1Y8OsJmCLgc4Nfjj_nzrnIp9mF7jPN49hkpLunbv2Cb8",
         "fetch_interval_sec": 30,
         "collect_interval_sec": 60,
         "reminders": [

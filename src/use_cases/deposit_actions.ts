@@ -28,6 +28,22 @@ export class DepositActions {
         );
     }
 
+    static async transactions_requested(
+        agent: IUserAgent,
+        journal: Journal
+    ): Promise<Status> {
+        const user = Runtime.get_instance().get_user(agent.userid());
+        if (!user) {
+            return return_fail(`user ${agent.userid()} not found`, journal.log());
+        }
+
+        if (user.is_guest()) {
+            return return_fail(`user ${agent.userid()} is a guest`, journal.log());
+        }
+
+        return await agent.as_deposit_owner().send_transactions_info();
+    }
+
     static async top_up(
         agent: IUserAgent,
         amount: number,
@@ -155,6 +171,16 @@ export class DepositActions {
                 await dialog.mirror_deposit_changes(user.data, deposit, changes);
             }
         }
+
+        Runtime.get_instance()
+        .get_database()
+        .add_transaction(            
+                user.data.tgid,
+                new Date(),
+                changes.total_change,
+                deposit.balance
+        );
+        
         return Status.ok();
     }
 
@@ -211,6 +237,7 @@ export class DepositActions {
         journal.log().info({ event }, `got event`);
         switch (event.what) {
             case "update":
+
                 return await this.send_deposit_update(
                     user, event.deposit, event.changes, journal);
             case "reminder":

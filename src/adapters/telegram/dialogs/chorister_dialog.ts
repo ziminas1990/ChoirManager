@@ -71,6 +71,11 @@ export class ChoristerDialog implements IChorister {
             return await this.start_feedback_activity();
         } else if (text == Messages.statistics_button(lang)) {
             return await this.create_statistics_widget();
+        } else if (text == Messages.get_transactions_button(lang)) {
+            return await DepositActions.transactions_requested(
+                this.user,
+                this.journal
+            );
         } else if (this.widgets.length > 0) {
             const waiting_widgets = this.widgets.filter(widget => widget.waits_for_message());
             // Only the most recent widget should receive a message
@@ -298,9 +303,12 @@ export class ChoristerDialog implements IChorister {
             keyboard: [
                 [{ text: Messages.again() },
                  { text: Messages.get_deposit_info(lang)},
-                 { text: Messages.statistics_button(lang)}],
+                 { text: Messages.statistics_button(lang)}
+                ],
                 [{ text: Messages.feedback_button(lang)},
-                 { text: Messages.download_scores(lang)}]
+                 { text: Messages.download_scores(lang)},
+                 { text: Messages.get_transactions_button(lang) }
+                ]
             ],
             is_persistent: true,
             resize_keyboard: true,
@@ -347,6 +355,15 @@ class Messages {
             case Language.EN:
             default:
                 return "Statistics";
+        }
+    }
+
+    static get_transactions_button(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Транзакции";
+            case Language.EN:
+            default:
+                return "Transactions";
         }
     }
 

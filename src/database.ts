@@ -1,4 +1,5 @@
 import { Status } from "@src/status.js";
+import { Transaction } from "./entities/transaction";
 
 export enum Role {
     Chorister = "chorister",
@@ -195,6 +196,7 @@ export type Data = {
     rehersal_participants: Map<number, Map<string, number>>;
     rehersals_index: Map<number, number>;
     songs_index: Map<string, number>;
+    transactions: Map<string, Transaction[]>;
 };
 
 export class Database {
@@ -206,7 +208,8 @@ export class Database {
         rehersal_songs: new Map(),
         rehersal_participants: new Map(),
         rehersals_index: new Map(),
-        songs_index: new Map()
+        songs_index: new Map(),
+        transactions: new Map(), 
     };
 
     public add_user(user: User): void {
@@ -296,6 +299,19 @@ export class Database {
         return Status.ok();
     }
 
+    public add_transaction(tgid: string,
+                       date: Date,
+                       change: number,
+                       balance_after: number): void {
+        const list = this.data.transactions.get(tgid) ?? [];
+        list.push(new Transaction(date, change, balance_after, tgid));
+        this.data.transactions.set(tgid, list);
+    }
+
+    public get_transactions(tgid: string): Transaction[] {
+        return this.data.transactions.get(tgid) ?? [];
+    }
+
     public get_rehersals(): Rehersal[] {
         const rehersals: Rehersal[] = [];
         for (const [rehersal_id, _] of this.data.rehersals) {
@@ -350,6 +366,11 @@ export class Database {
         if (this.data.users.size == 0) {
             return Status.fail("no users found in database");
         }
+        return Status.ok();
+    }
+
+    public async load_test_data(): Promise<Status> {
+
         return Status.ok();
     }
 }

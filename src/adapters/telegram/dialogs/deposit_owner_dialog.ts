@@ -10,6 +10,8 @@ import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { Config } from "@src/config.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 
+import { Runtime } from "@src/runtime.js";
+
 
 export class DepositOwnerDialog implements IDepositOwnerAgent {
     private journal: Journal;
@@ -31,6 +33,11 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
     async send_deposit_info(info: Deposit | undefined): Promise<Status> {
         return await this.user.send_message(
             this.orator.deposit_info(info, this.user.info().lang));
+    }
+
+    async send_transactions_info(): Promise<Status> {
+        return await this.user.send_message(
+            this.orator.transactions_info(this.user.info().tgid));
     }
 
     async send_deposit_changes(deposit: Deposit, changes: DepositChange) : Promise<Status>
@@ -188,6 +195,20 @@ export class Orator {
         lines.push("")
         lines.push(this.waiting_membership(deposit, lang));
         return lines.join("\n")
+    }
+
+    transactions_info(tgid: string): string {
+        const transactions = Runtime.get_instance() // todo: remove dependency on Runtime
+            .get_database()
+            .get_transactions(tgid);
+        if (!transactions || transactions.length == 0) {
+            return "No transactions found for your deposit.";
+        }
+        const lines: string[] = [];
+        for (const tx of transactions) {
+            lines.push(`${tx.date}: ${tx.change} GEL`);
+        }
+        return "Here is the list of your transactions:\n" + lines.join("\n");
     }
 
     waiting_membership(deposit: Deposit, lang: Language): string {

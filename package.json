@@ -31,8 +31,8 @@
   "author": "ziminas1990@gmail.com",
   "license": "ISC",
   "dependencies": {
-    "@google-cloud/translate": "^8.5.0",
     "@google-cloud/firestore": "^7.11.2",
+    "@google-cloud/translate": "^8.5.0",
     "googleapis": "^144.0.0",
     "lodash": "^4.17.21",
     "mustache": "^4.2.0",
