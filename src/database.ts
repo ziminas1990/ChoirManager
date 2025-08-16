@@ -1,5 +1,15 @@
 import { Status } from "@src/status.js";
-import { Transaction } from "./entities/transaction";
+import { FirestoreTransactionsStorage } from '@src/adapters/transactions_storage/google_firestore_transactions.js';
+
+
+
+export type Transaction = {
+    date: Date,
+    change: number,
+    balance_after: number,
+    tgid: string
+};
+// todo: добавить валюту? + тип операции (пополнение/списание)
 
 export enum Role {
     Chorister = "chorister",
@@ -197,6 +207,7 @@ export type Data = {
     rehersals_index: Map<number, number>;
     songs_index: Map<string, number>;
     transactions: Map<string, Transaction[]>;
+    transactions_storage: FirestoreTransactionsStorage;
 };
 
 export class Database {
@@ -210,6 +221,7 @@ export class Database {
         rehersals_index: new Map(),
         songs_index: new Map(),
         transactions: new Map(), 
+        transactions_storage: new FirestoreTransactionsStorage(),
     };
 
     public add_user(user: User): void {
@@ -299,17 +311,23 @@ export class Database {
         return Status.ok();
     }
 
-    public add_transaction(tgid: string,
+    public async add_transaction(tgid: string,
                        date: Date,
                        change: number,
-                       balance_after: number): void {
-        const list = this.data.transactions.get(tgid) ?? [];
-        list.push(new Transaction(date, change, balance_after, tgid));
-        this.data.transactions.set(tgid, list);
+                       balance_after: number) {
+        var normTgid = tgid.trim().toLowerCase();
+
+        await this.data.transactions_storage.logBalanceChange({
+            date: date,
+            change: change,
+            balance_after: balance_after,
+            tgid: normTgid
+        });
     }
 
-    public get_transactions(tgid: string): Transaction[] {
-        return this.data.transactions.get(tgid) ?? [];
+    public async get_transactions(tgid: string): Promise<Transaction[]> {
+        var transactions = await this.data.transactions_storage.getByTgid(tgid);
+        return transactions;
     }
 
     public get_rehersals(): Rehersal[] {
@@ -368,9 +386,6 @@ export class Database {
         }
         return Status.ok();
     }
-
-    public async load_test_data(): Promise<Status> {
-
-        return Status.ok();
-    }
 }
+
+

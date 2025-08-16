@@ -172,7 +172,7 @@ export class DepositActions {
             }
         }
 
-        Runtime.get_instance()
+        await Runtime.get_instance()
         .get_database()
         .add_transaction(            
                 user.data.tgid,

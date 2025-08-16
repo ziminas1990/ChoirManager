@@ -221,13 +221,6 @@ export class Runtime {
             }
         }
 
-        // loading test data of transactions to the database
-        this.journal.log().info("Loading test data of transactions...");
-        const status = await this.database.load_test_data();
-        if (!status.ok()) {
-            return status.wrap("Failed to load test data for transactions");
-        }
-
         return Status.ok();
     }
 

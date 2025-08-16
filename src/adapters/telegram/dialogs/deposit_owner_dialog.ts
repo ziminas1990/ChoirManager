@@ -37,7 +37,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
 
     async send_transactions_info(): Promise<Status> {
         return await this.user.send_message(
-            this.orator.transactions_info(this.user.info().tgid));
+            await this.orator.transactions_info(this.user.info().tgid));
     }
 
     async send_deposit_changes(deposit: Deposit, changes: DepositChange) : Promise<Status>
@@ -197,18 +197,28 @@ export class Orator {
         return lines.join("\n")
     }
 
-    transactions_info(tgid: string): string {
-        const transactions = Runtime.get_instance() // todo: remove dependency on Runtime
+    async transactions_info(tgid: string): Promise<string> {
+        const transactions = await Runtime.get_instance() // todo: remove dependency on Runtime
             .get_database()
             .get_transactions(tgid);
-        if (!transactions || transactions.length == 0) {
+        if (transactions.length == 0) {
             return "No transactions found for your deposit.";
         }
         const lines: string[] = [];
         for (const tx of transactions) {
-            lines.push(`${tx.date}: ${tx.change} GEL`);
+            const d = coerceToDate(tx.date);
+            const dateStr = d ? d.toISOString().slice(0, 10) /* fmtHHMM_YMD(d) */: "<invalid-date>";
+            const amountStr = Number.isFinite(tx.change) ? (tx.change as number).toFixed(2) : String(tx.change);
+            lines.push(`${dateStr}: ${amountStr} GEL`);
         }
-        return "Here is the list of your transactions:\n" + lines.join("\n");
+
+        // todo: наверно, информация о времени тут ненужна
+
+        return [
+            "Here is the list of your transactions:",
+            ...lines,
+            `Transactions count: ${transactions.length}`,
+        ].join("\n");
     }
 
     waiting_membership(deposit: Deposit, lang: Language): string {
@@ -307,4 +317,56 @@ export class Orator {
                 return "Thank you for the information! Passed it to the responsible person.";
         }
     }
+}
+
+function coerceToDate(input: any): Date | null {
+    if (input instanceof Date && !isNaN(input.getTime())) return input;
+
+    if (input && typeof input.toDate === "function") {
+        const d = input.toDate();
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    if (typeof input === "number") {
+        // секунды vs миллисекунды
+        const ms = input > 1e12 ? input : input * 1000;
+        const d = new Date(ms);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    if (typeof input === "string") {
+        const d = new Date(input);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    if (input && typeof input === "object") {
+        if (typeof input.seconds === "number") {
+            const ms = input.seconds * 1000 + (input.nanoseconds ? Math.floor(input.nanoseconds / 1e6) : 0);
+            const d = new Date(ms);
+            return isNaN(d.getTime()) ? null : d;
+        }
+        if (typeof input._seconds === "number") {
+            const ms = input._seconds * 1000 + (input._nanoseconds ? Math.floor(input._nanoseconds / 1e6) : 0);
+            const d = new Date(ms);
+            return isNaN(d.getTime()) ? null : d;
+        }
+    }
+
+    return null;
+}
+
+function fmtHHMM_YMD(d: Date, timeZone?: string): string {
+  // timeZone опционален: "UTC", "Europe/Tbilisi", "Europe/Moscow", и т.п.
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(d);
+
+  const m = Object.fromEntries(parts.map(p => [p.type, p.value]));
+  return `${m.hour}:${m.minute} ${m.year}-${m.month}-${m.day}`;
 }
