@@ -10,6 +10,7 @@
     "compile": "tsc && tsc-alias",
     "build": "npm run compile && npm run webpack-dev",
     "build_and_run": "npm run build && npm run app",
+    "build-app_and_run": "npm run build-app && npm run app",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-app": "npm run compile && node build.js",
     "app": "node dist/app.cjs",

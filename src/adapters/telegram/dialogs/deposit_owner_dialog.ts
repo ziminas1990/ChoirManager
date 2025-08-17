@@ -37,7 +37,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
 
     async send_transactions_info(): Promise<Status> {
         return await this.user.send_message(
-            await this.orator.transactions_info(this.user.info().tgid));
+            await this.orator.transactions_info(this.user.info().tgid, this.user.info().lang));
     }
 
     async send_deposit_changes(deposit: Deposit, changes: DepositChange) : Promise<Status>
@@ -197,28 +197,32 @@ export class Orator {
         return lines.join("\n")
     }
 
-    async transactions_info(tgid: string): Promise<string> {
+    async transactions_info(tgid: string, lang: Language): Promise<string> {
         const transactions = await Runtime.get_instance() // todo: remove dependency on Runtime
             .get_database()
             .get_transactions(tgid);
+
         if (transactions.length == 0) {
-            return "No transactions found for your deposit.";
+            return lang == Language.RU 
+            ? "Нет транзакций для твоего депозита." 
+            : "No transactions found for your deposit.";
         }
         const lines: string[] = [];
+        lines.push(lang == Language.RU ? "Список транзакций:" : "List of transactions:");
+        const currency = lang == Language.RU ? "лар" : "GEL";
         for (const tx of transactions) {
             const d = coerceToDate(tx.date);
-            const dateStr = d ? d.toISOString().slice(0, 10) /* fmtHHMM_YMD(d) */: "<invalid-date>";
-            const amountStr = Number.isFinite(tx.change) ? (tx.change as number).toFixed(2) : String(tx.change);
-            lines.push(`${dateStr}: ${amountStr} GEL`);
+            const dateStr = d ? d.toISOString().slice(0, 10) : "<invalid-date>";
+            const amountStr = Number.isFinite(tx.change) 
+                ? (tx.change as number).toFixed(2) 
+                : String(tx.change);
+            const action = tx.change > 0 
+            ? lang == Language.RU ? "Пополнение" : "Replenishment"
+            : lang == Language.RU ? "Списание"   : "Withdrawal";
+            lines.push(`${action} ${dateStr}: ${amountStr} ${currency}`);
         }
 
-        // todo: наверно, информация о времени тут ненужна
-
-        return [
-            "Here is the list of your transactions:",
-            ...lines,
-            `Transactions count: ${transactions.length}`,
-        ].join("\n");
+        return lines.join("\n");
     }
 
     waiting_membership(deposit: Deposit, lang: Language): string {
@@ -355,18 +359,4 @@ function coerceToDate(input: any): Date | null {
     return null;
 }
 
-function fmtHHMM_YMD(d: Date, timeZone?: string): string {
-  // timeZone опционален: "UTC", "Europe/Tbilisi", "Europe/Moscow", и т.п.
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).formatToParts(d);
 
-  const m = Object.fromEntries(parts.map(p => [p.type, p.value]));
-  return `${m.hour}:${m.minute} ${m.year}-${m.month}-${m.day}`;
-}
