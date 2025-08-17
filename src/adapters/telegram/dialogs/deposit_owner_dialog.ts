@@ -10,6 +10,7 @@ import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { Config } from "@src/config.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 
+import { Transaction } from "@src/database"
 import { Runtime } from "@src/runtime.js";
 
 
@@ -31,13 +32,31 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
     }
 
     async send_deposit_info(info: Deposit | undefined): Promise<Status> {
+        
+        const get_transactions_button = this.user.create_keyboard_button(
+                this.orator.get_transactions_button(this.user.info().lang),
+                `open transactions for ${this.user.userid()}`,
+                () => this.send_transactions_info()
+            );
+
+        const keyboard: TelegramBot.InlineKeyboardMarkup = {
+            inline_keyboard: [
+                [get_transactions_button]
+            ]
+        };
+
         return await this.user.send_message(
-            this.orator.deposit_info(info, this.user.info().lang));
+            this.orator.deposit_info(info, this.user.info().lang),{
+                reply_markup: keyboard
+            });
     }
 
     async send_transactions_info(): Promise<Status> {
+        const transactions = await Runtime.get_instance() // todo: remove dependency on Runtime
+            .get_database()
+            .get_transactions(this.user.info().tgid);
         return await this.user.send_message(
-            await this.orator.transactions_info(this.user.info().tgid, this.user.info().lang));
+            this.orator.transactions_info(transactions, this.user.info().lang));
     }
 
     async send_deposit_changes(deposit: Deposit, changes: DepositChange) : Promise<Status>
@@ -197,16 +216,13 @@ export class Orator {
         return lines.join("\n")
     }
 
-    async transactions_info(tgid: string, lang: Language): Promise<string> {
-        const transactions = await Runtime.get_instance() // todo: remove dependency on Runtime
-            .get_database()
-            .get_transactions(tgid);
-
+    transactions_info(transactions: Transaction[], lang: Language): string {
         if (transactions.length == 0) {
             return lang == Language.RU 
             ? "Нет транзакций для твоего депозита." 
             : "No transactions found for your deposit.";
         }
+        
         const lines: string[] = [];
         lines.push(lang == Language.RU ? "Список транзакций:" : "List of transactions:");
         const currency = lang == Language.RU ? "лар" : "GEL";
@@ -304,6 +320,15 @@ export class Orator {
 
     have_paid_already(lang: Language): string {
         return lang == Language.RU ? "Я уже платил 🤷" : "I have paid already 🤷";
+    }
+
+    get_transactions_button(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Транзакции";
+            case Language.EN:
+            default:
+                return "Transactions";
+        }
     }
 
     already_paid_response(lang: Language): string {
