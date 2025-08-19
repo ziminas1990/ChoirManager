@@ -8,3 +8,4 @@ google_cloud_key.json
 config/google_cloud_key.json
 config/openai_api_key
 config/tgbot_token
+config/botcfg_local.json

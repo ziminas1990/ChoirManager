@@ -1,14 +1,11 @@
 //import { db, Timestamp } from "./transactions_storage.js";
-import { Transaction } from "@src/database";
+import { Transaction } from "@src/interfaces/transactions_storage.js";
+import { ITransactionsStorage } from "@src/interfaces/transactions_storage.js";
 import { GoogleAuth } from "@src/api/google_auth.js";
-import {
-  Firestore,
-  CollectionReference,
-} from "@google-cloud/firestore";
+import {  Firestore,  CollectionReference, } from "@google-cloud/firestore";
 
 
-
-export class FirestoreTransactionsStorage {
+export class FirestoreTransactionsStorage implements ITransactionsStorage {
     private db: Firestore;
     private readonly col: CollectionReference<Transaction>;
 
@@ -18,31 +15,28 @@ export class FirestoreTransactionsStorage {
     }
 
     public async logBalanceChange(e: Transaction) {
+        e.tgid = e.tgid.trim().toLowerCase();
         await this.col.add(e);
     }
 
-    // внутри class FirestoreTransactionsStorage
-// предполагаю, что this.col: CollectionReference<Transaction>
-
-    public async getByTgid(
+    public async fetch_transactions(
     tgid: string,
     opts: { limit?: number; order?: "asc" | "desc" } = {}
     ): Promise<Transaction[]> {
-        const normTgid = tgid.trim().toLowerCase();
         const order = opts.order ?? "desc";
 
-        let q = this.col.where("tgid", "==", normTgid).orderBy("date", order);
-        if (opts.limit) q = q.limit(opts.limit);
+        let query = this.col.where("tgid", "==", tgid.trim().toLowerCase())
+            .orderBy("date", order);
+        if (opts.limit) query = query.limit(opts.limit);
 
-        const snap = await q.get();
-        return snap.docs.map(d => {
+        const response = await query.get();
+        return response.docs.map(d => {
             const x: any = d.data();
             const v = x.date;
             x.date = v && typeof v.toDate === "function" ? v.toDate() : new Date(v);
             return x as Transaction;
         });
     }
-
 
     public async getByTgid2(
     tgid: string,
@@ -93,7 +87,6 @@ export class FirestoreTransactionsStorage {
             return data;
         });
     }
-
 
 }
 

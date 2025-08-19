@@ -40,8 +40,12 @@ export class DepositActions {
         if (user.is_guest()) {
             return return_fail(`user ${agent.userid()} is a guest`, journal.log());
         }
-
-        return await agent.as_deposit_owner().send_transactions_info();
+        const transactions = await Runtime.get_instance() // todo: remove dependency on Runtime
+            .get_transactions_storage()?.fetch_transactions(user.data.tgid);
+        if (!transactions || transactions.length === 0) {
+            return await agent.as_deposit_owner().send_transactions_info([]);
+        }
+        return await agent.as_deposit_owner().send_transactions_info(transactions);
     }
 
     static async top_up(
@@ -173,13 +177,13 @@ export class DepositActions {
         }
 
         await Runtime.get_instance()
-        .get_database()
-        .add_transaction(            
-                user.data.tgid,
-                new Date(),
-                changes.total_change,
-                deposit.balance
-        );
+        .get_transactions_storage()
+        ?.logBalanceChange({
+            date: new Date(),
+            change: changes.total_change,
+            balance_after: deposit.balance,
+            tgid: user.data.tgid
+        });
         
         return Status.ok();
     }

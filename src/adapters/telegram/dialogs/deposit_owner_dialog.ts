@@ -10,8 +10,7 @@ import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { Config } from "@src/config.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 
-import { Transaction } from "@src/database"
-import { Runtime } from "@src/runtime.js";
+import { Transaction } from "@src/interfaces/transactions_storage.js";
 
 
 export class DepositOwnerDialog implements IDepositOwnerAgent {
@@ -36,7 +35,9 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
         const get_transactions_button = this.user.create_keyboard_button(
                 this.orator.get_transactions_button(this.user.info().lang),
                 `open transactions for ${this.user.userid()}`,
-                () => this.send_transactions_info()
+                async () => {
+                    return await DepositActions.transactions_requested(this.user, this.journal);
+                }
             );
 
         const keyboard: TelegramBot.InlineKeyboardMarkup = {
@@ -51,10 +52,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
             });
     }
 
-    async send_transactions_info(): Promise<Status> {
-        const transactions = await Runtime.get_instance() // todo: remove dependency on Runtime
-            .get_database()
-            .get_transactions(this.user.info().tgid);
+    async send_transactions_info(transactions: Transaction[] | undefined): Promise<Status> {
         return await this.user.send_message(
             this.orator.transactions_info(transactions, this.user.info().lang));
     }
@@ -216,8 +214,8 @@ export class Orator {
         return lines.join("\n")
     }
 
-    transactions_info(transactions: Transaction[], lang: Language): string {
-        if (transactions.length == 0) {
+    transactions_info(transactions: Transaction[] | undefined, lang: Language): string {
+        if (!transactions || transactions.length == 0) {
             return lang == Language.RU 
             ? "Нет транзакций для твоего депозита." 
             : "No transactions found for your deposit.";
@@ -235,7 +233,8 @@ export class Orator {
             const action = tx.change > 0 
             ? lang == Language.RU ? "Пополнение" : "Replenishment"
             : lang == Language.RU ? "Списание"   : "Withdrawal";
-            lines.push(`${action} ${dateStr}: ${amountStr} ${currency}`);
+            const balanceStr = Language.RU ? "Баланс после" : "Balance after";
+            lines.push(`${action} ${dateStr}: ${amountStr} ${currency} (${balanceStr}: ${tx.balance_after})`);
         }
 
         return lines.join("\n");
@@ -349,7 +348,9 @@ export class Orator {
 }
 
 function coerceToDate(input: any): Date | null {
-    if (input instanceof Date && !isNaN(input.getTime())) return input;
+    if (input instanceof Date && !isNaN(input.getTime())) {
+        return input;
+    }
 
     if (input && typeof input.toDate === "function") {
         const d = input.toDate();
@@ -357,7 +358,6 @@ function coerceToDate(input: any): Date | null {
     }
 
     if (typeof input === "number") {
-        // секунды vs миллисекунды
         const ms = input > 1e12 ? input : input * 1000;
         const d = new Date(ms);
         return isNaN(d.getTime()) ? null : d;

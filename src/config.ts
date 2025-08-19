@@ -56,6 +56,7 @@ export class Config {
             faq_document_id: string
         },
         feedback_storage: FeedbackStorageConfig;
+        transaction_storage: string;
         rehersals_storage: RehersalsStorageConfig;
         managers_chat?: {
             backlog?: MessagesStorageConfig

@@ -2,6 +2,7 @@ import { Status } from "@src/status.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { Scores, User } from "@src/database.js";
 import { Feedback } from "@src/entities/feedback.js";
+import { Transaction } from "./transactions_storage";
 
 
 export interface IUserAgent
@@ -48,7 +49,7 @@ export interface IDepositOwnerAgent {
 
     send_thanks_for_information(): Promise<Status>;
     
-    send_transactions_info(): Promise<Status>;
+    send_transactions_info(transactions: Transaction[] | undefined): Promise<Status>;
 }
 
 // Someone who has accounter role
