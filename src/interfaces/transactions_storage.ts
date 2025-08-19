@@ -9,5 +9,5 @@ export type Transaction = {
 
 export interface ITransactionsStorage {
     fetch_transactions(user_tg_id: string): Promise<Transaction[]>; //Promise<StatusWith<Transaction[]>>
-    logBalanceChange(e: Transaction): Promise<void>;
+    save_balance_change(e: Transaction): Promise<void>;
 }

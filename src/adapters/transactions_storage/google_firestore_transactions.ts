@@ -1,4 +1,3 @@
-//import { db, Timestamp } from "./transactions_storage.js";
 import { Transaction } from "@src/interfaces/transactions_storage.js";
 import { ITransactionsStorage } from "@src/interfaces/transactions_storage.js";
 import { GoogleAuth } from "@src/api/google_auth.js";
@@ -14,7 +13,7 @@ export class FirestoreTransactionsStorage implements ITransactionsStorage {
         this.col = this.db.collection("transactions") as CollectionReference<Transaction>;
     }
 
-    public async logBalanceChange(e: Transaction) {
+    public async save_balance_change(e: Transaction) {
         e.tgid = e.tgid.trim().toLowerCase();
         await this.col.add(e);
     }
@@ -38,14 +37,15 @@ export class FirestoreTransactionsStorage implements ITransactionsStorage {
         });
     }
 
-    public async getByTgid2(
-    tgid: string,
-    opts: {
-        limit?: number;
-        order?: "asc" | "desc";
-        from?: Date;               // включительно
-        to?: Date;                 // включительно
-        startAfter?: Date | string | FirebaseFirestore.Timestamp; // для пагинации
+    // currently is not working
+    async getByTgid2(
+        tgid: string,
+        opts: {
+            limit?: number;
+            order?: "asc" | "desc";
+        from?: Date;               
+        to?: Date;                 
+        startAfter?: Date | string | FirebaseFirestore.Timestamp;
     } = {}
     ): Promise<Transaction[]> {
         let q: FirebaseFirestore.Query<Transaction> = this.col.where("tgid", "==", tgid);
@@ -60,7 +60,7 @@ export class FirestoreTransactionsStorage implements ITransactionsStorage {
             typeof opts.startAfter === "string"
                 ? new Date(opts.startAfter)
                 : opts.startAfter;
-            q = q.startAfter(cursor as any); // cursor должен соответствовать orderBy (здесь по date)
+            q = q.startAfter(cursor as any); 
         }
 
         if (opts.limit) q = q.limit(opts.limit);

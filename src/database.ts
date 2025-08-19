@@ -206,7 +206,7 @@ export class Database {
         rehersal_songs: new Map(),
         rehersal_participants: new Map(),
         rehersals_index: new Map(),
-        songs_index: new Map(),
+        songs_index: new Map()
     };
 
     public add_user(user: User): void {
@@ -353,5 +353,3 @@ export class Database {
         return Status.ok();
     }
 }
-
-

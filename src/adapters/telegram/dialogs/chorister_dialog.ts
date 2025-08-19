@@ -298,11 +298,9 @@ export class ChoristerDialog implements IChorister {
             keyboard: [
                 [{ text: Messages.again() },
                  { text: Messages.get_deposit_info(lang)},
-                 { text: Messages.statistics_button(lang)}
-                ],
+                 { text: Messages.statistics_button(lang)}],
                 [{ text: Messages.feedback_button(lang)},
-                 { text: Messages.download_scores(lang)}
-                ]
+                 { text: Messages.download_scores(lang)}]
             ],
             is_persistent: true,
             resize_keyboard: true,
@@ -310,7 +308,7 @@ export class ChoristerDialog implements IChorister {
     }
 }
 
-class Messages { // todo: made this export. Check if this decision is correct
+class Messages {
 
     static again(): string {
         return "🔄";

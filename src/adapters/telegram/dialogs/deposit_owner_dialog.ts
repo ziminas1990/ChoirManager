@@ -9,7 +9,6 @@ import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { Config } from "@src/config.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
-
 import { Transaction } from "@src/interfaces/transactions_storage.js";
 
 
@@ -30,13 +29,13 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
         return this.user;
     }
 
-    async send_deposit_info(info: Deposit | undefined): Promise<Status> {
-        
+    async send_deposit_info(info: Deposit | undefined): Promise<Status> {        
         const get_transactions_button = this.user.create_keyboard_button(
                 this.orator.get_transactions_button(this.user.info().lang),
                 `open transactions for ${this.user.userid()}`,
                 async () => {
-                    return await DepositActions.transactions_requested(this.user, this.journal);
+                    return await DepositActions.transactions_requested(
+                        this.user, this.journal);
                 }
             );
 
@@ -52,7 +51,8 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
             });
     }
 
-    async send_transactions_info(transactions: Transaction[] | undefined): Promise<Status> {
+    async send_transactions_info(transactions: Transaction[] | undefined): Promise<Status>
+    {
         return await this.user.send_message(
             this.orator.transactions_info(transactions, this.user.info().lang));
     }

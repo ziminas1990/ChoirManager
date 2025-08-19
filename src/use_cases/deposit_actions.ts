@@ -33,6 +33,7 @@ export class DepositActions {
         journal: Journal
     ): Promise<Status> {
         const user = Runtime.get_instance().get_user(agent.userid());
+        journal.log().info(`transactions_requested by ${user?.data.tgid}`);
         if (!user) {
             return return_fail(`user ${agent.userid()} not found`, journal.log());
         }
@@ -40,11 +41,9 @@ export class DepositActions {
         if (user.is_guest()) {
             return return_fail(`user ${agent.userid()} is a guest`, journal.log());
         }
-        const transactions = await Runtime.get_instance() // todo: remove dependency on Runtime
+
+        const transactions = await Runtime.get_instance()
             .get_transactions_storage()?.fetch_transactions(user.data.tgid);
-        if (!transactions || transactions.length === 0) {
-            return await agent.as_deposit_owner().send_transactions_info([]);
-        }
         return await agent.as_deposit_owner().send_transactions_info(transactions);
     }
 
@@ -178,7 +177,7 @@ export class DepositActions {
 
         await Runtime.get_instance()
         .get_transactions_storage()
-        ?.logBalanceChange({
+        ?.save_balance_change({
             date: new Date(),
             change: changes.total_change,
             balance_after: deposit.balance,
@@ -241,7 +240,6 @@ export class DepositActions {
         journal.log().info({ event }, `got event`);
         switch (event.what) {
             case "update":
-
                 return await this.send_deposit_update(
                     user, event.deposit, event.changes, journal);
             case "reminder":
