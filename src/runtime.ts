@@ -173,9 +173,9 @@ export class Runtime {
             }
         }
 
-        if (Config.data.transaction_storage == "google_firestore") {
+        if (Config.data.transaction_storage.type == "google_firestore") {
             this.journal.log().info("Initializing transaction storage...");
-            let status = TransactionStorageFactory.create();
+            let status = TransactionStorageFactory.create(Config.data.transaction_storage);
             if (!status.ok() || !status.value) {
                 return status.wrap("Failed to create transaction storage");
             }

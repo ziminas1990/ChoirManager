@@ -34,8 +34,9 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
                 this.orator.get_transactions_button(this.user.info().lang),
                 `open transactions for ${this.user.userid()}`,
                 async () => {
+                    // todo: make limited transactions request
                     return await DepositActions.transactions_requested(
-                        this.user, this.journal);
+                        this.user, this.journal );
                 }
             );
 
@@ -52,7 +53,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
     }
 
     async send_transactions_info(transactions: Transaction[] | undefined): Promise<Status>
-    {
+    {// todo: add keyboard button with request for all transactions
         return await this.user.send_message(
             this.orator.transactions_info(transactions, this.user.info().lang));
     }
@@ -117,6 +118,27 @@ const monthes: {[key in Language]: string[]} = {
            "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
     "en": ["January", "February", "March", "April", "May", "June",
            "July", "August", "September", "October", "November", "December"]
+}
+
+const months_short: {[key in Language]: string[]} = {
+        "ru": ["ЯНВ","ФЕВ","МАР","АПР","МАЙ","ИЮН",
+               "ИЮЛ","АВГ","СЕН","ОКТ","НОЯ","ДЕК"],
+        "en": ["JAN","FEB","MAR","APR","MAY","JUN",
+               "JUL","AUG","SEP","OCT","NOV","DEC"]
+    };
+
+export function format_date(date: Date, lang: Language): string {
+    const year = date.getFullYear();
+    const now_year = new Date().getFullYear();
+
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = months_short[lang][date.getMonth()];
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+
+
+    const base = `${day} ${month} ${hour}:${minute}`;
+    return year !== now_year ? `${year} ${base}` : base;
 }
 
 export class Orator {
@@ -199,7 +221,7 @@ export class Orator {
         }
 
         const lines = [
-            lang == Language.RU ? "Информация о твоём депозите:" : "You deposit:",
+            lang == Language.RU ? "Информация о твоём депозите:" : "Your deposit:",
             "",
             this.balance(deposit.balance, lang)
         ];
@@ -215,26 +237,24 @@ export class Orator {
     }
 
     transactions_info(transactions: Transaction[] | undefined, lang: Language): string {
-        if (!transactions || transactions.length == 0) {
+        if (!transactions?.length) {
             return lang == Language.RU 
             ? "Нет транзакций для твоего депозита." 
             : "No transactions found for your deposit.";
         }
+
+        const currency = lang === Language.RU ? "лар" : "GEL";
+        const lblTop = lang === Language.RU ? "Список транзакций:" : "List of transactions:";
+        const lblBalance = lang === Language.RU ? "Баланс" : "Balance";
         
         const lines: string[] = [];
-        lines.push(lang == Language.RU ? "Список транзакций:" : "List of transactions:");
-        const currency = lang == Language.RU ? "лар" : "GEL";
+        lines.push(lblTop);
         for (const tx of transactions) {
-            const d = coerceToDate(tx.date);
-            const dateStr = d ? d.toISOString().slice(0, 10) : "<invalid-date>";
-            const amountStr = Number.isFinite(tx.change) 
-                ? (tx.change as number).toFixed(2) 
-                : String(tx.change);
-            const action = tx.change > 0 
-            ? lang == Language.RU ? "Пополнение" : "Replenishment"
-            : lang == Language.RU ? "Списание"   : "Withdrawal";
-            const balanceStr = Language.RU ? "Баланс после" : "Balance after";
-            lines.push(`${action} ${dateStr}: ${amountStr} ${currency} (${balanceStr}: ${tx.balance_after})`);
+            const sign = tx.change >= 0 ? "+" : "-";
+            const amount  = Math.abs(tx.change).toFixed(0);
+            const dateStr = format_date(new Date(tx.date), lang);
+
+            lines.push(`${dateStr} | ${sign} ${amount} ${currency} | ${lblBalance}: ${tx.balance_after}`);
         }
 
         return lines.join("\n");
@@ -346,42 +366,3 @@ export class Orator {
         }
     }
 }
-
-function coerceToDate(input: any): Date | null {
-    if (input instanceof Date && !isNaN(input.getTime())) {
-        return input;
-    }
-
-    if (input && typeof input.toDate === "function") {
-        const d = input.toDate();
-        return isNaN(d.getTime()) ? null : d;
-    }
-
-    if (typeof input === "number") {
-        const ms = input > 1e12 ? input : input * 1000;
-        const d = new Date(ms);
-        return isNaN(d.getTime()) ? null : d;
-    }
-
-    if (typeof input === "string") {
-        const d = new Date(input);
-        return isNaN(d.getTime()) ? null : d;
-    }
-
-    if (input && typeof input === "object") {
-        if (typeof input.seconds === "number") {
-            const ms = input.seconds * 1000 + (input.nanoseconds ? Math.floor(input.nanoseconds / 1e6) : 0);
-            const d = new Date(ms);
-            return isNaN(d.getTime()) ? null : d;
-        }
-        if (typeof input._seconds === "number") {
-            const ms = input._seconds * 1000 + (input._nanoseconds ? Math.floor(input._nanoseconds / 1e6) : 0);
-            const d = new Date(ms);
-            return isNaN(d.getTime()) ? null : d;
-        }
-    }
-
-    return null;
-}
-
-

@@ -4,6 +4,7 @@ import { Formatting } from "@src/utils.js";
 import { FeedbackStorageConfig, FeedbackStorageFactory } from "@src/adapters/feedback_storage/factory.js";
 import { RehersalsStorageConfig, RehersalsStorageFactory } from "@src/adapters/rehersals_storage/factory.js";
 import { MessagesStorageConfig, MessagesStorageFactory } from "@src/adapters/messages_storage/factory.js";
+import { TransactionStorageConfig } from "@src/adapters/transactions_storage/factory.js";
 
 export class Config {
 
@@ -56,7 +57,7 @@ export class Config {
             faq_document_id: string
         },
         feedback_storage: FeedbackStorageConfig;
-        transaction_storage: string;
+        transaction_storage: TransactionStorageConfig;
         rehersals_storage: RehersalsStorageConfig;
         managers_chat?: {
             backlog?: MessagesStorageConfig

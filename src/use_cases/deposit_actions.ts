@@ -30,7 +30,8 @@ export class DepositActions {
 
     static async transactions_requested(
         agent: IUserAgent,
-        journal: Journal
+        journal: Journal,
+        limit?: number
     ): Promise<Status> {
         const user = Runtime.get_instance().get_user(agent.userid());
         journal.log().info(`transactions_requested by ${user?.data.tgid}`);
@@ -43,7 +44,7 @@ export class DepositActions {
         }
 
         const transactions = await Runtime.get_instance()
-            .get_transactions_storage()?.fetch_transactions(user.data.tgid);
+            .get_transactions_storage()?.fetch_transactions(user.data.tgid, { limit });
         return await agent.as_deposit_owner().send_transactions_info(transactions);
     }
 
@@ -177,7 +178,7 @@ export class DepositActions {
 
         await Runtime.get_instance()
         .get_transactions_storage()
-        ?.save_balance_change({
+        ?.add_transaction({
             date: new Date(),
             change: changes.total_change,
             balance_after: deposit.balance,

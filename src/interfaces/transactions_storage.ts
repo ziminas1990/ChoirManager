@@ -1,4 +1,3 @@
-//import { StatusWith } from "@src/status.js";
 
 export type Transaction = {
     date: Date,
@@ -8,6 +7,7 @@ export type Transaction = {
 };
 
 export interface ITransactionsStorage {
-    fetch_transactions(user_tg_id: string): Promise<Transaction[]>; //Promise<StatusWith<Transaction[]>>
-    save_balance_change(e: Transaction): Promise<void>;
+    fetch_transactions(user_tg_id: string, 
+        opts: { limit?: number; order?: "asc" | "desc" }): Promise<Transaction[]>;
+    add_transaction(e: Transaction): Promise<void>;
 }
