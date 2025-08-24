@@ -10,6 +10,7 @@
     "compile": "tsc && tsc-alias",
     "build": "npm run compile && npm run webpack-dev",
     "build_and_run": "npm run build && npm run app",
+    "build_app_and_run": "npm run build-app && npm run app",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-app": "npm run compile && node build.js",
     "app": "node dist/app.cjs",
@@ -31,8 +32,8 @@
   "author": "ziminas1990@gmail.com",
   "license": "ISC",
   "dependencies": {
-    "@google-cloud/translate": "^8.5.0",
     "@google-cloud/firestore": "^7.11.2",
+    "@google-cloud/translate": "^8.5.0",
     "googleapis": "^144.0.0",
     "lodash": "^4.17.21",
     "mustache": "^4.2.0",

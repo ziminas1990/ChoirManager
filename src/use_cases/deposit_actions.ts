@@ -28,6 +28,26 @@ export class DepositActions {
         );
     }
 
+    static async transactions_requested(
+        agent: IUserAgent,
+        journal: Journal,
+        limit?: number
+    ): Promise<Status> {
+        const user = Runtime.get_instance().get_user(agent.userid());
+        journal.log().info(`transactions_requested by ${user?.data.tgid}`);
+        if (!user) {
+            return return_fail(`user ${agent.userid()} not found`, journal.log());
+        }
+
+        if (user.is_guest()) {
+            return return_fail(`user ${agent.userid()} is a guest`, journal.log());
+        }
+
+        const transactions = await Runtime.get_instance()
+            .get_transactions_storage()?.fetch_transactions(user.data.tgid, { limit });
+        return await agent.as_deposit_owner().send_transactions_info(transactions);
+    }
+
     static async top_up(
         agent: IUserAgent,
         amount: number,
@@ -155,6 +175,16 @@ export class DepositActions {
                 await dialog.mirror_deposit_changes(user.data, deposit, changes);
             }
         }
+
+        await Runtime.get_instance()
+        .get_transactions_storage()
+        ?.add_transaction({
+            date: new Date(),
+            change: changes.total_change,
+            balance_after: deposit.balance,
+            tgid: user.data.tgid
+        });
+        
         return Status.ok();
     }
 

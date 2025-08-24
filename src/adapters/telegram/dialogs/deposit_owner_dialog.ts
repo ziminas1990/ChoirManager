@@ -9,6 +9,7 @@ import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { Config } from "@src/config.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
+import { Transaction } from "@src/interfaces/transactions_storage.js";
 
 
 export class DepositOwnerDialog implements IDepositOwnerAgent {
@@ -28,9 +29,33 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
         return this.user;
     }
 
-    async send_deposit_info(info: Deposit | undefined): Promise<Status> {
+    async send_deposit_info(info: Deposit | undefined): Promise<Status> {        
+        const get_transactions_button = this.user.create_keyboard_button(
+                this.orator.get_transactions_button(this.user.info().lang),
+                `open transactions for ${this.user.userid()}`,
+                async () => {
+                    // todo: make limited transactions request
+                    return await DepositActions.transactions_requested(
+                        this.user, this.journal );
+                }
+            );
+
+        const keyboard: TelegramBot.InlineKeyboardMarkup = {
+            inline_keyboard: [
+                [get_transactions_button]
+            ]
+        };
+
         return await this.user.send_message(
-            this.orator.deposit_info(info, this.user.info().lang));
+            this.orator.deposit_info(info, this.user.info().lang),{
+                reply_markup: keyboard
+            });
+    }
+
+    async send_transactions_info(transactions: Transaction[] | undefined): Promise<Status>
+    {// todo: add keyboard button with request for all transactions
+        return await this.user.send_message(
+            this.orator.transactions_info(transactions, this.user.info().lang));
     }
 
     async send_deposit_changes(deposit: Deposit, changes: DepositChange) : Promise<Status>
@@ -93,6 +118,27 @@ const monthes: {[key in Language]: string[]} = {
            "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
     "en": ["January", "February", "March", "April", "May", "June",
            "July", "August", "September", "October", "November", "December"]
+}
+
+const months_short: {[key in Language]: string[]} = {
+        "ru": ["ЯНВ","ФЕВ","МАР","АПР","МАЙ","ИЮН",
+               "ИЮЛ","АВГ","СЕН","ОКТ","НОЯ","ДЕК"],
+        "en": ["JAN","FEB","MAR","APR","MAY","JUN",
+               "JUL","AUG","SEP","OCT","NOV","DEC"]
+    };
+
+export function format_date(date: Date, lang: Language): string {
+    const year = date.getFullYear();
+    const now_year = new Date().getFullYear();
+
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = months_short[lang][date.getMonth()];
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+
+
+    const base = `${day} ${month} ${hour}:${minute}`;
+    return year !== now_year ? `${year} ${base}` : base;
 }
 
 export class Orator {
@@ -175,7 +221,7 @@ export class Orator {
         }
 
         const lines = [
-            lang == Language.RU ? "Информация о твоём депозите:" : "You deposit:",
+            lang == Language.RU ? "Информация о твоём депозите:" : "Your deposit:",
             "",
             this.balance(deposit.balance, lang)
         ];
@@ -188,6 +234,30 @@ export class Orator {
         lines.push("")
         lines.push(this.waiting_membership(deposit, lang));
         return lines.join("\n")
+    }
+
+    transactions_info(transactions: Transaction[] | undefined, lang: Language): string {
+        if (!transactions?.length) {
+            return lang == Language.RU 
+            ? "Нет транзакций для твоего депозита." 
+            : "No transactions found for your deposit.";
+        }
+
+        const currency = "GEL";
+        const lblTop = lang === Language.RU ? "Список транзакций:" : "List of transactions:";
+        const lblBalance = lang === Language.RU ? "Баланс" : "Balance";
+        
+        const lines: string[] = [];
+        lines.push(lblTop);
+        for (const tx of transactions) {
+            const sign = tx.change >= 0 ? "+" : "-";
+            const amount  = Math.abs(tx.change).toFixed(0);
+            const dateStr = format_date(new Date(tx.date), lang);
+
+            lines.push(`${dateStr} | ${sign} ${amount} ${currency} | ${lblBalance}: ${tx.balance_after}`);
+        }
+
+        return lines.join("\n");
     }
 
     waiting_membership(deposit: Deposit, lang: Language): string {
@@ -269,6 +339,15 @@ export class Orator {
 
     have_paid_already(lang: Language): string {
         return lang == Language.RU ? "Я уже платил 🤷" : "I have paid already 🤷";
+    }
+
+    get_transactions_button(lang: Language): string {
+        switch (lang) {
+            case Language.RU: return "Транзакции";
+            case Language.EN:
+            default:
+                return "Transactions";
+        }
     }
 
     already_paid_response(lang: Language): string {

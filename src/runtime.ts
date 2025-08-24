@@ -24,6 +24,8 @@ import { RehersalsStorageFactory } from "./adapters/rehersals_storage/factory.js
 import { RehersalsTracker } from "./logic/rehersals_tracker.js";
 import { MessagesStorageFactory } from "./adapters/messages_storage/factory.js";
 import { GroupChat } from "./logic/group_chat.js";
+import { ITransactionsStorage } from "./interfaces/transactions_storage.js";
+import { TransactionStorageFactory } from "./adapters/transactions_storage/factory.js";
 
 export class Runtime {
 
@@ -53,6 +55,7 @@ export class Runtime {
     private scores_fetcher?: ScoresFetcher;
     private feedback_storage?: IFeedbackStorage;
     private rehersals_storage?: IRehersalsStorage;
+    private transactions_storage?: ITransactionsStorage;
 
     private managers_chat?: GroupChat;
     private announce_chat?: GroupChat;
@@ -170,6 +173,15 @@ export class Runtime {
             }
         }
 
+        if (Config.HasTransactionStorage()) {
+            this.journal.log().info("Initializing transaction storage...");
+            let status = TransactionStorageFactory.create(Config.data.transaction_storage);
+            if (!status.ok() || !status.value) {
+                return status.wrap("Failed to create transaction storage");
+            }
+            this.transactions_storage = status.value;
+        }
+
         if (Config.data.rehersals_storage) {
             this.journal.log().info("Initializing rehersals storage...");
             let status = RehersalsStorageFactory.create(Config.data.rehersals_storage);
@@ -238,6 +250,10 @@ export class Runtime {
 
     get_feedback_storage(): IFeedbackStorage | undefined {
         return this.feedback_storage;
+    }
+
+    get_transactions_storage(): ITransactionsStorage | undefined {
+        return this.transactions_storage;
     }
 
     get_managers_chat(): GroupChat | undefined {
