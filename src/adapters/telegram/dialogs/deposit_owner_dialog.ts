@@ -243,7 +243,7 @@ export class Orator {
             : "No transactions found for your deposit.";
         }
 
-        const currency = lang === Language.RU ? "лар" : "GEL";
+        const currency = "GEL";
         const lblTop = lang === Language.RU ? "Список транзакций:" : "List of transactions:";
         const lblBalance = lang === Language.RU ? "Баланс" : "Balance";
         

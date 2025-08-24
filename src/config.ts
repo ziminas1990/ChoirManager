@@ -101,6 +101,10 @@ export class Config {
         return this.data.scores_fetcher != undefined;
     }
 
+    static HasTransactionStorage(): boolean {
+        return this.data.transaction_storage != undefined;
+    }
+
     static DepositTracker() {
         if (!this.data.deposit_tracking) {
             throw new Error("deposit_tracking is not specified!")

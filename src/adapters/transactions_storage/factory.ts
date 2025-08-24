@@ -4,7 +4,7 @@ import { FirestoreTransactionsStorage } from "./google_firestore_transactions.js
 
 
 export type TransactionStorageConfig = {
-    type: string;
+    type: "google_firestore";
     read_only: boolean;
     database_id: string;
     collection_name: string;
@@ -16,8 +16,6 @@ export class TransactionStorageFactory {
         switch (config.type) {
             case "google_firestore":
                 return Status.ok().with(new FirestoreTransactionsStorage(config));
-            default:
-                return Status.fail(`Unknown transaction storage type: ${config.type}`);
         }
     }
 }

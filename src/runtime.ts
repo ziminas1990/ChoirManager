@@ -173,7 +173,7 @@ export class Runtime {
             }
         }
 
-        if (Config.data.transaction_storage.type == "google_firestore") {
+        if (Config.HasTransactionStorage()) {
             this.journal.log().info("Initializing transaction storage...");
             let status = TransactionStorageFactory.create(Config.data.transaction_storage);
             if (!status.ok() || !status.value) {
