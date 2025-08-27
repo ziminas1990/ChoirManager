@@ -26,7 +26,8 @@ type Response =
   | { what: "get_deposit_info" }
   | { what: "already_paid" }
   | { what: "top_up", amount: number, original_message: string }
-  | { what: "feedback", details?: string };
+  | { what: "feedback", details?: string }
+  | { what: "get_transactions"};
 
 Action MUST have a 'what' field with one of the following values:
   - "message": use when you need to send a message to the user in order to clarify something OR to provide a response to the user
@@ -36,6 +37,7 @@ Action MUST have a 'what' field with one of the following values:
   - "already_paid": use when user tells that they already paid membership fee
   - "top-up": use when user says that they has deposited the money
   - "feedback": use for complaints or any feedback that chorister wants to share with the org group
+  - "get_transactions": use when user asks for their transaction history
 
 More details about each action will be provided below.
 
@@ -89,6 +91,14 @@ Examples:
 2. User: "Rehearsal was too long". Action: { what: "feedback", details: "Rehearsal was too long" }
 3. User: "Передай что в помещении очень холодно". Action: { what: "feedback", details: "В помещении очень холодно" }
 
+## get_transactions
+Action MUST be emitted if user asks for their transaction history.
+Examples:
+1. User: "What is my transaction history?" Action: { what: "get_transactions" }
+2. User: "Show me my past payments." Action: { what: "get_transactions" }
+3. User: "Покажи мне историю транзакций." Action: { what: "get_transactions" }
+4. User: "Мне нужна информация о транзакциях." Action: { what: "get_transactions" }
+
 ## Other questions
 If user just greets you, just greet them back, without any other actions.
 If user asks you something, you are allowed to:
@@ -105,7 +115,8 @@ export type Response =
   | { what: "get_deposit_info" }
   | { what: "already_paid" }
   | { what: "top_up", amount: number, original_message: string }
-  | { what: "feedback", details?: string };
+  | { what: "feedback", details?: string }
+  | { what: "get_transactions" };
 
 abstract class IAssistant {
     // Send message to assistant and waits for answer

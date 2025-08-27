@@ -209,6 +209,8 @@ export class ChoristerDialog implements IChorister {
                     this.user, action.amount, action.original_message, this.journal);
             case "feedback":
                 return await this.start_feedback_activity(action.details);
+            case "get_transactions":
+                return await DepositActions.transactions_requested(this.user, this.journal);
             default:
                 return return_fail(`unknown action: ${JSON.stringify(action)}`, this.journal.log());
         }
