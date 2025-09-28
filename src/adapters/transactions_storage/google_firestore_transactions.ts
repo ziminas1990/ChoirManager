@@ -38,12 +38,15 @@ export class FirestoreTransactionsStorage implements ITransactionsStorage {
         const result: Transaction[] = [];        
         
         response.forEach((doc) => {
-
             result.push({
                 date: new Date(doc.data().date._seconds * 1000),
-                change: doc.data().change,
-                balance_after: doc.data().balance_after,
-                tgid: doc.data().tgid
+                tgid: doc.data().tgid,
+                type: doc.data().type,
+                before: doc.data().before,
+                after: doc.data().after,
+                membership_month: doc.data().membership_month 
+                    ? new Date(doc.data().membership_month._seconds * 1000) 
+                    : undefined
             });
         });
 

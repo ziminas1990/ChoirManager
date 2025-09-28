@@ -1,9 +1,11 @@
 
 export type Transaction = {
     date: Date,
-    change: number,
-    balance_after: number,
-    tgid: string
+    tgid: string,
+    type: "balance" | "membership",
+    before: number,
+    after: number,
+    membership_month?: Date,
 };
 
 export interface ITransactionsStorage {

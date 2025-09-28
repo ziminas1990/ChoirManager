@@ -133,11 +133,8 @@ export function format_date(date: Date, lang: Language): string {
 
     const day = String(date.getDate()).padStart(2, "0");
     const month = months_short[lang][date.getMonth()];
-    const hour = String(date.getHours()).padStart(2, "0");
-    const minute = String(date.getMinutes()).padStart(2, "0");
 
-
-    const base = `${day} ${month} ${hour}:${minute}`;
+    const base = `${day} ${month}`;
     return year !== now_year ? `${year} ${base}` : base;
 }
 
@@ -245,16 +242,27 @@ export class Orator {
 
         const currency = "GEL";
         const lblTop = lang === Language.RU ? "Список транзакций:" : "List of transactions:";
-        const lblBalance = lang === Language.RU ? "Баланс" : "Balance";
-        
+                
         const lines: string[] = [];
         lines.push(lblTop);
         for (const tx of transactions) {
-            const sign = tx.change >= 0 ? "+" : "-";
-            const amount  = Math.abs(tx.change).toFixed(0);
+            let target = "";
+            switch (tx.type) {
+                case "balance":
+                    target = lang === Language.RU ? "Депозит" : "Deposit";
+                    break;
+                case "membership":
+                    const month = tx.membership_month!.getMonth() + 1;
+                    const year = tx.membership_month!.getFullYear() % 100;
+                    target = lang === Language.RU ? `Членский за ${month}/${year}` : `Membership for ${month}/${year}`;
+                    break;
+            }
+            const change = tx.after - tx.before;
+            const sign = change >= 0 ? "+" : "-";
+            const amount  = Math.abs(change).toFixed(0);
             const dateStr = format_date(new Date(tx.date), lang);
 
-            lines.push(`${dateStr} | ${sign} ${amount} ${currency} | ${lblBalance}: ${tx.balance_after}`);
+            lines.push(`${dateStr} | ${target}: ${tx.before} -> ${tx.after} (${sign} ${amount} ${currency})`);
         }
 
         return lines.join("\n");

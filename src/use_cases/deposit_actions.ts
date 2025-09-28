@@ -176,14 +176,32 @@ export class DepositActions {
             }
         }
 
-        await Runtime.get_instance()
-        .get_transactions_storage()
-        ?.add_transaction({
-            date: new Date(),
-            change: changes.total_change,
-            balance_after: deposit.balance,
-            tgid: user.data.tgid
-        });
+        if (changes.balance) {
+            await Runtime.get_instance()
+            .get_transactions_storage()
+            ?.add_transaction({
+                date: new Date(),
+                tgid: user.data.tgid,
+                type: "balance",
+                before: changes.balance![0],
+                after: changes.balance![1],
+            });
+        }
+
+        if (changes.membership) {
+            for (const [month, before, after] of changes.membership) {
+                await Runtime.get_instance()
+                .get_transactions_storage()
+                ?.add_transaction({
+                    date: new Date(),
+                    tgid: user.data.tgid,
+                    type: "membership",
+                    membership_month: month,
+                    before: before,
+                    after: after,
+                });
+            }
+        }
         
         return Status.ok();
     }
