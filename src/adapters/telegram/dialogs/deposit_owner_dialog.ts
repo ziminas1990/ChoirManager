@@ -3,7 +3,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { current_month, Formatter, GlobalFormatter } from "@src/utils.js";
-import { Expected, Status } from "@src/utils/expected.js";
+import { Status } from "@src/utils/expected.js";
 import { Language } from "@src/database.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
@@ -46,35 +46,35 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
             ]
         };
 
-        return await this.user.send_message(
+        return (await this.user.send_message(
             this.orator.deposit_info(info, this.user.info().lang),{
                 reply_markup: keyboard
-            });
+            })).as_status();
     }
 
     async send_transactions_info(transactions: Transaction[] | undefined): Promise<Status>
     {// todo: add keyboard button with request for all transactions
-        return await this.user.send_message(
-            this.orator.transactions_info(transactions, this.user.info().lang));
+        return (await this.user.send_message(
+            this.orator.transactions_info(transactions, this.user.info().lang))).as_status();
     }
 
     async send_deposit_changes(deposit: Deposit, changes: DepositChange) : Promise<Status>
     {
-        return await this.user.send_message(
+        return (await this.user.send_message(
             this.orator.deposit_change(deposit, changes, this.user.info().lang)
-        );
+        )).as_status();
     }
 
     async send_already_paid_response(): Promise<Status> {
-        return await this.user.send_message(
+        return (await this.user.send_message(
             this.orator.already_paid_response(this.user.info().lang)
-        );
+        )).as_status();
     }
 
     async send_thanks_for_information(): Promise<Status> {
-        return await this.user.send_message(
+        return (await this.user.send_message(
             this.orator.thanks_for_information(this.user.info().lang)
-        );
+        )).as_status();
     }
 
     async send_membership_reminder(amount: number): Promise<Status> {
@@ -99,17 +99,13 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
             ]
         };
 
-        try {
-            await this.user.send_message(
-                message,
-                {
-                    reply_markup: keyboard,
-                    parse_mode: "HTML"
-                });
-            return Expected.ok(undefined);
-        } catch (err) {
-            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err)));
-        }
+        const sent = await this.user.send_message(
+            message,
+            {
+                reply_markup: keyboard,
+                parse_mode: "HTML"
+            });
+        return sent.as_status();
     }
 }
 

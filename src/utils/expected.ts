@@ -61,6 +61,10 @@ export class Expected<T> {
         return this as unknown as Expected<U>;
     }
 
+    as_status(): Status {
+        return this.ok ? Expected.ok(undefined) : this.cast_error<void>();
+    }
+
     with_data<U>(data: U): Expected<U> {
         if (this.isOk) {
             return Expected.ok(data);

@@ -23,15 +23,15 @@ export class AccounterDialog implements IAccounterAgent {
     async send_top_up_notification(who: User, amount: number, original_message: string)
     : Promise<Status>
     {
-        return await this.user.send_message(
+        return (await this.user.send_message(
             this.top_up_notification(who, amount, original_message, this.user.info().lang)
-        );
+        )).as_status();
     }
 
     async send_already_paid_notification(who: User): Promise<Status> {
-        return await this.user.send_message(
+        return (await this.user.send_message(
             this.user_already_paid(who, this.user.info().lang)
-        );
+        )).as_status();
     }
 
     async mirror_message(message: string, receiver?: User): Promise<Status> {
@@ -39,7 +39,7 @@ export class AccounterDialog implements IAccounterAgent {
             ? `Notification for ${receiver.name} ${receiver.surname} (@${receiver.tgid}):\n`
             : "Notification:\n";
         const full_message = [prefix, message].filter(line => line.trim().length > 0).join("\n");
-        return await this.user.send_message(full_message);
+        return (await this.user.send_message(full_message)).as_status();
     }
 
     async mirror_deposit_changes(who: User, deposit: Deposit, changes: DepositChange): Promise<Status> {
@@ -47,12 +47,12 @@ export class AccounterDialog implements IAccounterAgent {
         const changes_msg = orator.deposit_change(deposit, changes, this.user.info().lang);
         const who_msg = `Notification for ${who.name} ${who.surname} (@${who.tgid}):\n`;
         const message = [who_msg, changes_msg].join("\n");
-        return await this.user.send_message(message);
+        return (await this.user.send_message(message)).as_status();
     }
 
     async mirror_reminder(who: User, amount: number): Promise<Status> {
         const lang = this.user.info().lang;
-        return await this.user.send_message(this.mirrored_reminder(who, amount, lang));
+        return (await this.user.send_message(this.mirrored_reminder(who, amount, lang))).as_status();
     }
 
     private user_already_paid(who: User, lang: Language): string {

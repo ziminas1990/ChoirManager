@@ -8,7 +8,7 @@ import { ScoresActions } from "@src/use_cases/scores_actions.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { AdminActions } from "@src/use_cases/admin_actions.js";
-import { GlobalFormatter, return_exception, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
+import { GlobalFormatter, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
 import { ChoristerAssistant } from "@src/ai_assistants/chorister_assistant.js";
 import { Language, Scores } from "@src/database.js";
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
@@ -95,7 +95,7 @@ export class ChoristerDialog implements IChorister {
             return Expected.ok(undefined);
         }
 
-        return (await this.dialog_with_assistant(msg.text)).wrap_error("assistant failure");
+        return await this.dialog_with_assistant(msg.text);
     }
 
     // From IChorister
@@ -123,22 +123,18 @@ export class ChoristerDialog implements IChorister {
             inline_keyboard: split_to_columns(buttons, 2)
         };
 
-        try {
-            return this.user.send_message(
-                this.get_scores_list(this.user.info().lang),
-                {
-                    reply_markup: keyboard,
-                });
-        } catch (err) {
-            return return_exception(err, this.journal.log());
-        }
+        return (await this.user.send_message(
+            this.get_scores_list(this.user.info().lang),
+            {
+                reply_markup: keyboard,
+            })).as_status();
     }
 
     // From IChorister
     async on_feedback_received(feedback: Feedback): Promise<Status> {
         this.journal.log().info({ feedback }, "feedback received");
-        return this.user.send_message(
-            Messages.feedback_received(feedback, this.user.info().lang));
+        return (await this.user.send_message(
+            Messages.feedback_received(feedback, this.user.info().lang))).as_status();
     }
 
     private async send_welcome(): Promise<Status> {
@@ -149,16 +145,12 @@ export class ChoristerDialog implements IChorister {
 
         const user_info = this.user.info();
 
-        try {
-            await this.user.send_message(
-                Messages.greet(user_info.name, user_info.lang),
-                {
-                    reply_markup: this.get_keyboard(),
-                });
-            return Expected.ok(undefined);
-        } catch (err) {
-            return return_exception(err, this.journal.log());
-        }
+        const sent = await this.user.send_message(
+            Messages.greet(user_info.name, user_info.lang),
+            {
+                reply_markup: this.get_keyboard(),
+            });
+        return sent.as_status();
     }
 
     private async dialog_with_assistant(message: string): Promise<Status> {
@@ -190,9 +182,9 @@ export class ChoristerDialog implements IChorister {
         const tools = new ToolsMultiplexer();
         const statuses = [
             tools.add_tool(new MessangerTools(
-                async (message: string) => this.user.send_message(message, {
+                async (message: string) => (await this.user.send_message(message, {
                     reply_markup: this.get_keyboard(),
-                }),
+                })).as_status(),
             )),
             tools.add_tool(new ScoresTools(this.user, this.journal)),
             tools.add_tool(new DepositManagerTools(this.user, this.journal)),
@@ -255,7 +247,7 @@ export class ChoristerDialog implements IChorister {
         this.journal.log().info(`downloading scores ${score.name}`);
         const status = await ScoresActions.download_scores_request(this.user, score, this.journal);
         if (!status.ok) {
-            return this.user.send_message(this.fail_to_send_file(this.user.info().lang));
+            return (await this.user.send_message(this.fail_to_send_file(this.user.info().lang))).as_status();
         }
         return status;
     }

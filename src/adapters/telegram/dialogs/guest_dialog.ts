@@ -3,7 +3,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
-import { return_exception, seconds_since } from "@src/utils.js";
+import { seconds_since } from "@src/utils.js";
 
 
 export class GuestDialog {
@@ -39,15 +39,11 @@ export class GuestDialog {
             " нового участника и мы тебе ответим в ближайшее время!"
         ];
 
-        try {
-            await this.user.send_message(
-                text.join("\n"),
-                {
-                    reply_markup: keyboard,
-                });
-            return Expected.ok(undefined);
-        } catch (err) {
-            return return_exception(err, this.journal.log());
-        }
+        return (await this.user.send_message(
+            text.join("\n"),
+            {
+                reply_markup: keyboard,
+            }
+        )).as_status();
     }
 }
