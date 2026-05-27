@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { Status, StatusWith } from '@src/status.js';
+import { Expected, Status } from "@src/utils/expected.js";
 import { GoogleAuth } from '@src/api/google_auth.js';
 import { GoogleTranslate } from '@src/api/google_translate.js';
 import { Runtime } from '@src/runtime.js';
@@ -17,18 +17,15 @@ const root_logger = Journal.Root();
 function load_config() {
     const cfgfile = path.join(process.cwd(), 'config', 'botcfg.json');
     const status = Config.Load(cfgfile);
-    if (!status.done()) {
-        root_logger.log().error(`Failed to load configuration from ${cfgfile}: ${status.what()}`);
+    if (!status.ok) {
+        root_logger.log().error(`Failed to load configuration from ${cfgfile}: ${status.error}`);
         process.exit(1);
-    }
-    if (status.has_warnings()) {
-        root_logger.log().warn(`Warnings while loading configuration: ${status.what()}`);
     }
 }
 
 function init_openai_api(): Status {
     if (!Config.HasOpenAI()) {
-        return Status.ok();
+        return Expected.ok(undefined);
     }
     root_logger.log().info("Initializing OpenAI API...");
     return OpenaiAPI.init();
@@ -36,16 +33,16 @@ function init_openai_api(): Status {
 
 async function load_database(database: Database, users_fetcher: UsersFetcher): Promise<Status> {
     const status = await users_fetcher.start();
-    if (!status.ok()) {
-        return status.wrap("can't start users fetcher");
+    if (!status.ok) {
+        return status.wrap_error("can't start users fetcher");
     }
 
     const verify_status = database.verify();
-    if (!verify_status.ok()) {
-        return verify_status.wrap("can't verify database");
+    if (!verify_status.ok) {
+        return verify_status.wrap_error("can't verify database");
     }
 
-    return StatusWith.ok();
+    return Expected.ok(undefined);
 }
 
 async function wait_and_exit(wait_ms: number, exit_code: number) {
@@ -65,8 +62,8 @@ async function main() {
     root_logger.log().info("Initializing Google Auth...");
     {
         const status = await GoogleAuth.authenticate(Config.data.google_cloud_key_file);
-        if (!status.ok()) {
-            root_logger.log().error(`Google auth failed: ${status.what()}`);
+        if (!status.ok) {
+            root_logger.log().error(`Google auth failed: ${status.error}`);
             await wait_and_exit(10000, 1);
         }
     }
@@ -76,23 +73,23 @@ async function main() {
 
     root_logger.log().info("Loading database...");
     const database_status = await load_database(database, users_fetcher);
-    if (!database_status.ok()) {
-        root_logger.log().error(`Failed to load database: ${database_status.what()}`);
+    if (!database_status.ok) {
+        root_logger.log().error(`Failed to load database: ${database_status.error}`);
         await wait_and_exit(10000, 1);
     }
 
     root_logger.log().info("Loading runtime...");
     const runtime_status = Runtime.Load(database, root_logger);
-    if (!runtime_status.done() || runtime_status.value == undefined) {
-        root_logger.log().error(`Failed to load runtime: ${runtime_status.what()}`);
+    if (!runtime_status.ok) {
+        root_logger.log().error(`Failed to load runtime: ${runtime_status.error}`);
         await wait_and_exit(10000, 1);
     }
     const runtime = runtime_status.value!;
     runtime.attach_users_fetcher(users_fetcher);
 
     const openai_status = init_openai_api();
-    if (!openai_status.ok()) {
-        root_logger.log().error(`Failed to initialize OpenAI API: ${openai_status.what()}`);
+    if (!openai_status.ok) {
+        root_logger.log().error(`Failed to initialize OpenAI API: ${openai_status.error}`);
         await wait_and_exit(10000, 1);
     }
 
@@ -101,8 +98,8 @@ async function main() {
 
     root_logger.log().info("Starting runtime...");
     const status = await runtime.start();
-    if (!status.ok()) {
-        root_logger.log().error(`${status.what()}`);
+    if (!status.ok) {
+        root_logger.log().error(`${status.error}`);
         await wait_and_exit(10000, 1);
     }
 

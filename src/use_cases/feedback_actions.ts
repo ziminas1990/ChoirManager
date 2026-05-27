@@ -1,4 +1,4 @@
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { Journal } from "@src/journal.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
@@ -15,17 +15,17 @@ export class FeedbackActions {
         const user_id = who.userid();
         const user = runtime.get_user(user_id, false);
         if (!user) {
-            return Status.fail(`user ${user_id} not found`);
+            return Expected.err(`user ${user_id} not found`);
         }
 
         const storage = runtime.get_feedback_storage();
         if (!storage) {
-            return Status.fail("Feedback storage is not configured");
+            return Expected.err("Feedback storage is not configured");
         }
 
         const status = await storage.add_feedback(feedback);
-        if (!status.ok()) {
-            return status.wrap("Failed to add feedback to storage");
+        if (!status.ok) {
+            return status.wrap_error("Failed to add feedback to storage");
         }
 
         // Notify managers about new feedback
@@ -34,10 +34,10 @@ export class FeedbackActions {
             const managers_chat = await adapter.get_managers_chat();
             if (managers_chat) {
                 const status = await managers_chat.on_new_feedback(feedback);
-                if (!status.ok()) {
+                if (!status.ok) {
                     journal.log().warn([
                         `Failed to notify managers about feedback`,
-                        status.what()
+                        status.error
                     ].join(": "));
                 }
             }
@@ -46,14 +46,14 @@ export class FeedbackActions {
         // Notify user that feedback was received
         for (const chorister of user.as_chorister()) {
             const status = await chorister.on_feedback_received(feedback);
-            if (!status.ok()) {
+            if (!status.ok) {
                 journal.log().warn([
                     `Failed to notify ${chorister.base().agent_name()} about feedback`,
-                    status.what()
+                    status.error
                 ].join(": "));
             }
         }
 
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 }

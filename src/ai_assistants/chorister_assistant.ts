@@ -1,12 +1,10 @@
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { DocumentsFetcher } from "@src/fetchers/document_fetcher.js";
 import { OpenaiAPI } from "@src/api/openai.js";
 import { Config } from "@src/config.js";
 import { Journal } from "@src/journal.js";
-import { return_fail } from "@src/utils.js";
 import { Agent } from "@src/components/ai/agent.js";
 import { IToolchain } from "@src/interfaces/llm.js";
-import { Expected } from "@src/utils/expected.js";
 
 const fails_instruction = `
 You are a friendly counsellor for choristers. But bot didn't manage to download the document,
@@ -100,20 +98,19 @@ export class ChoristerAssistant {
     ): Promise<Status> {
         try {
             const status = await this.get_or_create_api(username, tools);
-            if (!status.ok()) {
-                return status.wrap("can't get api for user");
+            if (!status.ok) {
+                return status.add_context("can't get api for user").wrap_error("can't get api for user");
             }
-            const assistant = status.value!;
-            return assistant.send_message(message);
+            return await status.value.send_message(message);
         } catch (e) {
-            return Status.exception(e);
+            return Expected.exception("can't send message", e);
         }
     }
 
     public async add_response(username: string, message: string): Promise<Status> {
         const assistant = this.users.get(username);
         if (!assistant) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
         return assistant.add_response(message);
     }
@@ -121,19 +118,20 @@ export class ChoristerAssistant {
     private async get_or_create_api(
         username: string,
         tools: IToolchain,
-    ): Promise<Status & { value?: IAssistant }> {
+    ): Promise<Expected<IAssistant>> {
         let user = this.users.get(username);
         if (user) {
-            return Status.ok().with(user);
+            return Expected.ok(user);
         }
 
         if (!["vanilla", "assistant"].includes(Config.Assistant().openai_api)) {
-            return return_fail("unknown assistant type", this.journal.log());
+            this.journal.log().error("unknown assistant type");
+            return Expected.err("unknown assistant type");
         }
 
         user = this.create_agent_assistant(username, tools);
         this.users.set(username, user);
-        return Status.ok().with(user);
+        return Expected.ok(user);
     }
 
     private create_agent_assistant(username: string, tools: IToolchain): IAssistant {
@@ -155,7 +153,7 @@ export class ChoristerAssistant {
 
     private get_instructions(): string {
         const faq = this.documents_fetcher.get_faq_document();
-        const message = faq.ok()
+        const message = faq.ok
             ? [instruction, "## FAQ", faq.value].join("\n\n")
             : fails_instruction;
 
@@ -173,22 +171,22 @@ class AgentAssistant implements IAssistant {
             { role: "user", content: message },
         ]);
         if (!response.ok) {
-            return Status.fail(response.error).wrap("agent failed to send message");
+            return Expected.err("agent failed to send message", response);
         }
 
         const parsed = parse_agent_response_status(response.value);
         if (!parsed.ok) {
-            return Status.fail(parsed.error).wrap("agent returned invalid status");
+            return parsed.add_context("agent returned invalid status").wrap_error("agent returned invalid status");
         }
         if (parsed.value.status === "error") {
-            return Status.fail(parsed.value.description);
+            return Expected.err(parsed.value.description);
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     public async add_response(message: string): Promise<Status> {
         this.agent.add_assistant_message(`[bot to user]\n${message}`);
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 }
 

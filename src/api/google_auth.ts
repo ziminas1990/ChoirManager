@@ -1,7 +1,7 @@
 import fs from "fs";
 import { google, Auth, sheets_v4, docs_v1 } from "googleapis";
 
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Firestore } from "@google-cloud/firestore";
 
 const scopes = [
@@ -27,10 +27,10 @@ export class GoogleAuth {
         try {
             credentials = JSON.parse(fs.readFileSync(google_cloud_key_file, "utf8"));
         } catch (error) {
-            return Status.fail(`Failed to load credentials: ${error}`);
+            return Expected.err(`Failed to load credentials: ${error}`);
         }
         if (!credentials) {
-            return Status.fail("Failed to load credentials. File is empty?");
+            return Expected.err("Failed to load credentials. File is empty?");
         }
 
         GoogleAuth.auth = new google.auth.GoogleAuth({
@@ -38,7 +38,7 @@ export class GoogleAuth {
             scopes: scopes,
         });
 
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     public static get_sheets(): sheets_v4.Sheets {

@@ -1,5 +1,5 @@
 import { Journal } from "@src/journal.js";
-import { Status, StatusWith } from "@src/status.js";
+import { Expected } from "@src/utils/expected.js";
 import { Config } from "@src/config.js";
 import { Deposit, DepositChange, DepositsFetcher } from "@src/fetchers/deposits_fetcher.js";
 import { Logic } from "./abstracts.js";
@@ -47,20 +47,20 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         return this.last_deposit;
     }
 
-    protected async proceed_impl(now: Date): Promise<StatusWith<DepositsTrackerEvent[]>> {
+    protected async proceed_impl(now: Date): Promise<Expected<DepositsTrackerEvent[]>> {
         const events: DepositsTrackerEvent[] = [];
 
         // Check for updates
         const update_status = await this.check_updates(now);
-        if (!update_status.ok()) {
-            return update_status.wrap("failed to check updates");
+        if (!update_status.ok) {
+            return update_status.wrap_error("failed to check updates");
         }
         events.push(...update_status.value!);
 
         // Check for reminders
         const reminder_status = await this.check_reminders(now);
-        if (!reminder_status.ok()) {
-            return reminder_status.wrap("failed to check reminders");
+        if (!reminder_status.ok) {
+            return reminder_status.wrap_error("failed to check reminders");
         }
         events.push(...reminder_status.value!);
 
@@ -68,21 +68,21 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
             this.journal.log().info({ event });
         }
 
-        return StatusWith.ok().with(events);
+        return Expected.ok(events);
     }
 
-    private async check_updates(now: Date): Promise<StatusWith<DepositsTrackerEvent[]>> {
+    private async check_updates(now: Date): Promise<Expected<DepositsTrackerEvent[]>> {
         if (!this.deposit_fetcher) {
-            return Status.ok().with([]);
+            return Expected.ok([]);
         }
 
         const deposit = this.deposit_fetcher.get_user_deposit(this.tgid);
         if (!deposit) {
-            return Status.ok().with([]);
+            return Expected.ok([]);
         }
         if (!this.last_deposit) {
             this.last_deposit = deposit;
-            return Status.ok().with([]);
+            return Expected.ok([]);
         }
 
         const changes = Deposit.diff(this.last_deposit, deposit);
@@ -100,23 +100,23 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         return this.maybe_produce_change_event(now);
     }
 
-    private maybe_produce_change_event(now: Date): StatusWith<DepositsTrackerEvent[]> {
+    private maybe_produce_change_event(now: Date): Expected<DepositsTrackerEvent[]> {
         if (!this.pending_change || !this.last_deposit) {
-            return Status.ok().with([]);
+            return Expected.ok([]);
         }
 
         const time_since_last_change = now.getTime() - this.pending_change.last_update.getTime();
         if (time_since_last_change < this.collect_interval_ms) {
-            return Status.ok().with([]);
+            return Expected.ok([]);
         }
 
         const changes = Deposit.diff(this.pending_change.before, this.last_deposit);
         if (!changes) {
-            return Status.ok().with([]);
+            return Expected.ok([]);
         }
         this.pending_change = undefined;
 
-        return Status.ok().with([{
+        return Expected.ok([{
             what: "update",
             deposit: this.last_deposit,
             changes
@@ -153,13 +153,13 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         return true;
     }
 
-    private async check_reminders(now: Date): Promise<StatusWith<DepositsTrackerEvent[]>> {
+    private async check_reminders(now: Date): Promise<Expected<DepositsTrackerEvent[]>> {
         if (!this.deposit_fetcher) {
-            return StatusWith.ok().with([]);
+            return Expected.ok([]);
         }
 
         if (!this.should_send_reminders(now)) {
-            return StatusWith.ok().with([]);
+            return Expected.ok([]);
         }
 
         const events: DepositsTrackerEvent[] = [];
@@ -167,7 +167,7 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
         // Check chorister's payment for current month
         const deposit = this.deposit_fetcher.get_user_deposit(this.tgid);
         if (!deposit) {
-            return StatusWith.ok().with([]);
+            return Expected.ok([]);
         }
 
         const diff = Config.DepositTracker().membership_fee - deposit.current_month_balance();
@@ -181,7 +181,7 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
             });
         }
 
-        return StatusWith.ok().with(events);
+        return Expected.ok(events);
     }
 
     static pack(user: DepositsTracker) {

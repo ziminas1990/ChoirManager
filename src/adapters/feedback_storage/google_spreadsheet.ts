@@ -3,7 +3,7 @@ import { Voice } from "@src/database.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { IFeedbackStorage } from "@src/interfaces/feedback_storage.js";
 import { Journal } from "@src/journal.js";
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { log_and_return } from "@src/utils.js";
 
 export type Config = {
@@ -20,7 +20,7 @@ type TableColumns = {
     details: number
 }
 
-function try_parse_header(header: string[]): StatusWith<TableColumns> {
+function try_parse_header(header: string[]): Expected<TableColumns> {
     const columns = header.map(h => h.toLowerCase().trim());
 
     const info: Partial<TableColumns> = {}
@@ -35,10 +35,10 @@ function try_parse_header(header: string[]): StatusWith<TableColumns> {
 
     for (const name of names) {
         if (info[name] === undefined) {
-            return StatusWith.fail(`No '${name}' column found`);
+            return Expected.err(`No '${name}' column found`);
         }
     }
-    return StatusWith.ok().with(info as TableColumns);
+    return Expected.ok(info as TableColumns);
 }
 
 function get_voice(voice: string): Voice | undefined {
@@ -51,11 +51,11 @@ function get_voice(voice: string): Voice | undefined {
     }
 }
 
-function try_parse_row(row: string[], columns: TableColumns): StatusWith<Feedback> {
+function try_parse_row(row: string[], columns: TableColumns): Expected<Feedback> {
 
     const timestamp = row[columns.timestamp];
     if (!timestamp || timestamp.length === 0) {
-        return StatusWith.fail("No 'timestamp' column found");
+        return Expected.err("No 'timestamp' column found");
     }
 
     const tgid = row[columns.tgid] || undefined;
@@ -76,7 +76,7 @@ function try_parse_row(row: string[], columns: TableColumns): StatusWith<Feedbac
         voice: get_voice(voice)
     };
 
-    return StatusWith.ok().with(feedback);
+    return Expected.ok(feedback);
 }
 
 export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
@@ -93,8 +93,8 @@ export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
         return await this.load_feedbacks();
     }
 
-    async get_feedbacks(): Promise<StatusWith<Feedback[]>> {
-        return Status.ok().with(this.feedbacks);
+    async get_feedbacks(): Promise<Expected<Feedback[]>> {
+        return Expected.ok(this.feedbacks);
     }
 
     async add_feedback(feedback: Feedback): Promise<Status> {
@@ -114,24 +114,24 @@ export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
         // Add the row to the Google Spreadsheet
         const add_status = await this.sheet.append(
             `${this.config.sheet_name}!A:F`, row.map(String));
-        if (!add_status.ok()) {
+        if (!add_status.ok) {
             return log_and_return(
-                add_status.wrap("failed to add feedback to the spreadsheet"),
+                add_status.wrap_error("failed to add feedback to the spreadsheet"),
                 this.journal.log()
             );
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private async load_feedbacks(): Promise<Status> {
         const sheet_status = await this.sheet.read(`${this.config.sheet_name}!A:F`);
-        if (!sheet_status.ok()) {
-            return sheet_status.wrap("can't fetch sheet data");
+        if (!sheet_status.ok) {
+            return sheet_status.wrap_error("can't fetch sheet data");
         }
         const table = sheet_status.value!;
         const columns = try_parse_header(table[0]);
-        if (!columns.ok()) {
-            return columns.wrap("invalid header");
+        if (!columns.ok) {
+            return columns.wrap_error("invalid header");
         }
 
         this.feedbacks = [];
@@ -140,8 +140,8 @@ export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
         for (const row of table.slice(1)) {
             row_number++;
             const feedback_status = try_parse_row(row, columns.value!);
-            if (!feedback_status.ok()) {
-                this.journal.log().error(`Invalid row #${row_number}: ${feedback_status.what()}`);
+            if (!feedback_status.ok) {
+                this.journal.log().error(`Invalid row #${row_number}: ${feedback_status.error}`);
                 invalid_rows++;
                 continue;
             }
@@ -151,6 +151,6 @@ export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
         if (invalid_rows > 0) {
             this.journal.log().warn(`got ${invalid_rows} invalid rows`);
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 }

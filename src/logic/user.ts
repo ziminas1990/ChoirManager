@@ -1,6 +1,6 @@
 import { Logic } from '@src/logic/abstracts.js';
 import { Database, Role, User } from '@src/database.js';
-import { Status, StatusWith } from '@src/status.js';
+import { Expected } from "@src/utils/expected.js";
 import { DepositsFetcher } from '@src/fetchers/deposits_fetcher.js';
 import { DepositsTracker } from '@src/logic/deposits_tracker.js';
 import { Journal } from "@src/journal.js";
@@ -115,15 +115,13 @@ export class UserLogic extends Logic<void> {
         this.agents.push(agent);
     }
 
-    async proceed_impl(now: Date): Promise<Status> {
-        const warnings: Status[] = [];
-
+    async proceed_impl(now: Date, _interval_ms: number): Promise<Expected<void[]>> {
         {
             const events = await this.deposit_tracker.proceed(now);
-            if (!events.ok()) {
-                warnings.push(events.wrap("deposit_tracker"));
+            if (!events.ok) {
+                this.journal.log().warn(`deposit_tracker: ${events.error}`);
             }
-            for (const event of events.value ?? []) {
+            for (const event of events.ok ? events.value : []) {
                 DepositActions.handle_deposit_tracker_event(this, event, this.journal);
             }
         }
@@ -132,7 +130,7 @@ export class UserLogic extends Logic<void> {
             await agent.proceed(now);
         }
 
-        return Status.ok_and_warnings("dialog proceed", warnings);
+        return Expected.ok([]);
     }
 
     static pack(user: UserLogic) {
@@ -146,12 +144,12 @@ export class UserLogic extends Logic<void> {
         database: Database,
         packed: ReturnType<typeof UserLogic.pack>,
         parent_journal: Journal
-    ): StatusWith<UserLogic> {
+    ): Expected<UserLogic> {
         const tgid = packed.tgid;
 
         const user = tgid ? database.get_user(tgid) : undefined;
         if (!user) {
-            return StatusWith.fail(`User @${tgid} not found`);
+            return Expected.err(`User @${tgid} not found`);
         }
         const logic = new UserLogic(user, 100, parent_journal);
 
@@ -159,6 +157,6 @@ export class UserLogic extends Logic<void> {
             logic.deposit_tracker = DepositsTracker.unpack(tgid, packed.deposit_tracker, parent_journal);
         }
 
-        return Status.ok().with(logic);
+        return Expected.ok(logic);
     }
 }

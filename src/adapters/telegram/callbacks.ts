@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import TelegramBot from "node-telegram-bot-api";
-import { Status, StatusWith } from '@src/status.js';
+import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from '@src/journal.js';
 import { Logic } from '@src/logic/abstracts.js';
 import { return_fail } from '@src/utils.js';
@@ -25,14 +25,14 @@ export class TelegramCallbacks extends Logic<void> {
         super(100);
     }
 
-    async proceed_impl(now: Date): Promise<StatusWith<void[]>> {
+    async proceed_impl(now: Date): Promise<Expected<void[]>> {
         // Remove expired callbacks
         for (const [id, callback] of this.callbacks) {
             if (callback.valid_until && callback.valid_until < now.getTime()) {
                 this.callbacks.delete(id);
             }
         }
-        return StatusWith.ok();
+        return Expected.ok([]);
     }
 
     add_callback(callback: Callback, lifetime_sec?: number): string {
@@ -48,7 +48,7 @@ export class TelegramCallbacks extends Logic<void> {
         this.journal.log().info(`On callback ${tg_callback.id} received (${tg_callback.data})`);
         if (tg_callback.data == undefined) {
             this.journal.log().error(`Callback query has no data: ${tg_callback.id}`);
-            return Status.fail(`Callback query has no data: ${tg_callback.id}`).with([]);
+            return Expected.err(`Callback query has no data: ${tg_callback.id}`);
         }
         const id = tg_callback.data;
         const callback = this.callbacks.get(id);
@@ -61,10 +61,10 @@ export class TelegramCallbacks extends Logic<void> {
                 return status;
             } catch (error) {
                 this.remove_callback(id);
-                return Status.exception(error).wrap(`callback '${callback.debug_name ?? ""}' failed`);
+                return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error))).wrap_error(`callback '${callback.debug_name ?? ""}' failed`);
             }
         } else {
-            return return_fail(`callback ${id} not found`, this.journal.log()).with([]);
+            return return_fail(`callback ${id} not found`, this.journal.log());
         }
     }
 

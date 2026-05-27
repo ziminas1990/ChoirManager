@@ -4,9 +4,9 @@ import mustache from 'mustache';
 
 import { load_spreadsheet } from "./storage/google_spreadsheet.js"
 import { load_csv_data } from "./storage/csv_file.js";
-import { StatusWith } from "../status.js";
+import { Expected } from "@src/utils/expected.js";
 
-async function load_data(source: "csv" | "google spreadsheet"): Promise<StatusWith<Database>> {
+async function load_data(source: "csv" | "google spreadsheet"): Promise<Expected<Database>> {
     switch (source) {
         case "csv":
             return load_csv_data('data.csv');
@@ -19,8 +19,8 @@ async function load_data(source: "csv" | "google spreadsheet"): Promise<StatusWi
 
 const status_and_data = await load_data("csv");
 
-if (!status_and_data.done()) {
-    console.error("Failed to read data:", status_and_data.what());
+if (!status_and_data.ok) {
+    console.error("Failed to read data:", status_and_data.error);
     process.exit(1);
 }
 

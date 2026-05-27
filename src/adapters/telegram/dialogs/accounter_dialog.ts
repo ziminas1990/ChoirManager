@@ -1,4 +1,4 @@
-import { Status } from "@src/status.js";
+import { Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Formatter, GlobalFormatter } from "@src/utils.js";
 import { Language, User } from "@src/database.js";

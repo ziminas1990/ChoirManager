@@ -1,4 +1,4 @@
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
 import { Runtime } from "@src/runtime.js";
 import { Config } from "@src/config.js";
@@ -15,8 +15,8 @@ export class AdminActions {
             const admin_agents = user.as_admin();
             for (const agent of admin_agents ?? []) {
                 const status = await agent.send_notification(notification);
-                if (!status.ok()) {
-                    journal.log().warn(`Failed to notify admin @${user.data.tgid}: ${status.what()}`);
+                if (!status.ok) {
+                    journal.log().warn(`Failed to notify admin @${user.data.tgid}: ${status.error}`);
                 }
             }
         }
@@ -36,14 +36,14 @@ export class AdminActions {
 
         for (const agent of user_logic.as_admin()) {
             const status = await agent.send_runtime_backup(Config.data.runtime_cache_filename);
-            if (!status.ok()) {
+            if (!status.ok) {
                 journal.log().warn([
                     `Failed to send runtime backup to @${agent.base().userid()}`,
-                    `Error: ${status.what()}`,
+                    `Error: ${status.error}`,
                 ].join("\n"));
             }
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     static async send_logs(user: User, journal: Journal): Promise<Status> {
@@ -60,15 +60,15 @@ export class AdminActions {
 
         for (const agent of user_logic.as_admin()) {
             const status = await agent.send_logs(Config.data.logs_file);
-            if (!status.ok()) {
+            if (!status.ok) {
                 journal.log().warn([
                     `Failed to send runtime backup to @${agent.base().userid()}`,
-                    `Error: ${status.what()}`,
+                    `Error: ${status.error}`,
                 ].join("\n"));
             }
         }
 
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     static stop_application(journal: Journal): Promise<Status> {

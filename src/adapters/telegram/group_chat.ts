@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { return_exception, return_fail } from "@src/utils.js";
 import { Journal } from "@src/journal.js";
 
@@ -26,7 +26,7 @@ export class GroupChat implements IGroupChat {
                 parse_mode: "HTML",
                 message_thread_id: this.thread_id,
             });
-            return Status.ok();
+            return Expected.ok(undefined);
         } catch (e) {
             return return_exception(e, this.journal.log());
         }
@@ -45,7 +45,7 @@ export class GroupChat implements IGroupChat {
                 contentType: content_type,
             };
             await this.bot.sendDocument(this.chat_id, filename, options, file_options);
-            return Status.ok();
+            return Expected.ok(undefined);
         } catch (e) {
             return return_exception(e, this.journal.log());
         }

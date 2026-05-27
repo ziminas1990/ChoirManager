@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { IMessagesBacklog, Message } from "@src/interfaces/messages_backlog.js";
 import { CollectionReference, Firestore } from "@google-cloud/firestore";
 import { GoogleAuth } from "@src/api/google_auth";
@@ -30,14 +30,14 @@ export class GoogleFirestore implements IMessagesBacklog {
     }
 
     async init(): Promise<Status> {
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     async add_message(message: Message): Promise<Status> {
         const doc_id = message_id_to_doc_id(message.message_id);
         try {
             if (this.read_only) {
-                return Status.fail("Read-only mode");
+                return Expected.err("Read-only mode");
             }
             await this.collection.doc(doc_id).create({
                 time: message.time,
@@ -46,27 +46,27 @@ export class GoogleFirestore implements IMessagesBacklog {
                 text: message.text
             });
         } catch (error) {
-            return Status.exception(error);
+            return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error)));
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     async update_message(message: Message): Promise<Status> {
         const doc_id = message_id_to_doc_id(message.message_id);
         try {
             if (this.read_only) {
-                return Status.fail("Read-only mode");
+                return Expected.err("Read-only mode");
             }
             await this.collection.doc(doc_id).update({
                 text: message.text
             });
         } catch (error) {
-            return Status.exception(error);
+            return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error)));
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
-    async get_messages(from: Date, to: Date): Promise<StatusWith<Message[]>> {
+    async get_messages(from: Date, to: Date): Promise<Expected<Message[]>> {
         try {
             const messages = await this.collection
                 .where("time", ">=", from)
@@ -83,9 +83,9 @@ export class GoogleFirestore implements IMessagesBacklog {
                     text: doc.data().text
                 })
             });
-            return Status.ok().with(result);
+            return Expected.ok(result);
         } catch (error) {
-            return Status.exception(error);
+            return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error)));
         }
     }
 }

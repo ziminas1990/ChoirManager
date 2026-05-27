@@ -1,5 +1,5 @@
 import { OpenaiAPI, OpenaiModel } from "@src/api/openai.js";
-import { Status, StatusWith } from "@src/status";
+import { Expected } from "@src/utils/expected.js";
 import { ILLM, Message as LLMMessage } from "@src/interfaces/llm.js";
 
 const system_message = `
@@ -28,10 +28,10 @@ export async function answer_question(
     question: string,
     model: OpenaiModel = "o3",
     llm: ILLM = OpenaiAPI.get_llm(model))
-: Promise<StatusWith<string>>
+: Promise<Expected<string>>
 {
     if (!OpenaiAPI.is_available()) {
-        return Status.fail("OpenAI API is not available");
+        return Expected.err("OpenAI API is not available");
     }
 
     const messages: LLMMessage[] = [
@@ -49,14 +49,14 @@ export async function answer_question(
     try {
         const response = await llm.generate_response(messages);
         if (!response.ok) {
-            return Status.fail(response.error);
+            return Expected.err(response.error);
         }
         const response_content = response.value.content;
         if (!response_content || response_content.length === 0) {
-            return Status.fail("Got empty response from the model");
+            return Expected.err("Got empty response from the model");
         }
-        return Status.ok().with(response_content);
+        return Expected.ok(response_content);
     } catch (err) {
-        return Status.exception(err).wrap("got an exception");
+        return Expected.exception("got an exception", err);
     }
 }

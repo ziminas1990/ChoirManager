@@ -1,4 +1,4 @@
-import { Status } from "@src/status.js";
+import { Status } from "@src/utils/expected.js";
 
 export interface IGroupChat {
 

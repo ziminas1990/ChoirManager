@@ -1,4 +1,4 @@
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Journal } from "@src/journal.js";
 import { Runtime } from "@src/runtime.js";
@@ -69,10 +69,10 @@ export class DepositActions {
 
         {
             const status = await agent.as_deposit_owner().send_thanks_for_information();
-            if (!status.ok()) {
+            if (!status.ok) {
                 journal.log().warn([
                     `failed to send thanks_for_information to ${user_id}`,
-                    status.what()
+                    status.error
                 ].join(":"));
             }
         }
@@ -87,15 +87,15 @@ export class DepositActions {
             for (const accounter of accounter_agents) {
                 const status = await accounter.send_top_up_notification(
                     user.data, amount, original_message);
-                if (!status.ok()) {
+                if (!status.ok) {
                     journal.log().warn([
                         `failed to send top_up notification to ${accounter.base().userid()}`,
-                        status.what()
+                        status.error
                     ].join(":"));
                 }
             }
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     static async already_paid(
@@ -113,10 +113,10 @@ export class DepositActions {
 
         {
             const status = await agent.as_deposit_owner().send_already_paid_response();
-            if (!status.ok()) {
+            if (!status.ok) {
                 journal.log().warn([
                     `failed to send already_paid response to ${user_id}`,
-                    status.what()
+                    status.error
                 ].join(":"));
             }
         }
@@ -130,15 +130,15 @@ export class DepositActions {
             }
             for (const accounter of accounter_agents) {
                 const status = await accounter.send_already_paid_notification(user.data);
-                if (!status.ok()) {
+                if (!status.ok) {
                     journal.log().warn([
                         `failed to send already_paid notification to ${user.data.tgid}`,
-                        status.what()
+                        status.error
                     ].join(":"));
                 }
             }
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     static async send_deposit_update(
@@ -152,19 +152,19 @@ export class DepositActions {
 
         const deposit_owner_dialog = user.as_deposit_owner();
         if (!deposit_owner_dialog || deposit_owner_dialog.length === 0) {
-            return Status.fail(`user ${user.data.tgid} has no agents`);
+            return Expected.err(`user ${user.data.tgid} has no agents`);
         }
 
         let total = 0;
         for (const dialog of deposit_owner_dialog) {
             const status = await dialog.send_deposit_changes(deposit, changes);
-            if (status.ok()) {
+            if (status.ok) {
                 total += 1;
             }
         }
 
         if (total == 0) {
-            return Status.fail(`failed to send deposit changes to any agent`);
+            return Expected.err(`failed to send deposit changes to any agent`);
         }
 
         // Notify accountants
@@ -203,7 +203,7 @@ export class DepositActions {
             }
         }
         
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     static async send_reminder(
@@ -218,25 +218,25 @@ export class DepositActions {
         if (amount < 10) {
             journal.log().info(`skipping reminder for @${userid} because amount is too small: ${amount}`);
             // It's okay to move it to the next month
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         const deposit_owner_dialog = user.as_deposit_owner();
         if (!deposit_owner_dialog || deposit_owner_dialog.length === 0) {
             journal.log().info(`skipping reminder for @${userid} because they have no deposit dialogs`);
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         let total = 0;
         for (const dialog of deposit_owner_dialog) {
             const status = await dialog.send_membership_reminder(amount);
-            if (status.ok()) {
+            if (status.ok) {
                 total += 1;
             }
         }
 
         if (total == 0) {
-            return Status.fail(`failed to send reminder to any agent`);
+            return Expected.err(`failed to send reminder to any agent`);
         }
 
         // Notify accountants
@@ -248,7 +248,7 @@ export class DepositActions {
             }
         }
 
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     static async handle_deposit_tracker_event(
@@ -264,7 +264,7 @@ export class DepositActions {
             case "reminder":
                 return await this.send_reminder(user, event.amount, journal);
             default:
-                return Status.fail(`Unknown event type: ${(event as any).what}`);
+                return Expected.err(`Unknown event type: ${(event as any).what}`);
         }
     }
 }

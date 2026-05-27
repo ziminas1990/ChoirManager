@@ -2,8 +2,7 @@ import { IMessagesBacklog } from "@src/interfaces/messages_backlog";
 import { IUserAgent } from "@src/interfaces/user_agent";
 import { Journal } from "@src/journal";
 import { Logic } from "@src/logic/abstracts.js";
-import { Status } from "@src/status.js";
-import { StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 
 export type GroupChatMessage = {
     time: Date;
@@ -39,15 +38,15 @@ export class GroupChat extends Logic<void> {
         this.edited_messages_queue.push([sender, message]);
     }
 
-    async fetch_messages(from: Date, to: Date): Promise<StatusWith<GroupChatMessage[]>> {
+    async fetch_messages(from: Date, to: Date): Promise<Expected<GroupChatMessage[]>> {
         if (!this.backlog) {
-            return Status.fail("backlog is not attached");
+            return Expected.err("backlog is not attached");
         }
         const messages = await this.backlog.get_messages(from, to);
-        if (!messages.ok() || !messages.value) {
-            return messages.wrap("can't fetch messages from backlog");
+        if (!messages.ok) {
+            return messages.wrap_error("can't fetch messages from backlog");
         }
-        return Status.ok().with<GroupChatMessage[]>(messages.value.map(message => ({
+        return Expected.ok(messages.value.map(message => ({
             time: message.time,
             message_id: message.message_id,
             user_id: message.sender_id,
@@ -55,16 +54,16 @@ export class GroupChat extends Logic<void> {
         })));
     }
 
-    protected async proceed_impl(_: Date): Promise<StatusWith<void[]>> {
+    protected async proceed_impl(_: Date): Promise<Expected<void[]>> {
         // TODO: call in parallel?
         await this.add_new_messages_to_backlog();
         await this.update_edited_messages_in_backlog();
-        return Status.ok().with<void[]>([]);
+        return Expected.ok([]);
     }
 
     private async add_new_messages_to_backlog(): Promise<Status> {
         if (!this.backlog) {
-            return Status.fail("backlog is not attached");
+            return Expected.err("backlog is not attached");
         }
 
         // TODO: handle messages in parallel?
@@ -75,21 +74,21 @@ export class GroupChat extends Logic<void> {
                 sender_id: message.user_id,
                 text: message.text,
             });
-            if (!status.ok()) {
+            if (!status.ok) {
                 this.journal.log().error("Failed to add message to backlog", {
-                    status: status.what(),
+                    status: status.error,
                 });
             }
         });
         await Promise.all(promises);
 
         this.new_messages_queue = [];
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private async update_edited_messages_in_backlog(): Promise<Status> {
         if (!this.backlog) {
-            return Status.fail("backlog is not attached");
+            return Expected.err("backlog is not attached");
         }
 
         const promises = this.edited_messages_queue.map(async ([_, message]) => {
@@ -99,15 +98,15 @@ export class GroupChat extends Logic<void> {
                 sender_id: message.user_id,
                 text: message.text,
             });
-            if (!status.ok()) {
+            if (!status.ok) {
                 this.journal.log().error("Failed to update message in backlog", {
-                    status: status.what(),
+                    status: status.error,
                 });
             }
         });
         await Promise.all(promises);
 
         this.edited_messages_queue = [];
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 }

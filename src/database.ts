@@ -1,4 +1,4 @@
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 
 export enum Role {
     Chorister = "chorister",
@@ -256,10 +256,10 @@ export class Database {
 
     public add_song_to_rehersal(rehersal: Rehersal, song_id: number, minutes: number): Status {
         if (!this.data.rehersals.has(rehersal.id())) {
-            return Status.fail(`rehersal ${rehersal.id()} not found`);
+            return Expected.err(`rehersal ${rehersal.id()} not found`);
         }
         if (!this.data.songs.has(song_id)) {
-            return Status.fail(`song ${song_id} not found`);
+            return Expected.err(`song ${song_id} not found`);
         }
         let rehersal_songs = this.data.rehersal_songs.get(rehersal.id());
         if (!rehersal_songs) {
@@ -267,15 +267,15 @@ export class Database {
             this.data.rehersal_songs.set(rehersal.id(), rehersal_songs);
         }
         rehersal_songs.set(song_id, minutes);
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     public add_participant_to_rehersal(rehersal: Rehersal, tgid: string, minutes: number): Status {
         if (!this.data.rehersals.has(rehersal.id())) {
-            return Status.fail(`rehersal ${rehersal.id()} not found`);
+            return Expected.err(`rehersal ${rehersal.id()} not found`);
         }
         if (!this.data.users.has(tgid)) {
-            return Status.fail(`user ${tgid} not found`);
+            return Expected.err(`user ${tgid} not found`);
         }
         let rehersal_participants = this.data.rehersal_participants.get(rehersal.id());
         if (!rehersal_participants) {
@@ -293,7 +293,7 @@ export class Database {
                 rehersal_data.duration_minutes.set(voice, minutes);
             }
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     public get_rehersals(): Rehersal[] {
@@ -348,8 +348,8 @@ export class Database {
 
     public verify(): Status {
         if (this.data.users.size == 0) {
-            return Status.fail("no users found in database");
+            return Expected.err("no users found in database");
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 }

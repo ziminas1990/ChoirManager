@@ -1,7 +1,7 @@
 import fs from "fs";
 import crypto from "crypto";
 
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Database, Language, Role, User, Voice } from "./database.js";
 import { UserLogic } from "./logic/user.js";
 import { pack_map, return_exception, unpack_map } from "./utils.js";
@@ -31,7 +31,7 @@ export class Runtime {
 
     private static instance?: Runtime;
 
-    static Load(database: Database, parent_journal: Journal): StatusWith<Runtime> {
+    static Load(database: Database, parent_journal: Journal): Expected<Runtime> {
         const journal = parent_journal.child("rt");
         try {
             const packed = JSON.parse(fs.readFileSync(
@@ -41,7 +41,7 @@ export class Runtime {
             return Runtime.unpack(database, packed, journal);
         } catch (e) {
             const empty_runtime = new Runtime(database, "", new Map(), journal);
-            return StatusWith.ok().with(empty_runtime);
+            return Expected.ok(empty_runtime);
         }
     }
 
@@ -112,8 +112,8 @@ export class Runtime {
                 this.tg_adapter = new TgAdapter(Config.TgAdapter(), this.journal);
             }
             const status = await this.tg_adapter.init();
-            if (!status.ok()) {
-                return status.wrap("Failed to start Telegram adapter");
+            if (!status.ok) {
+                return status.wrap_error("Failed to start Telegram adapter");
             }
         }
 
@@ -121,8 +121,8 @@ export class Runtime {
             this.journal.log().info("Starting deposits fetcher");
             this.deposits_fetcher = new DepositsFetcher();
             const deposits_status = await this.deposits_fetcher.start();
-            if (!deposits_status.ok()) {
-                return deposits_status.wrap("Failed to start deposits fetcher");
+            if (!deposits_status.ok) {
+                return deposits_status.wrap_error("Failed to start deposits fetcher");
             }
         }
 
@@ -130,8 +130,8 @@ export class Runtime {
             this.journal.log().info("Starting AI assistant");
             this.documents_fetcher = new DocumentsFetcher(Config.Assistant().fetch_interval_sec);
             const documents_status = await this.documents_fetcher.start();
-            if (!documents_status.ok()) {
-                return documents_status.wrap("Failed to start documents fetcher");
+            if (!documents_status.ok) {
+                return documents_status.wrap_error("Failed to start documents fetcher");
             }
             ChoristerAssistant.init(this.documents_fetcher, this.journal.child("assistant"));
         }
@@ -140,8 +140,8 @@ export class Runtime {
             this.journal.log().info("Starting scores fetcher");
             this.scores_fetcher = new ScoresFetcher(this.database);
             const scores_status = await this.scores_fetcher.start();
-            if (!scores_status.ok()) {
-                return scores_status.wrap("Failed to start scores fetcher");
+            if (!scores_status.ok) {
+                return scores_status.wrap_error("Failed to start scores fetcher");
             }
         }
 
@@ -161,43 +161,43 @@ export class Runtime {
 
         if (Config.data.feedback_storage) {
             this.journal.log().info("Initializing feedback storage...");
-            let status = FeedbackStorageFactory.create(
+            const create_status = FeedbackStorageFactory.create(
                 Config.data.feedback_storage, this.journal);
-            if (!status.ok() || !status.value) {
-                return status.wrap("Failed to create feedback storage");
+            if (!create_status.ok) {
+                return create_status.wrap_error("Failed to create feedback storage");
             }
-            this.feedback_storage = status.value;
-            status = await this.feedback_storage.init();
-            if (!status.ok()) {
-                return status.wrap("Failed to initialize feedback storage");
+            this.feedback_storage = create_status.value;
+            const init_status = await this.feedback_storage.init();
+            if (!init_status.ok) {
+                return init_status.wrap_error("Failed to initialize feedback storage");
             }
         }
 
         if (Config.HasTransactionStorage()) {
             this.journal.log().info("Initializing transaction storage...");
             let status = TransactionStorageFactory.create(Config.data.transaction_storage);
-            if (!status.ok() || !status.value) {
-                return status.wrap("Failed to create transaction storage");
+            if (!status.ok) {
+                return status.wrap_error("Failed to create transaction storage");
             }
             this.transactions_storage = status.value;
         }
 
         if (Config.data.rehersals_storage) {
             this.journal.log().info("Initializing rehersals storage...");
-            let status = RehersalsStorageFactory.create(Config.data.rehersals_storage);
-            if (!status.ok() || !status.value) {
-                return status.wrap("Failed to create rehersals storage");
+            const create_status = RehersalsStorageFactory.create(Config.data.rehersals_storage);
+            if (!create_status.ok) {
+                return create_status.wrap_error("Failed to create rehersals storage");
             }
-            this.rehersals_storage = status.value;
-            status = await this.rehersals_storage.init();
-            if (!status.ok()) {
-                return status.wrap("Failed to initialize rehersals storage");
+            this.rehersals_storage = create_status.value;
+            const init_status = await this.rehersals_storage.init();
+            if (!init_status.ok) {
+                return init_status.wrap_error("Failed to initialize rehersals storage");
             }
             this.rehersals_tracker = new RehersalsTracker(
                 this.rehersals_storage, this.database, this.journal);
-            status = await this.rehersals_tracker.init();
-            if (!status.ok()) {
-                return status.wrap("Failed to initialize rehersals tracker");
+            const tracker_status = await this.rehersals_tracker.init();
+            if (!tracker_status.ok) {
+                return tracker_status.wrap_error("Failed to initialize rehersals tracker");
             }
         }
 
@@ -206,12 +206,12 @@ export class Runtime {
             this.managers_chat = new GroupChat(this.journal);
             if (Config.data.managers_chat.backlog) {
                 const backlog = MessagesStorageFactory.create(Config.data.managers_chat.backlog);
-                if (!backlog.ok() || !backlog.value) {
-                    return backlog.wrap("Failed to create managers chat backlog");
+                if (!backlog.ok) {
+                    return backlog.wrap_error("Failed to create managers chat backlog");
                 }
                 const status = await backlog.value.init();
-                if (!status.ok()) {
-                    return status.wrap("Failed to initialize managers chat backlog");
+                if (!status.ok) {
+                    return status.wrap_error("Failed to initialize managers chat backlog");
                 }
                 this.managers_chat.attach_to_backlog(backlog.value);
             }
@@ -222,18 +222,18 @@ export class Runtime {
             this.announce_chat = new GroupChat(this.journal);
             if (Config.data.announce_chat.backlog) {
                 const backlog = MessagesStorageFactory.create(Config.data.announce_chat.backlog);
-                if (!backlog.ok() || !backlog.value) {
-                    return backlog.wrap("Failed to create announce chat backlog");
+                if (!backlog.ok) {
+                    return backlog.wrap_error("Failed to create announce chat backlog");
                 }
                 const status = await backlog.value.init();
-                if (!status.ok()) {
-                    return status.wrap("Failed to initialize announce chat backlog");
+                if (!status.ok) {
+                    return status.wrap_error("Failed to initialize announce chat backlog");
                 }
                 this.announce_chat.attach_to_backlog(backlog.value);
             }
         }
 
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     get_users(filter?: (user: UserLogic) => boolean): UserLogic[] {
@@ -313,50 +313,50 @@ export class Runtime {
 
         if (this.tg_adapter) {
             const status = await this.tg_adapter.proceed(now);
-            if (!status.ok()) {
-                this.journal.log().error(`Tg adapter proceed failed: ${status.what()}`);
+            if (!status.ok) {
+                this.journal.log().error(`Tg adapter proceed failed: ${status.error}`);
             }
         }
 
         if (this.users_fetcher) {
             const users_status = await this.users_fetcher.proceed();
-            if (!users_status.ok()) {
-                this.journal.log().error(`Users fetcher proceed failed: ${users_status.what()}`);
+            if (!users_status.ok) {
+                this.journal.log().error(`Users fetcher proceed failed: ${users_status.error}`);
             }
         }
 
         if (this.deposits_fetcher) {
             const deposits_status = await this.deposits_fetcher.proceed();
-            if (!deposits_status.ok()) {
-                this.journal.log().error(`Deposits fetcher proceed failed: ${deposits_status.what()}`);
+            if (!deposits_status.ok) {
+                this.journal.log().error(`Deposits fetcher proceed failed: ${deposits_status.error}`);
             }
         }
 
         if (this.rehersals_tracker) {
             const rehersals_status = await this.rehersals_tracker.proceed(now);
-            if (!rehersals_status.ok()) {
-                this.journal.log().error(`Rehersals tracker proceed failed: ${rehersals_status.what()}`);
+            if (!rehersals_status.ok) {
+                this.journal.log().error(`Rehersals tracker proceed failed: ${rehersals_status.error}`);
             }
         }
 
         if (this.scores_fetcher) {
             const scores_status = await this.scores_fetcher.proceed();
-            if (!scores_status.ok()) {
-                this.journal.log().error(`Scores fetcher proceed failed: ${scores_status.what()}`);
+            if (!scores_status.ok) {
+                this.journal.log().error(`Scores fetcher proceed failed: ${scores_status.error}`);
             }
         }
 
         if (this.managers_chat) {
             const managers_status = await this.managers_chat.proceed(now);
-            if (!managers_status.ok()) {
-                this.journal.log().error(`Managers chat proceed failed: ${managers_status.what()}`);
+            if (!managers_status.ok) {
+                this.journal.log().error(`Managers chat proceed failed: ${managers_status.error}`);
             }
         }
 
         if (this.announce_chat) {
             const announce_status = await this.announce_chat.proceed(now);
-            if (!announce_status.ok()) {
-                this.journal.log().error(`Announce chat proceed failed: ${announce_status.what()}`);
+            if (!announce_status.ok) {
+                this.journal.log().error(`Announce chat proceed failed: ${announce_status.error}`);
             }
         }
 
@@ -390,7 +390,7 @@ export class Runtime {
                 }
             }
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     // Return hash
@@ -415,7 +415,7 @@ export class Runtime {
     }
 
     static unpack(database: Database, packed: ReturnType<typeof Runtime.pack>, journal: Journal)
-    : StatusWith<Runtime>
+    : Expected<Runtime>
     {
         const runtime_hash = crypto.createHash("sha256").update(JSON.stringify(packed)).digest("hex");
 
@@ -424,15 +424,14 @@ export class Runtime {
             try {
                 packed = update_packed_runtime(old_version, packed);
             } catch (e) {
-                return return_exception(e, journal.log(), "failed to update runtime data");
+                return return_exception<Runtime>(e, journal.log(), "failed to update runtime data");
             }
         }
 
-        const load_users_problems: Status[] = [];
         const users = unpack_map(packed.users, (packed) => {
             const status = UserLogic.unpack(database, packed, journal);
-            if (!status.ok()) {
-                load_users_problems.push(status);
+            if (!status.ok) {
+                journal.log().warn(`loading users: ${status.error}`);
             }
             return status.value;
         });
@@ -444,8 +443,7 @@ export class Runtime {
                 Config.data.tg_adapter, packed.tg_adapter, journal);
         }
 
-        return Status.ok_and_warnings("loading users", load_users_problems)
-                     .with(runtime);
+        return Expected.ok(runtime);
     }
 
     private async on_user_added(user: UserLogic, startup: boolean): Promise<void> {

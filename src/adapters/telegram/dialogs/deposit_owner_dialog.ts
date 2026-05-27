@@ -3,7 +3,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { current_month, Formatter, GlobalFormatter } from "@src/utils.js";
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Language } from "@src/database.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
@@ -106,9 +106,9 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
                     reply_markup: keyboard,
                     parse_mode: "HTML"
                 });
-            return Status.ok();
+            return Expected.ok(undefined);
         } catch (err) {
-            return Status.exception(err);
+            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err)));
         }
     }
 }

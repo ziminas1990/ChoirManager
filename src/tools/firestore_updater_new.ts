@@ -1,5 +1,5 @@
 import { GoogleAuth } from "@src/api/google_auth.js";
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Transaction } from "@src/interfaces/transactions_storage.js";
 import type { TransactionStorageConfig } from "@src/adapters/transactions_storage/factory.js";
 import fs from "node:fs";
@@ -95,7 +95,7 @@ async function process_transactions(database_name: string, collection_name: stri
         const snapshot = await collection.get();
         if (snapshot.empty) {
             console.log("No transactions found");
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         console.log(`Found ${snapshot.size} transactions to inspect`);
@@ -148,9 +148,9 @@ async function process_transactions(database_name: string, collection_name: stri
             console.log("DRY RUN: to apply changes, run with dry_run=false");
         }
 
-        return Status.ok();
+        return Expected.ok(undefined);
     } catch (error) {
-        return Status.exception(error).wrap("Failed to process transactions");
+        return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error))).wrap_error("Failed to process transactions");
     }
 }
 
@@ -170,16 +170,16 @@ async function main() {
     // Initialize Google Auth
     console.log("Initializing Google Auth...");
     const auth_status = await GoogleAuth.authenticate(google_cloud_key_file);
-    if (!auth_status.ok()) {
-        console.error(`Google Auth failed: ${auth_status.what()}`);
+    if (!auth_status.ok) {
+        console.error(`Google Auth failed: ${auth_status.error}`);
         process.exit(1);
     }
     console.log("Google Auth initialized successfully");
 
     // Process transactions
     const process_status = await process_transactions(database_name, collection_name, dry_run);
-    if (!process_status.ok()) {
-        console.error(`Failed to process transactions: ${process_status.what()}`);
+    if (!process_status.ok) {
+        console.error(`Failed to process transactions: ${process_status.error}`);
         process.exit(1);
     }
 

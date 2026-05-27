@@ -1,4 +1,4 @@
-import { Status } from "@src/status.js";
+import { Status } from "@src/utils/expected.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { Scores, User } from "@src/database.js";
 import { Feedback } from "@src/entities/feedback.js";

@@ -1,4 +1,4 @@
-import { Status, StatusWith } from '@src/status.js';
+import { Expected, Status } from "@src/utils/expected.js";
 import { Config } from '@src/config.js';
 import { GoogleSpreadsheet } from '@src/api/google_docs.js';
 import { Database, Language, Role, User, Voice } from '@src/database.js';
@@ -17,7 +17,7 @@ type TableColumns = {
     conductor: number
 }
 
-function try_parse_header(header: string[]): StatusWith<TableColumns> {
+function try_parse_header(header: string[]): Expected<TableColumns> {
     try {
         const columns = header.map(h => h.toLowerCase().trim());
 
@@ -35,12 +35,12 @@ function try_parse_header(header: string[]): StatusWith<TableColumns> {
 
         for (const name of names) {
             if (info[name] === undefined) {
-                return StatusWith.fail(`No '${name}' column found`);
+                return Expected.err(`No '${name}' column found`);
             }
         }
-        return StatusWith.ok().with(info as TableColumns);
+        return Expected.ok(info as TableColumns);
     } catch (e) {
-        return StatusWith.exception(e);
+        return Expected.exception("error", e);
     }
 }
 
@@ -85,11 +85,11 @@ function get_language(lang: string): Language {
     }
 }
 
-function try_parse_row(row: string[], columns: TableColumns): StatusWith<User> {
+function try_parse_row(row: string[], columns: TableColumns): Expected<User> {
     try {
         const tgid = row[columns.tgid];
         if (!tgid || tgid.length === 0) {
-            return StatusWith.fail("No 'tgid' column found");
+            return Expected.err("No 'tgid' column found");
         }
 
         const [name, surname] = row[columns.name].split(" ");
@@ -98,9 +98,9 @@ function try_parse_row(row: string[], columns: TableColumns): StatusWith<User> {
         const roles = get_roles(row, columns);
 
         const user = new User(tgid, name, surname, lang, voice, roles);
-        return StatusWith.ok().with(user);
+        return Expected.ok(user);
     } catch (e) {
-        return StatusWith.exception(e);
+        return Expected.exception("error", e);
     }
 }
 
@@ -120,36 +120,36 @@ export class UsersFetcher {
 
     async proceed(): Promise<Status> {
         if (!this.time_to_fetch()) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         const sheet_status = await this.sheet.read("Users!A:K");
-        if (!sheet_status.ok()) {
-            return sheet_status.wrap("can't fetch sheet data");
+        if (!sheet_status.ok) {
+            return sheet_status.wrap_error("can't fetch sheet data");
         }
         const table = sheet_status.value!;
         if (table.length < 2) {
-            return Status.ok(); // Just no any data (or header only), not an error
+            return Expected.ok(undefined); // Just no any data (or header only), not an error
         }
 
         const header_status = try_parse_header(table[0]);
-        if (!header_status.ok()) {
-            return header_status.wrap("invalid header");
+        if (!header_status.ok) {
+            return header_status.wrap_error("invalid header");
         }
         const columns = header_status.value!;
 
         const users: User[] = []
         table.slice(1).forEach((row, idx) => {
             const status = try_parse_row(row, columns);
-            if (!status.ok()) {
-                this.journal.log().error(`Error parsing user '${row[columns.tgid]}' at row ${idx}: ${status.what()}`);
+            if (!status.ok) {
+                this.journal.log().error(`Error parsing user '${row[columns.tgid]}' at row ${idx}: ${status.error}`);
             } else {
                 users.push(status.value!);
             }
         });
 
         users.forEach((user) => this.update_database(user));
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private update_database(user: User): void {

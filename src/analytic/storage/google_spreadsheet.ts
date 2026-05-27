@@ -1,25 +1,25 @@
 import { google } from 'googleapis';
 import fs from 'fs';
 
-import { Status, StatusWith } from "@src/status.js"
+import { Expected } from "@src/utils/expected.js";
 import { Table, build_data_model } from './data_model_adapter.js';
 import { Database } from '@src/analytic/data_model.js';
 
 export async function load_spreadsheet(
     credentials_file: string,
     sheet_id: string)
-: Promise<StatusWith<Database>>
+: Promise<Expected<Database>>
 {
 
     let credentials: any | undefined = undefined;
     try {
         credentials = JSON.parse(fs.readFileSync(credentials_file, "utf8"));
     } catch (error) {
-        return Status.fail(`Failed to load credentials: ${error}`);
+        return Expected.err(`Failed to load credentials: ${error}`);
     }
 
     if (!credentials) {
-        return Status.fail("Failed to load credentials");
+        return Expected.err("Failed to load credentials");
     }
 
     const auth = new google.auth.GoogleAuth({

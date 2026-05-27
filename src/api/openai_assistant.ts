@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { OpenaiAPI } from "./openai.js";
 
 // NOTE: this API is not being used now, because it much slower than regular
@@ -12,14 +12,14 @@ export class AssistantThread {
         this.thread = thread;
     }
 
-    public async send_message(message: string): Promise<StatusWith<string[]>> {
+    public async send_message(message: string): Promise<Expected<string[]>> {
         const instance = OpenaiAPI.get_instance();
         if (!instance) {
-            return Status.fail("OpenAI API is not initialized");
+            return Expected.err("OpenAI API is not initialized");
         }
         const status = await this.add_message(message, "user");
-        if (!status.ok()) {
-            return status;
+        if (!status.ok) {
+            return status.cast_error<string[]>();
         }
         try {
             const run = await instance.beta.threads.runs.createAndPoll(
@@ -39,9 +39,9 @@ export class AssistantThread {
                 }
             }
 
-            return StatusWith.ok().with(responses);
+            return Expected.ok(responses);
         } catch (error) {
-            return Status.exception(error).wrap("failed to run the thread");
+            return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error))).wrap_error("failed to run the thread");
         }
     }
 
@@ -53,16 +53,16 @@ export class AssistantThread {
     private async add_message(message: string, role: "user" | "assistant"): Promise<Status> {
         const instance = OpenaiAPI.get_instance();
         if (!instance) {
-            return Status.fail("OpenAI API is not initialized");
+            return Expected.err("OpenAI API is not initialized");
         }
         try {
             await instance.beta.threads.messages.create(this.thread.id, {
                 role,
                 content: message,
             });
-            return Status.ok();
+            return Expected.ok(undefined);
         } catch (error) {
-            return Status.exception(error).wrap("failed to add message to thread");
+            return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error))).wrap_error("failed to add message to thread");
         }
     }
 }
@@ -79,7 +79,7 @@ export class Assistant {
         response_format: "text" | "json",
     ): Promise<Status> {
         if (!OpenaiAPI.is_available()) {
-            return Status.fail("OpenAI API is not initialized");
+            return Expected.err("OpenAI API is not initialized");
         }
 
         try {
@@ -92,24 +92,24 @@ export class Assistant {
                     ? { type: "json_object" }
                     : undefined,
             });
-            return Status.ok();
+            return Expected.ok(undefined);
         } catch (error) {
-            return Status.exception(error).wrap("failed to create assistant");
+            return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error))).wrap_error("failed to create assistant");
         }
     }
 
-    public async create_thread(): Promise<StatusWith<AssistantThread>>
+    public async create_thread(): Promise<Expected<AssistantThread>>
     {
         if (!this.assistant) {
-            return Status.fail("Assistant is not initialized");
+            return Expected.err("Assistant is not initialized");
         }
         try {
             const instance = OpenaiAPI.get_instance();
             const openai_thread = await instance.beta.threads.create();
             const thread = new AssistantThread(openai_thread, this.assistant.id);
-            return StatusWith.ok().with(thread);
+            return Expected.ok(thread);
         } catch (error) {
-            return Status.exception(error).wrap("failed to create thread");
+            return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error))).wrap_error("failed to create thread");
         }
     }
 }

@@ -1,5 +1,5 @@
 import pino from "pino";
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 
 export type PackedMap<K, P> = [K, P][];
 
@@ -62,24 +62,22 @@ export function shorten(text: string, max_length: number): string {
     return text.slice(0, max_length - 3) + "...";
 }
 
-export function return_fail(what: string, logger: pino.Logger): Status {
+export function return_fail<T = void>(what: string, logger: pino.Logger): Expected<T> {
     logger.error(what);
-    return Status.fail(what);
+    return Expected.err(what);
 }
 
-export function return_exception(error: unknown, logger: pino.Logger, wrap?: string): Status {
+export function return_exception<T = void>(error: unknown, logger: pino.Logger, wrap?: string): Expected<T> {
     logger.error(error);
     if (wrap) {
-        return Status.exception(error).wrap(wrap);
+        return Expected.exception(wrap, error);
     }
-    return Status.exception(error);
+    return error instanceof Error ? Expected.err(error.message) : Expected.err(String(error));
 }
 
 export function log_and_return(status: Status, logger: pino.Logger): Status {
-    if (status.is_error()) {
-        logger.error(status.what());
-    } else if (status.is_warning()) {
-        logger.warn(status.what());
+    if (!status.ok) {
+        logger.error(status.error);
     }
     return status;
 }

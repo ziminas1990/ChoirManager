@@ -1,4 +1,4 @@
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Runtime } from "@src/runtime.js";
 import { answer_question } from "@src/ai_assistants/conversation_analyzer";
 import { GroupChatMessage } from "@src/logic/group_chat";
@@ -11,30 +11,30 @@ export class ManagersChat {
 
         const managers_chat = runtime.get_managers_chat();
         if (!managers_chat) {
-            return Status.fail("Managers chat is not configured");
+            return Expected.err("Managers chat is not configured");
         }
 
         managers_chat.on_new_message(user, message);
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
-    public static async answer_question(request: string): Promise<StatusWith<string>> {
+    public static async answer_question(request: string): Promise<Expected<string>> {
         const runtime = Runtime.get_instance();
 
         const managers_chat = runtime.get_managers_chat();
         if (!managers_chat) {
-            return Status.fail("Managers chat is not configured");
+            return Expected.err("Managers chat is not configured");
         }
 
         const now = new Date();
         const month_ago = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
         const conversation = await managers_chat.fetch_messages(month_ago, now);
 
-        if (!conversation.ok() || !conversation.value) {
-            return conversation.wrap("Failed to get conversation");
+        if (!conversation.ok) {
+            return conversation.wrap_error("Failed to get conversation");
         }
         if (conversation.value.length === 0) {
-            return Status.fail("No conversation data");
+            return Expected.err("No conversation data");
         }
 
         const answer = await answer_question(
@@ -50,9 +50,9 @@ export class ManagersChat {
             request,
             "gpt-4o"
         );
-        if (!answer.ok()) {
-            return answer.wrap("request to AI failed");
+        if (!answer.ok) {
+            return Expected.err(answer.error);
         }
-        return answer;
+        return Expected.ok(answer.value);
     }
 }

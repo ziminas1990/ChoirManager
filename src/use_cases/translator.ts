@@ -1,4 +1,4 @@
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Runtime } from "@src/runtime.js";
 import { Language, User } from "@src/database.js";
 import { GoogleTranslate } from "@src/api/google_translate.js";
@@ -12,12 +12,12 @@ export class Translator {
         journal: Journal
     ): Promise<Status> {
         if (!announce) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         const users = [...Runtime.get_instance().all_users()].filter(logic => logic.data.lang !== Language.RU);
         if (users.length == 0) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         const translated_text = await GoogleTranslate.translate([
@@ -34,12 +34,12 @@ export class Translator {
             const agents = user.all_agents();
             for (const agent of agents) {
                 const status = await agent.send_message(translated_text);
-                if (!status.ok()) {
-                    journal.log().warn(`failed to send announce to ${user.data.tgid}: ${status.what()}`);
+                if (!status.ok) {
+                    journal.log().warn(`failed to send announce to ${user.data.tgid}: ${status.error}`);
                 }
             }
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
 }

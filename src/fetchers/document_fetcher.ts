@@ -1,4 +1,4 @@
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { GoogleDocument } from "@src/api/google_docs.js";
 import { Config } from "@src/config.js";
 
@@ -29,29 +29,29 @@ export class DocumentsFetcher {
         return this.refetch_if_needed(now);
     }
 
-    public get_faq_document(): StatusWith<string> {
+    public get_faq_document(): Expected<string> {
         if (!this.faq_document.content) {
-            return Status.fail("faq document is not fetched");
+            return Expected.err("faq document is not fetched");
         }
-        return Status.ok().with(this.faq_document.content);
+        return Expected.ok(this.faq_document.content);
     }
 
     private async refetch_if_needed(now: Date): Promise<Status> {
         if (this.next_fetch_time > new Date()) {
-            return Status.ok();  // not a problem, just not a time to fetch
+            return Expected.ok(undefined);  // not a problem, just not a time to fetch
         }
         this.next_fetch_time = new Date(now.getTime() + this.fetch_interval_sec * 1000);
 
         try {
             const faq_status = await this.faq_document.api.read_as_simple_markdown();
-            if (!faq_status.ok()) {
-                return faq_status.wrap("can't fetch faq document");
+            if (!faq_status.ok) {
+                return faq_status.wrap_error("can't fetch faq document");
             }
 
             this.faq_document.content = faq_status.value?.join("\n") || "";
-            return Status.ok();
+            return Expected.ok(undefined);
         } catch (err) {
-            return Status.exception(err).wrap("failed to fetch documents");
+            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("failed to fetch documents");
         }
 
     }
