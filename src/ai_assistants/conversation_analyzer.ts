@@ -1,6 +1,6 @@
-import { OpenaiAPI } from "@src/api/openai";
+import { OpenaiAPI, OpenaiModel } from "@src/api/openai.js";
 import { Status, StatusWith } from "@src/status";
-import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { ILLM, Message as LLMMessage } from "@src/interfaces/llm.js";
 
 const system_message = `
 Your are a helpful assistant, that reads the conversation and may answer questions about it or provide summary of the conversation.
@@ -26,32 +26,32 @@ export type Message = {
 export async function answer_question(
     conversation: Message[],
     question: string,
-    model: "gpt-4o-mini" | "gpt-4o" | "o3" = "o3")
+    model: OpenaiModel = "o3",
+    llm: ILLM = OpenaiAPI.get_llm(model))
 : Promise<StatusWith<string>>
 {
     if (!OpenaiAPI.is_available()) {
         return Status.fail("OpenAI API is not available");
     }
 
-    const messages: ChatCompletionMessageParam[] = [
+    const messages: LLMMessage[] = [
         { role: "system", content: system_message },
     ];
 
     // Add conversation messages
     conversation.forEach((c) => {
-        messages.push({ role: "user", content: c.content, name: c.author });
+        messages.push({ role: "user", content: `[${c.author}]\n${c.content}` });
     });
 
     // Add question
-    messages.push({ role: "user", content: question, name: "requester" });
+    messages.push({ role: "user", content: `[requester]\n${question}` });
 
     try {
-        const openai = OpenaiAPI.get_instance();
-        const response = await openai.chat.completions.create({ model, messages });
-        if (response.choices.length === 0) {
-            return Status.fail("No response from the model");
+        const response = await llm.generate_response(messages);
+        if (!response.ok) {
+            return Status.fail(response.error);
         }
-        const response_content = response.choices[0].message.content;
+        const response_content = response.value.content;
         if (!response_content || response_content.length === 0) {
             return Status.fail("Got empty response from the model");
         }

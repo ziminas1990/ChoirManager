@@ -1,7 +1,6 @@
 import { StatusWith, Status } from "@src/status.js";
 import { DocumentsFetcher } from "@src/fetchers/document_fetcher.js";
-import { Assistant, AssistantThread } from "@src/api/openai_assistant.js";
-import { ChatWithHistory } from "@src/api/openai.js";
+import { ChatWithHistory, OpenaiAPI } from "@src/api/openai.js";
 import { Config } from "@src/config.js";
 import { Runtime } from "@src/runtime.js";
 import { Scores } from "@src/database.js";
@@ -151,11 +150,7 @@ export class ChoristerAssistant {
     constructor(
         private documents_fetcher: DocumentsFetcher,
         private readonly journal: Journal)
-    {
-        if (Config.Assistant().openai_api === "assistant") {
-            ModernAssistant.init(this.get_instructions(), "json");
-        }
-    }
+    {}
 
     public async send_message(username: string, message: string): Promise<StatusWith<Response[]>> {
         try {
@@ -185,13 +180,11 @@ export class ChoristerAssistant {
             return Status.ok().with(user);
         }
 
-        if (Config.Assistant().openai_api === "vanilla") {
-            user = new VanillaAssistant(this.get_instructions(), this.journal, "json");
-        } else if (Config.Assistant().openai_api === "assistant") {
-            user = new ModernAssistant(this.journal);
-        } else {
+        if (!["vanilla", "assistant"].includes(Config.Assistant().openai_api)) {
             return return_fail("unknown assistant type", this.journal.log());
         }
+
+        user = new VanillaAssistant(this.get_instructions(), this.journal, "json");
         this.users.set(username, user);
         return Status.ok().with(user);
     }
@@ -234,7 +227,10 @@ class VanillaAssistant implements IAssistant {
         private response_format: "text" | "json" = "text")
     {
         const model = Config.Assistant().model;
-        this.chat = new ChatWithHistory(model, this.response_format, this.journal);
+        this.chat = new ChatWithHistory(
+            OpenaiAPI.get_llm(model),
+            this.response_format,
+            this.journal);
         this.chat.set_system_message(instructions);
     }
 
@@ -256,64 +252,6 @@ class VanillaAssistant implements IAssistant {
 
     public async add_response(message: string): Promise<Status> {
         return this.chat.add_response(message, "bot to user");
-    }
-}
-
-// Modern assistant uses Assistant API
-class ModernAssistant implements IAssistant {
-    private static assistant: Assistant;
-
-    private thread?: AssistantThread;
-
-    static init(instructions: string, response_format: "text" | "json" = "text") {
-        const model = Config.Assistant().model;
-        if (!ModernAssistant.assistant) {
-            ModernAssistant.assistant = new Assistant("chorister_assistant");
-            ModernAssistant.assistant.init(model, instructions, response_format);
-        } else {
-            throw new Error("ModernAssistant is already initialized");
-        }
-    }
-
-    constructor(private readonly journal: Journal) {
-        if (!ModernAssistant.assistant) {
-            throw new Error("ModernAssistant is not initialized");
-        }
-    }
-
-    public async send_message(message: string): Promise<StatusWith<Response[]>> {
-        if (!this.thread) {
-            const status = await this.new_thread();
-            if (!status.ok()) {
-                return status.wrap("modern: failed to create thread");
-            }
-            this.thread = status.value!;
-        }
-        const status = await this.thread.send_message(message);
-        if (!status.ok()) {
-            return status.wrap("modern: failed to send message");
-        }
-        const response = status.value!;
-        const response_obj: Response[] = response.map(r => JSON.parse(r));
-        return Status.ok().with(response_obj);
-    }
-
-    public async add_response(message: string): Promise<Status> {
-        if (!this.thread) {
-            return return_fail("thread is not initialized", this.journal.log());
-        }
-        return this.thread.add_response(message, "bot to user");
-    }
-
-    static get_api(): Assistant {
-        if (!ModernAssistant.assistant) {
-            throw new Error("ModernAssistant is not initialized");
-        }
-        return ModernAssistant.assistant;
-    }
-
-    public async new_thread(): Promise<StatusWith<AssistantThread>> {
-        return await ModernAssistant.assistant.create_thread();
     }
 }
 
