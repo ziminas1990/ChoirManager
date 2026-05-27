@@ -9,13 +9,16 @@ import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { AdminActions } from "@src/use_cases/admin_actions.js";
 import { GlobalFormatter, return_exception, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
-import { ChoristerAssistant, Response } from "@src/ai_assistants/chorister_assistant.js";
+import { ChoristerAssistant } from "@src/ai_assistants/chorister_assistant.js";
 import { Language, Scores } from "@src/database.js";
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
 import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/chorister_statistics.js";
+import { IToolchain, Tool } from "@src/interfaces/llm.js";
+import { Expected } from "@src/utils/expected.js";
+import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -23,6 +26,7 @@ export class ChoristerDialog implements IChorister {
     private journal: Journal;
 
     private widgets: AbstractWidget[] = [];
+    private assistant_tools?: IToolchain;
 
     constructor(private user: TelegramUser, parent_journal: Journal)
     {
@@ -166,54 +170,44 @@ export class ChoristerDialog implements IChorister {
         const assistant = ChoristerAssistant.get_instance();
         const username = this.user.info().tgid;
 
-        const send_status = await assistant.send_message(username, message);
+        const send_status = await assistant.send_message(
+            username,
+            message,
+            this.get_assistant_tools(),
+        );
         if (!send_status.ok()) {
             return send_status.wrap(`assistant failure`);
         }
 
-        this.journal.log().info({ response: send_status.value }, `assistant response`);
-
-        for (const response of send_status.value!) {
-            const status = await this.on_action(response);
-            if (!status.ok()) {
-                return status.wrap(`action ${response.what} failed`);
-            }
-        }
+        this.journal.log().info(`assistant completed`);
         return Status.ok();
     }
 
-    private async on_action(action: Response): Promise<Status> {
-        switch (action.what) {
-            case "message":
-                try {
-                    await this.user.send_message(
-                        action.text,
-                        {
-                            reply_markup: this.get_keyboard(),
-                        });
-                } catch (err) {
-                    return Status.exception(err).wrap(`failed to send assistant response`);
-                }
-                return Status.ok();
-            case "scores_list":
-                return await ScoresActions.scores_list_requested(this.user, this.journal);
-            case "download_scores":
-                return await ScoresActions.download_scores_request(
-                    this.user, action.filename, this.journal);
-            case "get_deposit_info":
-                return await DepositActions.deposit_requested(this.user, this.journal);
-            case "already_paid":
-                return DepositActions.already_paid(this.user, this.journal);
-            case "top_up":
-                return DepositActions.top_up(
-                    this.user, action.amount, action.original_message, this.journal);
-            case "feedback":
-                return await this.start_feedback_activity(action.details);
-            case "get_transactions":
-                return await DepositActions.transactions_requested(this.user, this.journal);
-            default:
-                return return_fail(`unknown action: ${JSON.stringify(action)}`, this.journal.log());
+    private get_assistant_tools(): IToolchain {
+        if (this.assistant_tools) {
+            return this.assistant_tools;
         }
+
+        const tools = new ToolsMultiplexer();
+        const statuses = [
+            tools.add_tool(new MessangerTools(
+                async (message: string) => this.user.send_message(message, {
+                    reply_markup: this.get_keyboard(),
+                }),
+            )),
+            tools.add_tool(new ScoresTools(this.user, this.journal)),
+            tools.add_tool(new DepositManagerTools(this.user, this.journal)),
+            tools.add_tool(new FeedbackTools(
+                async (details?: string) => this.start_feedback_activity(details),
+            )),
+        ];
+        const failed = statuses.find(status => !status.ok);
+        if (failed) {
+            throw new Error(failed.error);
+        }
+
+        this.assistant_tools = tools;
+        return tools;
     }
 
     private async on_service_message(command: string): Promise<Status> {
@@ -307,6 +301,319 @@ export class ChoristerDialog implements IChorister {
             is_persistent: true,
             resize_keyboard: true,
         }
+    }
+}
+
+type ValueOrError<T> = {
+    value?: T;
+    error?: string;
+}
+
+function return_success<T>(value: T): string {
+    return JSON.stringify({ value } as ValueOrError<T>);
+}
+
+function return_error(error: string): string {
+    return JSON.stringify({ error } as ValueOrError<never>);
+}
+
+function status_to_expected<T>(status: Status, value: T): Expected<T> {
+    return status.ok()
+        ? Expected.ok(value)
+        : Expected.err(status.what());
+}
+
+class MessangerTools implements IToolchain {
+    constructor(
+        private send_message: (html_text: string) => Promise<Status>,
+    ) {}
+
+    get_name(): string {
+        return "messanger";
+    }
+
+    get_readme(): string {
+        return [
+            "A set of calls to communicate with the user.",
+            "Use messanger_send_message to send the actual text response to the user.",
+        ].join("\n");
+    }
+
+    get_tools(): Map<string, Tool> {
+        return new Map([
+            ["messanger_send_message", {
+                name: "messanger_send_message",
+                description: [
+                    "Send an HTML-formatted message to the user.",
+                    "Use this for greetings, clarifications, refusals and regular answers.",
+                    "Only Telegram-safe HTML tags are allowed: <b>, <i>, <code>, <s>, <u>, <pre>.",
+                ].join("\n"),
+                parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                        html_text: {
+                            type: "string",
+                            description: "Text to send to the user in Telegram HTML format.",
+                        },
+                    },
+                    required: ["html_text"],
+                },
+            }],
+        ]);
+    }
+
+    async call_tool(name: string, parameters: Record<string, unknown>): Promise<Expected<string>> {
+        if (name !== "messanger_send_message") {
+            return Expected.err(return_error(`Unknown tool: ${name}`));
+        }
+        const html_text = parameters.html_text;
+        if (typeof html_text !== "string" || html_text.trim().length === 0) {
+            return Expected.err(return_error("'html_text' must be a non-empty string"));
+        }
+
+        const status = await this.send_message(html_text);
+        return status_to_expected(status, return_success(true));
+    }
+}
+
+class ScoresTools implements IToolchain {
+    constructor(
+        private user: TelegramUser,
+        private journal: Journal,
+    ) {}
+
+    get_name(): string {
+        return "scores";
+    }
+
+    get_readme(): string {
+        return [
+            "Tools for choir scores.",
+            "Use scores_get_list when user asks for available scores or when the requested score is unclear.",
+            "Use scores_download when user asks for a specific score.",
+        ].join("\n");
+    }
+
+    get_tools(): Map<string, Tool> {
+        return new Map([
+            ["scores_get_list", {
+                name: "scores_get_list",
+                description: "Send the user a list of available scores with download links/buttons.",
+                parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {},
+                },
+            }],
+            ["scores_download", {
+                name: "scores_download",
+                description: [
+                    "Send the user a link to a specific score.",
+                    "The query may be a score name, author, filename or natural-language hint.",
+                    "If the requested score is ambiguous, use scores_get_list instead.",
+                ].join("\n"),
+                parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                        query: {
+                            type: "string",
+                            description: "Score title, author, filename, or user-provided hint.",
+                        },
+                    },
+                    required: ["query"],
+                },
+            }],
+        ]);
+    }
+
+    async call_tool(name: string, parameters: Record<string, unknown>): Promise<Expected<string>> {
+        if (name === "scores_get_list") {
+            const status = await ScoresActions.scores_list_requested(this.user, this.journal);
+            return status_to_expected(status, return_success(true));
+        }
+
+        if (name === "scores_download") {
+            const query = parameters.query;
+            if (typeof query !== "string" || query.trim().length === 0) {
+                return Expected.err(return_error("'query' must be a non-empty string"));
+            }
+            const status = await ScoresActions.download_scores_request(this.user, query, this.journal);
+            return status_to_expected(status, return_success(true));
+        }
+
+        return Expected.err(return_error(`Unknown tool: ${name}`));
+    }
+}
+
+class DepositManagerTools implements IToolchain {
+    constructor(
+        private user: TelegramUser,
+        private journal: Journal,
+    ) {}
+
+    get_name(): string {
+        return "deposit_manager";
+    }
+
+    get_readme(): string {
+        return [
+            "Tools for deposit and membership fee operations.",
+            "Use deposit_manager_top_up when user reports a new deposit with amount.",
+            "Use deposit_manager_already_paid only when user says they already paid and does not provide a new amount/date.",
+        ].join("\n");
+    }
+
+    get_tools(): Map<string, Tool> {
+        return new Map([
+            ["deposit_manager_send_deposit_info", {
+                name: "deposit_manager_send_deposit_info",
+                description: "Send the user their current deposit and membership info.",
+                parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {},
+                },
+            }],
+            ["deposit_manager_already_paid", {
+                name: "deposit_manager_already_paid",
+                description: "Notify the system that user said they already paid the deposit/membership fee.",
+                parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {},
+                },
+            }],
+            ["deposit_manager_top_up", {
+                name: "deposit_manager_top_up",
+                description: "Notify the system that user deposited money.",
+                parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                        amount: {
+                            type: "number",
+                            description: "Amount deposited by the user.",
+                        },
+                        original_message: {
+                            type: "string",
+                            description: "Original user message that reported the deposit.",
+                        },
+                    },
+                    required: ["amount", "original_message"],
+                },
+            }],
+            ["deposit_manager_send_transactions", {
+                name: "deposit_manager_send_transactions",
+                description: "Send the user their transaction history.",
+                parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                        limit: {
+                            type: "number",
+                            description: "Optional max number of transactions to show.",
+                        },
+                    },
+                },
+            }],
+        ]);
+    }
+
+    async call_tool(name: string, parameters: Record<string, unknown>): Promise<Expected<string>> {
+        if (name === "deposit_manager_send_deposit_info") {
+            const status = await DepositActions.deposit_requested(this.user, this.journal);
+            return status_to_expected(status, return_success(true));
+        }
+
+        if (name === "deposit_manager_already_paid") {
+            const status = await DepositActions.already_paid(this.user, this.journal);
+            return status_to_expected(status, return_success(true));
+        }
+
+        if (name === "deposit_manager_top_up") {
+            const amount = parameters.amount;
+            const original_message = parameters.original_message;
+            if (typeof amount !== "number" || !Number.isFinite(amount)) {
+                return Expected.err(return_error("'amount' must be a finite number"));
+            }
+            if (typeof original_message !== "string" || original_message.trim().length === 0) {
+                return Expected.err(return_error("'original_message' must be a non-empty string"));
+            }
+
+            const status = await DepositActions.top_up(
+                this.user,
+                amount,
+                original_message,
+                this.journal,
+            );
+            return status_to_expected(status, return_success(true));
+        }
+
+        if (name === "deposit_manager_send_transactions") {
+            const limit = parameters.limit;
+            if (limit !== undefined && typeof limit !== "number") {
+                return Expected.err(return_error("'limit' must be a number"));
+            }
+            const status = await DepositActions.transactions_requested(
+                this.user,
+                this.journal,
+                limit,
+            );
+            return status_to_expected(status, return_success(true));
+        }
+
+        return Expected.err(return_error(`Unknown tool: ${name}`));
+    }
+}
+
+class FeedbackTools implements IToolchain {
+    constructor(
+        private start_feedback: (details?: string) => Promise<Status>,
+    ) {}
+
+    get_name(): string {
+        return "feedback";
+    }
+
+    get_readme(): string {
+        return [
+            "Tools for collecting user feedback and complaints for the org group.",
+            "Use feedback_start to open the feedback flow.",
+        ].join("\n");
+    }
+
+    get_tools(): Map<string, Tool> {
+        return new Map([
+            ["feedback_start", {
+                name: "feedback_start",
+                description: "Start the feedback flow. If the user already provided feedback text, pass it as details.",
+                parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                        details: {
+                            type: "string",
+                            description: "Optional feedback text already provided by the user.",
+                        },
+                    },
+                },
+            }],
+        ]);
+    }
+
+    async call_tool(name: string, parameters: Record<string, unknown>): Promise<Expected<string>> {
+        if (name !== "feedback_start") {
+            return Expected.err(return_error(`Unknown tool: ${name}`));
+        }
+        const details = parameters.details;
+        if (details !== undefined && typeof details !== "string") {
+            return Expected.err(return_error("'details' must be a string"));
+        }
+
+        const status = await this.start_feedback(details);
+        return status_to_expected(status, return_success(true));
     }
 }
 
