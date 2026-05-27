@@ -19,7 +19,6 @@ import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/choris
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
 import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 
-
 export class ChoristerDialog implements IChorister {
     private last_welcome: Date = new Date(0);
     private journal: Journal;
@@ -91,11 +90,8 @@ export class ChoristerDialog implements IChorister {
             }
         }
 
-        if (!msg.text) {
-            return Expected.ok(undefined);
-        }
-
-        return await this.dialog_with_assistant(msg.text);
+        return await this.with_typing_indicator(
+            async () => await this.dialog_with_assistant(text));
     }
 
     // From IChorister
@@ -151,6 +147,25 @@ export class ChoristerDialog implements IChorister {
                 reply_markup: this.get_keyboard(),
             });
         return sent.as_status();
+    }
+
+    private async with_typing_indicator<T>(operation: () => Promise<T>): Promise<T> {
+        const send_typing = async (): Promise<void> => {
+            const status = await this.user.send_chat_action("typing");
+            if (!status.ok) {
+                this.journal.log().warn(`Failed to send typing chat action: ${status.error}`);
+            }
+        };
+
+        const typing_interval = setInterval(() => {
+            void send_typing();
+        }, 2000);
+
+        try {
+            return await operation();
+        } finally {
+            clearInterval(typing_interval);
+        }
     }
 
     private async dialog_with_assistant(message: string): Promise<Status> {
@@ -381,28 +396,38 @@ class ScoresTools implements IToolchain {
     get_readme(): string {
         return [
             "Tools for choir scores.",
-            "Use scores_get_list when user asks for available scores or when the requested score is unclear.",
-            "Use scores_download when user asks for a specific score.",
+            "Use scores_display_list to display a scores list to the user",
+            "Use scores_get_list when you need to inspect the catalog yourself and choose the best match.",
+            "Use scores_send_to_user after you selected the exact score from the list.",
         ].join("\n");
     }
 
     get_tools(): Map<string, Tool> {
         return new Map([
-            ["scores_get_list", {
-                name: "scores_get_list",
-                description: "Send the user a list of available scores with download links/buttons.",
+            ["scores_display_list", {
+                name: "scores_display_list",
+                description: "Send the user a browsable list of available scores with download buttons.",
                 parameters: {
                     type: "object",
                     additionalProperties: false,
                     properties: {},
                 },
             }],
-            ["scores_download", {
-                name: "scores_download",
+            ["scores_get_list", {
+                name: "scores_get_list",
+                description: "Return the full machine-readable list of downloadable scores. Does not send a message to the user.",
+                parameters: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {},
+                },
+            }],
+            ["scores_send_to_user", {
+                name: "scores_send_to_user",
                 description: [
                     "Send the user a link to a specific score.",
-                    "The query may be a score name, author, filename or natural-language hint.",
-                    "If the requested score is ambiguous, use scores_get_list instead.",
+                    "Use after you selected the exact score from scores_get_list.",
+                    "Pass the selected score title or filename.",
                 ].join("\n"),
                 parameters: {
                     type: "object",
@@ -410,7 +435,7 @@ class ScoresTools implements IToolchain {
                     properties: {
                         query: {
                             type: "string",
-                            description: "Score title, author, filename, or user-provided hint.",
+                            description: "Selected score title or filename.",
                         },
                     },
                     required: ["query"],
@@ -420,12 +445,19 @@ class ScoresTools implements IToolchain {
     }
 
     async call_tool(name: string, parameters: Record<string, unknown>): Promise<Expected<string>> {
-        if (name === "scores_get_list") {
+        if (name === "scores_display_list") {
             const status = await ScoresActions.scores_list_requested(this.user, this.journal);
             return status_to_expected(status, return_success(true));
         }
 
-        if (name === "scores_download") {
+        if (name === "scores_get_list") {
+            const scores = ScoresActions.get_available_scores(this.user, this.journal);
+            return Array.isArray(scores)
+                ? Expected.ok(return_success(scores))
+                : scores.cast_error<string>();
+        }
+
+        if (name === "scores_send_to_user") {
             const query = parameters.query;
             if (typeof query !== "string" || query.trim().length === 0) {
                 return Expected.err(return_error("'query' must be a non-empty string"));
@@ -532,7 +564,6 @@ class DepositManagerTools implements IToolchain {
             if (typeof original_message !== "string" || original_message.trim().length === 0) {
                 return Expected.err(return_error("'original_message' must be a non-empty string"));
             }
-
             const status = await DepositActions.top_up(
                 this.user,
                 amount,
@@ -602,7 +633,6 @@ class FeedbackTools implements IToolchain {
         if (details !== undefined && typeof details !== "string") {
             return Expected.err(return_error("'details' must be a string"));
         }
-
         const status = await this.start_feedback(details);
         return status_to_expected(status, return_success(true));
     }

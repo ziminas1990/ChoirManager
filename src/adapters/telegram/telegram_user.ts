@@ -156,6 +156,18 @@ export class TelegramUser implements IUserAgent {
         }
     }
 
+    async send_chat_action(action: TelegramBot.ChatAction): Promise<Status> {
+        if (!this.bot) {
+            return return_fail("API is not initialized", this.journal.log());
+        }
+        try {
+            await this.bot.sendChatAction(this.chat_id, action);
+            return Expected.ok(undefined);
+        } catch (e) {
+            return return_exception(e, this.journal.log());
+        }
+    }
+
     // From IUserAgent
     async send_file(filename: string, caption?: string, content_type?: string): Promise<Status> {
         if (!this.bot) {

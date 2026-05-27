@@ -186,6 +186,7 @@ export class OpenaiLLM implements ILLM {
                 response_format: get_response_format(response_format),
                 tools: openai_tools.length > 0 ? openai_tools : undefined,
                 tool_choice: openai_tools.length > 0 ? tools?.choice ?? "auto" : undefined,
+                service_tier: "priority",
             });
 
             if (completion.choices.length === 0) {
