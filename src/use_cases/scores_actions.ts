@@ -7,13 +7,10 @@ import { GlobalFormatter, return_fail } from "@src/utils.js";
 
 export class ScoresActions {
 
-    static async scores_list_requested(
-        agent: IUserAgent,
-        journal: Journal
-    ): Promise<Status> {
+    static get_available_scores(agent: IUserAgent, journal: Journal): Scores[] | Status {
         const runtime = Runtime.get_instance();
-        const userid  = agent.userid();
-        const user    = runtime.get_user(userid);
+        const userid = agent.userid();
+        const user = runtime.get_user(userid);
         if (!user) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
@@ -22,10 +19,19 @@ export class ScoresActions {
             return return_fail(`user ${userid} is a guest`, journal.log());
         }
 
-        const database = runtime.get_database();
-
-        const scores = [...database.all_scores()]
+        return [...runtime.get_database().all_scores()]
+            .filter(score => !!score.file)
             .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    static async scores_list_requested(
+        agent: IUserAgent,
+        journal: Journal
+    ): Promise<Status> {
+        const scores = this.get_available_scores(agent, journal);
+        if (!Array.isArray(scores)) {
+            return scores;
+        }
 
         return await agent.as_chorister().send_scores_list(scores);
     }
@@ -35,11 +41,8 @@ export class ScoresActions {
         score: Scores | string,
         journal: Journal
     ): Promise<Status> {
-
-        const runtime = Runtime.get_instance();
-        const database = runtime.get_database();
-
         if (typeof score == "string") {
+            const database = Runtime.get_instance().get_database();
             const score_info = database.find_scores({ name: score }) ?? database.find_scores({ file: score });
             if (!score_info) {
                 return return_fail(`score ${score} not found`, journal.log());
