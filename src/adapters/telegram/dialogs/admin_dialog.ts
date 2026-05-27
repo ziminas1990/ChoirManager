@@ -12,11 +12,11 @@ export class AdminDialog implements IAdminAgent {
 
     async send_notification(message: string): Promise<Status> {
         const formatter = GlobalFormatter.instance();
-        return await this.user.send_message([
+        return (await this.user.send_message([
             formatter.bold("Admin's notification:"),
             "",
             message,
-        ].join("\n"));
+        ].join("\n"))).as_status();
     }
 
     async send_runtime_backup(filepath: string): Promise<Status> {

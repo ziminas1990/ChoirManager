@@ -101,7 +101,7 @@ export class ChoristerAssistant {
             if (!status.ok) {
                 return status.add_context("can't get api for user").wrap_error("can't get api for user");
             }
-            return await status.value.send_message(message);
+            return (await status.value.send_message(message)).as_status();
         } catch (e) {
             return Expected.exception("can't send message", e);
         }
@@ -122,11 +122,6 @@ export class ChoristerAssistant {
         let user = this.users.get(username);
         if (user) {
             return Expected.ok(user);
-        }
-
-        if (!["vanilla", "assistant"].includes(Config.Assistant().openai_api)) {
-            this.journal.log().error("unknown assistant type");
-            return Expected.err("unknown assistant type");
         }
 
         user = this.create_agent_assistant(username, tools);

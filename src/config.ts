@@ -51,8 +51,7 @@ export class Config {
             fetch_interval_sec: number  // not less than 60 seconds
         },
         assistant?: {
-            openai_api: "vanilla" | "assistant"
-            model: "gpt-4o-mini" | "gpt-4o"
+            model: string
             fetch_interval_sec: number  // not less than 60 seconds
             faq_document_id: string
         },
@@ -286,12 +285,6 @@ export class Config {
         if (this.data.assistant) {
             const fail_prefix = "assistant misconfiguration";
             const cfg = this.data.assistant;
-            if (!cfg.openai_api || !["vanilla", "assistant"].includes(cfg.openai_api)) {
-                return Expected.err(`${fail_prefix}: 'openai_api' MUST be specified (vanilla or assistant)`);
-            }
-            if (!cfg.model || !["gpt-4o-mini", "gpt-4o"].includes(cfg.model)) {
-                return Expected.err(`${fail_prefix}: 'model' MUST be specified (gpt-4o-mini or gpt-4o)`);
-            }
             if (!cfg.faq_document_id) {
                 return Expected.err(`${fail_prefix}: 'faq_document_id' MUST be specified`);
             }

@@ -85,7 +85,7 @@ export class FeedbackWidget implements AbstractWidget {
             return Expected.ok(undefined);
         }
 
-        const sent_status = await this.user.send_message_returning_id(
+        const sent_status = await this.user.send_message(
             Messages.creating_widget_text(this.user.info().lang),
             {
                 reply_markup: {
@@ -93,7 +93,7 @@ export class FeedbackWidget implements AbstractWidget {
                         [this.buttons().cancel]
                     ]
                 }
-            }
+            },
         );
         if (!sent_status.ok) {
             return sent_status.wrap_error("failed to create widget");

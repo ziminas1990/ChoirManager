@@ -3,7 +3,7 @@ import { Scores } from "@src/database.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Journal } from "@src/journal.js";
 import { Runtime } from "@src/runtime.js";
-import { GlobalFormatter, return_exception, return_fail } from "@src/utils.js";
+import { GlobalFormatter, return_fail } from "@src/utils.js";
 
 export class ScoresActions {
 
@@ -62,13 +62,9 @@ export class ScoresActions {
             return return_fail(`user ${userid} is a guest`, journal.log());
         }
 
-        try {
-            return agent.send_message(GlobalFormatter.instance().link(
-                `"${score.name}" by ${score.author}`,
-                score.file));
-        } catch (err) {
-            return return_exception(err, journal.log());
-        }
+        return (await agent.send_message(GlobalFormatter.instance().link(
+            `"${score.name}" by ${score.author}`,
+            score.file))).as_status();
     }
 }
 

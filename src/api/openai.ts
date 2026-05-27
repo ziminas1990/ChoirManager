@@ -12,7 +12,7 @@ import { return_exception, return_fail } from "@src/utils.js";
 import { Journal } from "@src/journal.js";
 import { ILLM, IToolchain, Message, Response, StreamChunk, TokensUsage, ToolsOption } from "@src/interfaces/llm.js";
 
-export type OpenaiModel = "gpt-4o-mini" | "gpt-4o" | "o3";
+export type OpenaiModel = string;
 
 type OpenaiUsage = {
     prompt_tokens?: number;

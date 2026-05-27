@@ -231,26 +231,38 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
         if (sent_by_admin && sent_to_bot && !sent_to_managers_chat) {
             this.pending_actions.push(async () => {
-                return (await this.handle_admin_message(msg))
-                    .wrap_error("failed to handle admin message");
+                const status = await this.handle_admin_message(msg);
+                if (!status.ok) {
+                    return status.wrap_error("failed to handle admin message");
+                }
+                return status;
             });
         }
 
         if (is_announce && sent_by_manager && msg.text != undefined) {
             this.pending_actions.push(async () => {
-                return (await this.handle_announce_chat_message(msg))
-                    .wrap_error("failed to handle announce chat message");
+                const status = await this.handle_announce_chat_message(msg);
+                if (!status.ok) {
+                    return status.wrap_error("failed to handle announce chat message");
+                }
+                return status;
             });
             this.pending_actions.push(async () => {
-                return (await Translator.translate_announce(user_info, msg.text!, this.journal))
-                    .wrap_error("failed to translate announce");
+                const status = await Translator.translate_announce(user_info, msg.text!, this.journal);
+                if (!status.ok) {
+                    return status.wrap_error("failed to translate announce");
+                }
+                return status;
             });
         }
 
         if (sent_to_managers_chat) {
             this.pending_actions.push(async () => {
-                return (await this.handle_managers_chat_message(msg))
-                    .wrap_error("failed to handle managers chat message");
+                const status = await this.handle_managers_chat_message(msg);
+                if (!status.ok) {
+                    return status.wrap_error("failed to handle managers chat message");
+                }
+                return status;
             });
         }
 

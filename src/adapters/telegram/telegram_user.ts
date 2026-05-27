@@ -137,15 +137,7 @@ export class TelegramUser implements IUserAgent {
     }
 
     // From IUserAgent
-    async send_message(message: string, options?: TelegramBot.SendMessageOptions): Promise<Status> {
-        const result = await this.send_message_returning_id(message, options);
-        if (!result.ok) {
-            return result.wrap_error("failed to send message");
-        }
-        return Expected.ok(undefined);
-    }
-
-    async send_message_returning_id(
+    async send_message(
         message: string,
         options?: TelegramBot.SendMessageOptions,
     ): Promise<Expected<number>> {

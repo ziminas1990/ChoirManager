@@ -150,7 +150,7 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
 
     private async update_widget(text: string): Promise<Status> {
         if (!this.message_id) {
-            const status = await this.user.send_message_returning_id(text, {
+            const status = await this.user.send_message(text, {
                 reply_markup: {
                     inline_keyboard: this.get_inline_keyboard(),
                 },

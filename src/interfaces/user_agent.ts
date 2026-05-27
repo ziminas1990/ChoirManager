@@ -1,4 +1,4 @@
-import { Status } from "@src/utils/expected.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { Scores, User } from "@src/database.js";
 import { Feedback } from "@src/entities/feedback.js";
@@ -11,7 +11,7 @@ export interface IUserAgent
 
     userid(): string;
 
-    send_message(message: string): Promise<Status>;
+    send_message(message: string): Promise<Expected<number>>;
 
     send_file(filename: string, caption?: string, content_type?: string): Promise<Status>;
 
