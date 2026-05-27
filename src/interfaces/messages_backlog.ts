@@ -1,4 +1,4 @@
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 
 export type Message = {
     time: Date;
@@ -14,5 +14,5 @@ export interface IMessagesBacklog {
 
     update_message(message: Message): Promise<Status>;
 
-    get_messages(from: Date, to: Date): Promise<StatusWith<Message[]>>;
+    get_messages(from: Date, to: Date): Promise<Expected<Message[]>>;
 }

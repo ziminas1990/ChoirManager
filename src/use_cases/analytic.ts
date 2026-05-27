@@ -1,8 +1,7 @@
 import { Database } from "@src/database.js";
 import { ChoristerStatistics } from "@src/entities/statistics.js";
-import { StatusWith } from "@src/status";
+import { Expected } from "@src/utils/expected.js";
 import { Runtime } from "@src/runtime.js";
-import { Status } from "@src/status.js";
 import { apply_interval } from "@src/utils.js";
 
 function accumulate_songs_stat(
@@ -17,7 +16,7 @@ function accumulate_songs_stat(
 export class Analytic {
 
     static chorister_statistic_request(user_id: string, days: number | undefined)
-    : StatusWith<ChoristerStatistics>
+    : Expected<ChoristerStatistics>
     {
         const now = new Date();
         let since: Date | undefined;
@@ -29,7 +28,7 @@ export class Analytic {
 
         const user = database.get_user(user_id);
         if (!user) {
-            return Status.fail(`User ${user_id} not found`);
+            return Expected.err(`User ${user_id} not found`);
         }
 
         // Accumulating actual statistic during the whole period
@@ -69,7 +68,7 @@ export class Analytic {
             songs_stat.set(name, { ideal, actual: actual_songs.get(name) ?? 0 });
         });
 
-        return Status.ok().with({
+        return Expected.ok({
             period: {
                 from: first_rehersal,
                 to: now

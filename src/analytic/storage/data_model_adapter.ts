@@ -1,5 +1,5 @@
 import * as db from "@src/analytic/data_model.js";
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 
 export type Row = string[];
 export type Table = Row[];
@@ -18,22 +18,22 @@ function check_header(header: Row): Status {
     const [tag, joined, who,] = header;
 
     if (tag.toLowerCase() !== "tag") {
-        return Status.fail("First column must be 'Tag'");
+        return Expected.err("First column must be 'Tag'");
     }
     if (joined.toLowerCase() !== "joined") {
-        return Status.fail("Second column must be 'Joined'");
+        return Expected.err("Second column must be 'Joined'");
     }
     if (who.toLowerCase() !== "who") {
-        return Status.fail("Third column must be 'Who'");
+        return Expected.err("Third column must be 'Who'");
     }
-    return Status.ok();
+    return Expected.ok(undefined);
 }
 
 function read_song_data(row: Row, song_id: number, database: db.Database): Status {
     const [,, name, ...minutes] = row;
     const song_status = database.create_piece(song_id, "Unknown", name);
-    if (!song_status.done() || !song_status.value) {
-        return song_status.wrap("Can't create song");
+    if (!song_status.ok) {
+        return song_status.wrap_error("Can't create song");
     }
 
     minutes.forEach((minute, rehersal_id) => {
@@ -43,7 +43,7 @@ function read_song_data(row: Row, song_id: number, database: db.Database): Statu
         }
     });
 
-    return Status.ok();
+    return Expected.ok(undefined);
 }
 
 function read_chorister_data(row: Row, chorister_id: number, database: db.Database): Status {
@@ -57,7 +57,7 @@ function read_chorister_data(row: Row, chorister_id: number, database: db.Databa
     const [voice, joined, name_surname, ...hours] = row;
 
     if (!Object.keys(vocals).includes(voice.toLowerCase())) {
-        return Status.fail(`Unexpected vocal type: '${voice}'`)
+        return Expected.err(`Unexpected vocal type: '${voice}'`)
     }
     const vocal = vocals[voice.toLowerCase() as keyof typeof vocals];
 
@@ -65,8 +65,8 @@ function read_chorister_data(row: Row, chorister_id: number, database: db.Databa
     const joined_date = parse_date(joined);
 
     const chorister_status = database.create_chorister(chorister_id, name, surname, vocal, joined_date);
-    if (!chorister_status.done() || !chorister_status.value) {
-        return chorister_status.wrap("Can't create chorister");
+    if (!chorister_status.ok) {
+        return chorister_status.wrap_error("Can't create chorister");
     }
 
     hours.forEach((hour, rehersal_id) => {
@@ -75,16 +75,16 @@ function read_chorister_data(row: Row, chorister_id: number, database: db.Databa
             database.join_rehersal(rehersal_id, chorister_id, minutes);
         }
     });
-    return Status.ok();
+    return Expected.ok(undefined);
 }
 
-export function build_data_model(data: Table): StatusWith<db.Database> {
+export function build_data_model(data: Table): Expected<db.Database> {
     const header = data[0];
 
     {
         const status = check_header(header);
-        if (!status.done()) {
-            return status.wrap("Table has invalid header");
+        if (!status.ok) {
+            return status.wrap_error("Table has invalid header");
         }
     }
 
@@ -104,17 +104,17 @@ export function build_data_model(data: Table): StatusWith<db.Database> {
         const tag = row[0];
         if (tag.toLowerCase() === "song") {
             const status = read_song_data(row, next_piece_id++, data_model);
-            if (!status.done()) {
-                console.warn(`Error in row ${i}: ${status.what()}`);
+            if (!status.ok) {
+                console.warn(`Error in row ${i}: ${status.error}`);
             }
         } else {
             const status = read_chorister_data(row, next_chorister_id++, data_model);
-            if (!status.done()) {
-                console.warn(`Error in row ${i}: ${status.what()}`);
+            if (!status.ok) {
+                console.warn(`Error in row ${i}: ${status.error}`);
             }
         }
     }
 
-    return Status.ok().with(data_model);
+    return Expected.ok(data_model);
 
 }

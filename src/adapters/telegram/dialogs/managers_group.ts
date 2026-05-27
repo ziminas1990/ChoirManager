@@ -1,6 +1,6 @@
 import { IManagersChat } from "@src/interfaces/adapter.js";
 import { Feedback } from "@src/entities/feedback.js";
-import { Status } from "@src/status.js";
+import { Status } from "@src/utils/expected.js";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
 import { Journal } from "@src/journal.js";
 import { GlobalFormatter } from "@src/utils.js";

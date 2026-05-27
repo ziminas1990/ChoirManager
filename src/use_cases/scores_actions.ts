@@ -1,4 +1,4 @@
-import { Status } from "@src/status.js";
+import { Status } from "@src/utils/expected.js";
 import { Scores } from "@src/database.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Journal } from "@src/journal.js";

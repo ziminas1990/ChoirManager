@@ -3,7 +3,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { AbstractWidget as AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Language } from "@src/database.js";
 import { GlobalFormatter, log_and_return } from "@src/utils.js";
 import { FeedbackActions } from "@src/use_cases/feedback_actions.js";
@@ -40,8 +40,8 @@ export class FeedbackWidget implements AbstractWidget {
     public async start(): Promise<Status> {
         this.journal.log().info("started");
         const status = await this.create_widget();
-        if (!status.ok()) {
-            return status.wrap("failed to create widget");
+        if (!status.ok) {
+            return status.wrap_error("failed to create widget");
         }
         if (!this.feedback.details || this.feedback.details.length == 0) {
             return await this.switch_state("waiting_details");
@@ -54,7 +54,7 @@ export class FeedbackWidget implements AbstractWidget {
         this.journal.log().info("interrupted");
         this.release_resources();
         this.state = "initial";
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     public waits_for_message(): boolean {
@@ -66,13 +66,13 @@ export class FeedbackWidget implements AbstractWidget {
             if (message.text && message.text.trim().length > 0) {
                 this.on_details_provided(message.text);
                 const status = await this.switch_state("choose_privacy");
-                if (!status.ok()) {
-                    return status.wrap(`switching to choose_privacy state`);
+                if (!status.ok) {
+                    return status.wrap_error(`switching to choose_privacy state`);
                 }
             }
-            return Status.ok();
+            return Expected.ok(undefined);
         } else {
-            return Status.fail("unexpected message");
+            return Expected.err("unexpected message");
         }
     }
 
@@ -82,10 +82,10 @@ export class FeedbackWidget implements AbstractWidget {
 
     private async create_widget(): Promise<Status> {
         if (this.message_id) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
-        const sent_status = await this.user.send_message(
+        const sent_status = await this.user.send_message_returning_id(
             Messages.creating_widget_text(this.user.info().lang),
             {
                 reply_markup: {
@@ -95,11 +95,11 @@ export class FeedbackWidget implements AbstractWidget {
                 }
             }
         );
-        if (!sent_status.ok() || !sent_status.value) {
-            return sent_status.wrap("failed to create widget");
+        if (!sent_status.ok) {
+            return sent_status.wrap_error("failed to create widget");
         }
         this.message_id = sent_status.value;
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private async switch_state(new_state: State): Promise<Status> {
@@ -110,10 +110,10 @@ export class FeedbackWidget implements AbstractWidget {
 
     private async update_widget(): Promise<Status> {
         if (this.state === "initial") {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
         if (!this.message_id) {
-            return Status.fail("no message id");
+            return Expected.err("no message id");
         }
         switch (this.state) {
             case "waiting_details":
@@ -143,14 +143,14 @@ export class FeedbackWidget implements AbstractWidget {
                 });
             case "finished":
                 await this.release_resources();
-                return Status.ok();
+                return Expected.ok(undefined);
             case "failed":
                 return this.user.edit_message(this.message_id, {
                     text: Messages.failed_widget_text(this.user.info().lang),
                     inline_keyboard: undefined
                 });
             default:
-                return Status.ok();
+                return Expected.ok(undefined);
         }
     }
 
@@ -184,7 +184,7 @@ export class FeedbackWidget implements AbstractWidget {
             this.feedback as Feedback,
             this.journal
         );
-        if (!status.ok()) {
+        if (!status.ok) {
             await this.switch_state("failed");
             // HACK: message_id is set to undefined to prevent removing message during
             // release_resources() call

@@ -1,4 +1,4 @@
-import { Status, StatusWith } from "../status.js";
+import { Expected, Status } from "../utils/expected.js";
 
 type PackedMap<K, P> = [K, P][];
 
@@ -176,57 +176,57 @@ export class Database {
     public rehersals: Map<number, RehersalEntity> = new Map();
 
     create_chorister(chorister_id: number, name: string, surname: string, vocal: Vocal, joined: Date)
-    : StatusWith<ChoristerEntity> {
+    : Expected<ChoristerEntity> {
         if (this.choristers.has(chorister_id)) {
-            return Status.fail(`Chorister #${chorister_id} already exists`);
+            return Expected.err(`Chorister #${chorister_id} already exists`);
         }
         const chorister = new ChoristerEntity(chorister_id, name, surname, vocal, joined);
         this.choristers.set(chorister_id, chorister);
-        return Status.ok().with(chorister);
+        return Expected.ok(chorister);
     }
 
-    get_chorister(what: Partial<ChoristerEntity> | RehersalId): StatusWith<ChoristerEntity> {
+    get_chorister(what: Partial<ChoristerEntity> | RehersalId): Expected<ChoristerEntity> {
         if (typeof what === "number") {
             const chorister = this.choristers.get(what);
-            return chorister ? Status.ok().with(chorister)
-                             : Status.fail(`Chorister #${what} not found`);
+            return chorister ? Expected.ok(chorister)
+                             : Expected.err(`Chorister #${what} not found`);
         }
         return Database.find_in_map(this.choristers, what);
     }
 
-    create_piece(piece_id: number, author: string, title: string): StatusWith<PieceEntity> {
+    create_piece(piece_id: number, author: string, title: string): Expected<PieceEntity> {
         if (this.pieces.has(piece_id)) {
-            return Status.fail(`Piece #${piece_id} already exists`);
+            return Expected.err(`Piece #${piece_id} already exists`);
         }
 
         const piece = new PieceEntity(piece_id, author, title);
         this.pieces.set(piece_id, piece);
-        return Status.ok().with(piece);
+        return Expected.ok(piece);
     }
 
-    get_piece(what: Partial<PieceEntity> | RehersalId): StatusWith<PieceEntity> {
+    get_piece(what: Partial<PieceEntity> | RehersalId): Expected<PieceEntity> {
         if (typeof what === "number") {
-            const rehersal = this.rehersals.get(what);
-            return rehersal ? Status.ok().with(rehersal)
-                            : Status.fail(`Rehersal #${what} not found`);
+            const piece = this.pieces.get(what);
+            return piece ? Expected.ok(piece)
+                         : Expected.err(`Piece #${what} not found`);
         }
         return Database.find_in_map(this.pieces, what);
     }
 
-    create_rehersal(id: number, date: Date): StatusWith<RehersalEntity> {
+    create_rehersal(id: number, date: Date): Expected<RehersalEntity> {
         if (this.rehersals.has(id)) {
-            return Status.fail(`Rehersal #${id} already exists`);
+            return Expected.err(`Rehersal #${id} already exists`);
         }
         const rehersal = new RehersalEntity(id, date);
         this.rehersals.set(id, rehersal);
-        return Status.ok().with(rehersal);
+        return Expected.ok(rehersal);
     }
 
-    get_rehersal(what: Partial<RehersalEntity> | RehersalId): StatusWith<RehersalEntity> {
+    get_rehersal(what: Partial<RehersalEntity> | RehersalId): Expected<RehersalEntity> {
         if (typeof what === "number") {
             const rehersal = this.rehersals.get(what);
-            return rehersal ? Status.ok().with(rehersal)
-                            : Status.fail(`Rehersal #${what} not found`);
+            return rehersal ? Expected.ok(rehersal)
+                            : Expected.err(`Rehersal #${what} not found`);
         }
         return Database.find_in_map(this.rehersals, what);
     }
@@ -234,36 +234,36 @@ export class Database {
     join_rehersal(chorister_id: ChoristerId, rehersal_id: RehersalId, time_minutes: number): Status
     {
         const rehersal_status = this.get_rehersal(rehersal_id);
-        if (!rehersal_status.done() || !rehersal_status.value) {
-            return rehersal_status.wrap("Rehersal not found");
+        if (!rehersal_status.ok) {
+            return rehersal_status.wrap_error("Rehersal not found");
         }
         const rehersal = rehersal_status.value;
         if (rehersal.participants.has(chorister_id)) {
-            return Status.fail("Chorister already joined");
+            return Expected.err("Chorister already joined");
         }
         rehersal.participants.set(chorister_id, { time_minutes });
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     rehersal_song(rehersal_id: RehersalId, song_id: PieceId, time_minutes: number): Status
     {
         const rehersal_status = this.get_rehersal(rehersal_id);
-        if (!rehersal_status.done() || !rehersal_status.value) {
-            return rehersal_status.wrap("Rehersal not found");
+        if (!rehersal_status.ok) {
+            return rehersal_status.wrap_error("Rehersal not found");
         }
 
         const piece_status = this.get_piece(song_id);
-        if (!piece_status.done() || !piece_status.value) {
-            return piece_status.wrap("Piece not found");
+        if (!piece_status.ok) {
+            return piece_status.wrap_error("Piece not found");
         }
 
         const rehersal = rehersal_status.value;
         if (rehersal.pieces.has(song_id)) {
-            return Status.fail("piece has already been added to rehersal");
+            return Expected.err("piece has already been added to rehersal");
         }
 
         rehersal.pieces.set(song_id, { time_minutes });
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     static pack(data: Database): PackedDatabase {
@@ -283,14 +283,14 @@ export class Database {
     }
 
     private static find_in_map<T extends Entity<T>>(array: Map<number, T>, pattern: Partial<T>)
-    : StatusWith<T> {
+    : Expected<T> {
         if (pattern.id !== undefined) {
             const found = array.get(pattern.id);
-            return found ? Status.ok().with(found as T)
-                         : Status.fail("Not found").with<T>(undefined);
+            return found ? Expected.ok(found as T)
+                         : Expected.err("Not found");
         }
         const found = Array.from(array.values()).find(e => e.equal(pattern));
-        return found ? Status.ok().with(found as T)
-                     : Status.fail("Not found").with<T>(undefined);
+        return found ? Expected.ok(found as T)
+                     : Expected.err("Not found");
     }
 }

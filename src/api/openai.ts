@@ -7,10 +7,9 @@ import {
 } from "openai/resources/chat/completions";
 import { ResponseFormatJSONObject, ResponseFormatText } from "openai/resources/shared";
 import { Config } from "@src/config.js";
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { return_exception, return_fail } from "@src/utils.js";
 import { Journal } from "@src/journal.js";
-import { Expected } from "@src/utils/expected.js";
 import { ILLM, IToolchain, Message, Response, StreamChunk, TokensUsage, ToolsOption } from "@src/interfaces/llm.js";
 
 export type OpenaiModel = "gpt-4o-mini" | "gpt-4o" | "o3";
@@ -134,14 +133,14 @@ export class OpenaiAPI {
 
     public static init(): Status {
         if (!Config.HasOpenAI()) {
-            return Status.fail("OpenAI API key is not specified");
+            return Expected.err("OpenAI API key is not specified");
         }
         if (this._instance) {
-            return Status.fail("OpenAI API is already initialized");
+            return Expected.err("OpenAI API is already initialized");
         }
         const api_key = fs.readFileSync(Config.data.openai_api_key_file!, "utf-8").trim();
         this._instance = new OpenAI({ apiKey: api_key, });
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     public static is_available(): boolean {
@@ -303,7 +302,7 @@ export class ChatWithHistory {
     }
 
     public async send_message(message: string, add_response_to_history: boolean = true)
-    : Promise<StatusWith<string>>
+    : Promise<Expected<string>>
     {
         if (message.length > this.max_message_length_sym) {
             return return_fail("Message is too long", this.journal.log());
@@ -333,7 +332,7 @@ export class ChatWithHistory {
             if (add_response_to_history) {
                 this.history.push(...completion.value.messages);
             }
-            return StatusWith.ok().with(response);
+            return Expected.ok(response);
         } catch (error) {
             return return_exception(error, this.journal.log());
         }
@@ -343,7 +342,7 @@ export class ChatWithHistory {
     public async add_response(message: string, prefix: string = ""): Promise<Status> {
         const content = (prefix ? `[${prefix}]\n` : "") + message;
         this.history.push({ role: "assistant", content });
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private push_to_history(message: Message) {

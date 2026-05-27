@@ -1,4 +1,4 @@
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 
 export type RehersalInfo = {
     date: Date;
@@ -18,6 +18,6 @@ export interface IRehersalsStorage {
 
     // Fetch all rehersals from storage
     // NOTE: this is an expensive operation, use some caching approach
-    fetch(): Promise<StatusWith<RehersalInfo[]>>;
+    fetch(): Promise<Expected<RehersalInfo[]>>;
 
 }

@@ -2,7 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { ChoristerStatistics } from "@src/entities/statistics.js";
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Journal } from "@src/journal.js";
 import { Language } from "@src/database.js";
@@ -34,12 +34,12 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
         return await this.show_statictics(30);
     }
 
-    async interrupt(): Promise<Status> { return Status.ok(); }
+    async interrupt(): Promise<Status> { return Expected.ok(undefined); }
 
     waits_for_message(): boolean { return false; }
 
     async consume_message(_: TelegramBot.Message): Promise<Status> {
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     // Return true if activity has finished
@@ -126,21 +126,21 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
         if (this.message_id) {
             await this.user.delete_message(this.message_id);
         }
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private async show_statictics(period_days?: number): Promise<Status> {
         this.journal.log().info({ period_days }, "show statistics");
 
         const statistic = Analytic.chorister_statistic_request(this.user.userid(), period_days);
-        if (!statistic.ok() || !statistic.value) {
+        if (!statistic.ok) {
             const status = await this.update_widget(Messages.fail_message(
                 this.user.info().lang
             ));
-            if (!status.ok()) {
-                return status.wrap("failed to update widget");
+            if (!status.ok) {
+                return status.wrap_error("failed to update widget");
             }
-            return statistic.wrap("failed to collect statistics");
+            return statistic.wrap_error("failed to collect statistics");
         }
 
         this.data = statistic.value;
@@ -150,16 +150,16 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
 
     private async update_widget(text: string): Promise<Status> {
         if (!this.message_id) {
-            const status = await this.user.send_message(text, {
+            const status = await this.user.send_message_returning_id(text, {
                 reply_markup: {
                     inline_keyboard: this.get_inline_keyboard(),
                 },
             });
-            if (!status.ok()) {
-                return status.wrap("failed to send message");
+            if (!status.ok) {
+                return status.wrap_error("failed to send message");
             }
             this.message_id = status.value;
-            return Status.ok();
+            return Expected.ok(undefined);
         } else {
             return await this.user.edit_message(this.message_id, {
                 text: text,

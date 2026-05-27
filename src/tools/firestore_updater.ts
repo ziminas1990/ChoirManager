@@ -1,5 +1,5 @@
 import { GoogleAuth } from "@src/api/google_auth.js";
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 
 export type OldMessage = {
     time: Date,
@@ -52,7 +52,7 @@ async function process_messages(database_name: string, collection_name: string, 
 
         if (snapshot.empty) {
             console.log("No messages found in the collection");
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         console.log(`Found ${snapshot.size} messages to process`);
@@ -108,9 +108,9 @@ async function process_messages(database_name: string, collection_name: string, 
             console.log(`\nTo apply these changes, run with dry_run=false`);
         }
 
-        return Status.ok();
+        return Expected.ok(undefined);
     } catch (error) {
-        return Status.exception(error).wrap("Failed to process messages");
+        return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error))).wrap_error("Failed to process messages");
     }
 }
 
@@ -128,16 +128,16 @@ async function main() {
     // Initialize Google Auth
     console.log("Initializing Google Auth...");
     const auth_status = await GoogleAuth.authenticate(google_cloud_key_file);
-    if (!auth_status.ok()) {
-        console.error(`Google Auth failed: ${auth_status.what()}`);
+    if (!auth_status.ok) {
+        console.error(`Google Auth failed: ${auth_status.error}`);
         process.exit(1);
     }
     console.log("Google Auth initialized successfully");
 
     // Process messages
     const process_status = await process_messages(database_name, collection_name, dry_run);
-    if (!process_status.ok()) {
-        console.error(`Failed to process messages: ${process_status.what()}`);
+    if (!process_status.ok) {
+        console.error(`Failed to process messages: ${process_status.error}`);
         process.exit(1);
     }
 

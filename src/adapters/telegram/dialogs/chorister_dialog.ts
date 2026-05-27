@@ -2,7 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 import assert from "assert";
 
 import { Journal } from "@src/journal.js";
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { ScoresActions } from "@src/use_cases/scores_actions.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
@@ -17,7 +17,6 @@ import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
 import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/chorister_statistics.js";
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
-import { Expected } from "@src/utils/expected.js";
 import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 
 
@@ -40,7 +39,7 @@ export class ChoristerDialog implements IChorister {
     async on_message(msg: TelegramBot.Message): Promise<Status> {
         let text = msg.text;
         if (!text) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
         if (text == "/start") {
             text = Messages.again();
@@ -93,10 +92,10 @@ export class ChoristerDialog implements IChorister {
         }
 
         if (!msg.text) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
-        return (await this.dialog_with_assistant(msg.text)).wrap("assistant failure");
+        return (await this.dialog_with_assistant(msg.text)).wrap_error("assistant failure");
     }
 
     // From IChorister
@@ -105,7 +104,7 @@ export class ChoristerDialog implements IChorister {
 
         if (scores.length == 0) {
             this.user.send_message(this.no_scores_available(this.user.info().lang));
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         // send only scores with files
@@ -144,7 +143,7 @@ export class ChoristerDialog implements IChorister {
 
     private async send_welcome(): Promise<Status> {
         if (seconds_since(this.last_welcome) < 5) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
         this.last_welcome = new Date();
 
@@ -156,7 +155,7 @@ export class ChoristerDialog implements IChorister {
                 {
                     reply_markup: this.get_keyboard(),
                 });
-            return Status.ok();
+            return Expected.ok(undefined);
         } catch (err) {
             return return_exception(err, this.journal.log());
         }
@@ -164,7 +163,7 @@ export class ChoristerDialog implements IChorister {
 
     private async dialog_with_assistant(message: string): Promise<Status> {
         if (!ChoristerAssistant.is_available()) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         const assistant = ChoristerAssistant.get_instance();
@@ -175,12 +174,12 @@ export class ChoristerDialog implements IChorister {
             message,
             this.get_assistant_tools(),
         );
-        if (!send_status.ok()) {
-            return send_status.wrap(`assistant failure`);
+        if (!send_status.ok) {
+            return send_status.wrap_error(`assistant failure`);
         }
 
         this.journal.log().info(`assistant completed`);
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private get_assistant_tools(): IToolchain {
@@ -215,7 +214,7 @@ export class ChoristerDialog implements IChorister {
 
         const user = CoreAPI.get_user_by_tg_id(this.user.userid(), false);
         if (!user || !user.value) {
-            return Status.fail(`User ${this.user.userid()} not found`);
+            return Expected.err(`User ${this.user.userid()} not found`);
         }
 
         if (command == "/backup") {
@@ -235,27 +234,27 @@ export class ChoristerDialog implements IChorister {
             feedback_activity.on_details_provided(details);
         }
         const status = await feedback_activity.start();
-        if (!status.ok()) {
-            return status.wrap("failed to start feedback activity");
+        if (!status.ok) {
+            return status.wrap_error("failed to start feedback activity");
         }
         this.widgets.unshift(feedback_activity);
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private async create_statistics_widget(): Promise<Status> {
         const statistics_widget = new ChoristerStatisticsWidget(this.user, this.journal);
         const status = await statistics_widget.start();
-        if (!status.ok()) {
-            return status.wrap("failed to start statistics activity");
+        if (!status.ok) {
+            return status.wrap_error("failed to start statistics activity");
         }
         this.widgets.unshift(statistics_widget);
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private async do_download_scores(score: Scores): Promise<Status> {
         this.journal.log().info(`downloading scores ${score.name}`);
         const status = await ScoresActions.download_scores_request(this.user, score, this.journal);
-        if (!status.ok()) {
+        if (!status.ok) {
             return this.user.send_message(this.fail_to_send_file(this.user.info().lang));
         }
         return status;
@@ -318,9 +317,9 @@ function return_error(error: string): string {
 }
 
 function status_to_expected<T>(status: Status, value: T): Expected<T> {
-    return status.ok()
+    return status.ok
         ? Expected.ok(value)
-        : Expected.err(status.what());
+        : Expected.err(status.error);
 }
 
 class MessangerTools implements IToolchain {

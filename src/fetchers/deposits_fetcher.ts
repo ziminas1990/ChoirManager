@@ -1,4 +1,4 @@
-import { Status, StatusWith } from '@src/status.js';
+import { Expected, Status } from "@src/utils/expected.js";
 import { Config } from '@src/config.js';
 import { GoogleSpreadsheet } from '@src/api/google_docs.js';
 import { current_month, only_month } from '@src/utils.js';
@@ -94,11 +94,11 @@ type TableColumns = {
     months: Map<number, number> // timestamp -> column index
 }
 
-function try_parse_header(header: string[]): StatusWith<TableColumns> {
+function try_parse_header(header: string[]): Expected<TableColumns> {
     const columns = header.map(h => h.toLowerCase().trim());
 
     if (columns.length < 5) { // minimum: tgid, chorister, credit, debit, and at least 1 month
-        return StatusWith.fail("Header must contain at least 5 columns");
+        return Expected.err("Header must contain at least 5 columns");
     }
 
     const info: Partial<TableColumns> = {}
@@ -131,22 +131,22 @@ function try_parse_header(header: string[]): StatusWith<TableColumns> {
     })
 
     if (info.tgid === undefined) {
-        return StatusWith.fail("No 'tgid' column found");
+        return Expected.err("No 'tgid' column found");
     }
     if (info.chorister === undefined) {
-        return StatusWith.fail("No 'chorister' column found");
+        return Expected.err("No 'chorister' column found");
     }
     if (info.credit === undefined) {
-        return StatusWith.fail("No 'credit' column found");
+        return Expected.err("No 'credit' column found");
     }
     if (info.debit === undefined) {
-        return StatusWith.fail("No 'debit' column found");
+        return Expected.err("No 'debit' column found");
     }
     if (months.size === 0) {
-        return StatusWith.fail("No valid month columns found");
+        return Expected.err("No valid month columns found");
     }
 
-    return StatusWith.ok().with({
+    return Expected.ok({
         tgid: info.tgid,
         chorister: info.chorister,
         credit: info.credit,
@@ -198,22 +198,22 @@ export class DepositsFetcher {
 
     async proceed(): Promise<Status> {
         if (!this.time_to_fetch()) {
-            return Status.ok().with(this.choristers);
+            return Expected.ok(undefined);
         }
 
         const sheet_status = await this.sheet.read("A:K");
-        if (!sheet_status.ok()) {
-            return sheet_status.wrap("can't fetch sheet data");
+        if (!sheet_status.ok) {
+            return sheet_status.wrap_error("can't fetch sheet data");
         }
         const table = sheet_status.value!;
         if (table.length < 2) {
-            return Status.ok(); // Just no any data (or header only), not an error
+            return Expected.ok(undefined); // Just no any data (or header only), not an error
         }
 
         const header = table[0];
         const header_status = try_parse_header(header);
-        if (!header_status.ok()) {
-            return header_status.wrap("invalid header");
+        if (!header_status.ok) {
+            return header_status.wrap_error("invalid header");
         }
         const columns = header_status.value!;
 
@@ -224,7 +224,7 @@ export class DepositsFetcher {
                 this.choristers.set(deposit.tgid, deposit);
             }
         });
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     // Check if it is time to fetch data since previous check.

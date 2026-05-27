@@ -1,6 +1,6 @@
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
 import { IRehersalsStorage, RehersalInfo } from "@src/interfaces/rehersals_storage.js";
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 
 // Assuming the date format is DD.MM.YY
 function parse_date(date: string): Date | undefined {
@@ -56,7 +56,7 @@ type TableColumns = {
     who: number,
 }
 
-function try_parse_header(header: string[]): StatusWith<TableColumns> {
+function try_parse_header(header: string[]): Expected<TableColumns> {
     const columns = header.map(h => h.toLowerCase().trim());
 
     const info: Partial<TableColumns> = {}
@@ -71,10 +71,10 @@ function try_parse_header(header: string[]): StatusWith<TableColumns> {
 
     for (const name of names) {
         if (info[name] === undefined) {
-            return StatusWith.fail(`No '${name}' column found`);
+            return Expected.err(`No '${name}' column found`);
         }
     }
-    return StatusWith.ok().with(info as TableColumns);
+    return Expected.ok(info as TableColumns);
 }
 
 function get_rehersals_columns(header: string[]): RehersalColumn[] {
@@ -143,19 +143,19 @@ export class GoogleSpreadsheetRehersalsStorage implements IRehersalsStorage {
     }
 
     async init(): Promise<Status> {
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
-    async fetch(): Promise<StatusWith<RehersalInfo[]>> {
+    async fetch(): Promise<Expected<RehersalInfo[]>> {
         const sheet_status = await this.sheet.read(`${this.config.sheet_name}`);
-        if (!sheet_status.ok()) {
-            return sheet_status.wrap("can't fetch sheet data");
+        if (!sheet_status.ok) {
+            return sheet_status.wrap_error("can't fetch sheet data");
         }
         const table = sheet_status.value!;
 
         const columns = try_parse_header(table[0]);
-        if (!columns.ok()) {
-            return columns.wrap("invalid header");
+        if (!columns.ok) {
+            return columns.wrap_error("invalid header");
         }
 
         const rehersals_columns = get_rehersals_columns(table[0]);
@@ -201,6 +201,6 @@ export class GoogleSpreadsheetRehersalsStorage implements IRehersalsStorage {
             }
             rehersals.push(rehersal_info);
         }
-        return StatusWith.ok().with(rehersals);
+        return Expected.ok(rehersals);
     }
 }

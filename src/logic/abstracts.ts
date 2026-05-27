@@ -1,4 +1,4 @@
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { apply_interval } from "@src/utils.js";
 
 export abstract class Logic<Event> {
@@ -12,17 +12,17 @@ export abstract class Logic<Event> {
         this.last_proceed = new Date();
     }
 
-    async proceed(now: Date): Promise<StatusWith<Event[]>> {
+    async proceed(now: Date): Promise<Expected<Event[]>> {
         if (this.next_proceed <= now) {
             const interval_ms = now.getTime() - this.last_proceed.getTime();
             this.last_proceed = now;
             apply_interval(this.next_proceed, { milliseconds: this.proceed_interval_ms });
             return this.proceed_impl(now, interval_ms);
         }
-        return Status.ok().with<Event[]>([]);
+        return Expected.ok([] as Event[]);
     }
 
-    protected abstract proceed_impl(now: Date, interval_ms: number): Promise<StatusWith<Event[]>>;
+    protected abstract proceed_impl(now: Date, interval_ms: number): Promise<Expected<Event[]>>;
 
     // Should be called if logic got some event, that should be processed immediately,
     // without waiting for the next proceed interval
@@ -42,15 +42,15 @@ export class Proceeder<Event> {
 
     async run(): Promise<Status> {
         if (this.running) {
-            return Status.fail("already running");
+            return Expected.err("already running");
         }
         this.running = true;
 
         while(!this.stop_request) {
             const status = await this.logic.proceed(new Date());
-            if (!status.done()) {
+            if (!status.ok) {
                 this.running = false;
-                return status.wrap("proceeding problem")
+                return status.wrap_error<void>("proceeding problem")
             }
             await new Promise(resolve => setTimeout(resolve, this.interval_ms));
         }
@@ -59,7 +59,7 @@ export class Proceeder<Event> {
         this.stop_resolve?.();
         this.stop_request = undefined;
         this.stop_resolve = undefined;
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     async stop(): Promise<void> {

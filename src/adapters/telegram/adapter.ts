@@ -1,7 +1,7 @@
 import fs from "fs";
 import TelegramBot from "node-telegram-bot-api";
 
-import { Status, StatusWith } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
 import { Formatting, return_fail } from "@src/utils.js";
 import { Logic } from "@src/logic/abstracts.js";
@@ -75,8 +75,8 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         for (const packed_user of packed.users) {
             const tgid = packed_user.tgid;
             const user_info = CoreAPI.get_user_by_tg_id(tgid, false);
-            if (!user_info.ok() || user_info.value == undefined) {
-                this.journal.log().warn(`Can't get user ${tgid}: ${user_info.what()}`);
+            if (!user_info.ok) {
+                this.journal.log().warn(`Can't get user ${tgid}: ${user_info.error}`);
                 continue;
             }
             const user = TelegramUser.unpack(user_info.value, packed_user, this.journal);
@@ -93,15 +93,15 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         try {
             const token = fs.readFileSync(this.cfg.token_file, 'utf-8');
             if (!token) {
-                return Status.fail("Telegram token not found");
+                return Expected.err("Telegram token not found");
             }
             this.bot = new TelegramBot(token, { polling: true });
             this.bot.on("message", (msg) => {
                 const status = msg.chat.type == "private" ?
                     this.handle_private_message(msg) :
                     this.handle_group_message(msg);
-                if (!status.ok()) {
-                    this.journal.log().warn(`failed to handle message: ${status.what()}`);
+                if (!status.ok) {
+                    this.journal.log().warn(`failed to handle message: ${status.error}`);
                 }
             });
             this.bot.on("edited_message", (msg) => {
@@ -109,30 +109,30 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                     return;
                 }
                 const status = this.handle_edited_group_message(msg);
-                if (!status.ok()) {
-                    this.journal.log().error(`failed to handle edited message: ${status.what()}`);
+                if (!status.ok) {
+                    this.journal.log().error(`failed to handle edited message: ${status.error}`);
                 }
             });
             this.bot.on("callback_query", (query) => {
                 const status = this.handle_callback(query);
-                if (!status.ok()) {
-                    this.journal.log().error(`failed to handle callback: ${status.what()}`);
+                if (!status.ok) {
+                    this.journal.log().error(`failed to handle callback: ${status.error}`);
                 }
             });
             for (const [userid, user] of this.users.entries()) {
                 const status = user.init(this.bot);
-                if (!status.ok()) {
-                    this.journal.log().error(`failed to init user: ${status.what()}`);
+                if (!status.ok) {
+                    this.journal.log().error(`failed to init user: ${status.error}`);
                     this.users.delete(userid);
                 }
             }
-            return Status.ok();
+            return Expected.ok(undefined);
         } catch (e) {
-            return Status.exception(e);
+            return (((e) instanceof Error) ? Expected.err((e).message) : Expected.err(String(e)));
         }
     }
 
-    async get_user_agent(user_id: string): Promise<StatusWith<IUserAgent>> {
+    async get_user_agent(user_id: string): Promise<Expected<IUserAgent>> {
         return this.get_user(user_id);
     }
 
@@ -164,17 +164,17 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         return this.managers_chat;
     }
 
-    protected async proceed_impl(_: Date): Promise<StatusWith<void[]>>
+    protected async proceed_impl(_: Date): Promise<Expected<void[]>>
     {
         for (const action of this.pending_actions) {
             const status = await action();
-            if (!status.ok()) {
-                this.journal.log().warn(`pending action failed: ${status.what()}`);
+            if (!status.ok) {
+                this.journal.log().warn(`pending action failed: ${status.error}`);
             }
         }
         this.pending_actions = [];
 
-        return Status.ok().with([]);
+        return Expected.ok([]);
     }
 
     // NOTE: this function must NOT be async, it should return immediately
@@ -183,16 +183,16 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
         const tgid = msg.from?.username;
         if (tgid == undefined) {
-            return Status.fail("username is undefined");
+            return Expected.err("username is undefined");
         }
 
         const status = this.get_or_create_user(tgid, msg.chat.id);
-        if (!status.ok()) {
-            return status.wrap(`can't get/create user ${tgid}`);
+        if (!status.ok) {
+            return status.wrap_error(`can't get/create user ${tgid}`);
         }
         const user = status.value!;
         user.put_incoming_item({ what: "message", message: msg });
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     // NOTE: this function must NOT be async, it should return immediately
@@ -204,14 +204,14 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
         const user_id = msg.from?.username;
         if (user_id == undefined) {
-            return Status.ok();  // just ignore
+            return Expected.ok(undefined);  // just ignore
         }
 
         let user_info: User | undefined = undefined;
         {
             const status = CoreAPI.get_user_by_tg_id(user_id, true);
-            if (!status.ok() || status.value == undefined) {
-                return Status.fail(`user ${user_id} not found`);
+            if (!status.ok) {
+                return Expected.err(`user ${user_id} not found`);
             }
             user_info = status.value!;
         }
@@ -232,34 +232,34 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         if (sent_by_admin && sent_to_bot && !sent_to_managers_chat) {
             this.pending_actions.push(async () => {
                 return (await this.handle_admin_message(msg))
-                    .wrap("failed to handle admin message");
+                    .wrap_error("failed to handle admin message");
             });
         }
 
         if (is_announce && sent_by_manager && msg.text != undefined) {
             this.pending_actions.push(async () => {
                 return (await this.handle_announce_chat_message(msg))
-                    .wrap("failed to handle announce chat message");
+                    .wrap_error("failed to handle announce chat message");
             });
             this.pending_actions.push(async () => {
                 return (await Translator.translate_announce(user_info, msg.text!, this.journal))
-                    .wrap("failed to translate announce");
+                    .wrap_error("failed to translate announce");
             });
         }
 
         if (sent_to_managers_chat) {
             this.pending_actions.push(async () => {
                 return (await this.handle_managers_chat_message(msg))
-                    .wrap("failed to handle managers chat message");
+                    .wrap_error("failed to handle managers chat message");
             });
         }
 
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private handle_edited_group_message(msg: TelegramBot.Message): Status {
         this.log_message(msg, "group");
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     // NOTE: this function must NOT be async, it should return immediately
@@ -267,16 +267,16 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         const username = query.from?.username
         this.journal.log().info(`Callback query from ${username} in ${query.message?.chat.id}: ${query.data}`);
         if (username == undefined) {
-            return Status.fail("username is undefined");
+            return Expected.err("username is undefined");
         }
 
         let status = this.get_user(username);
-        if (!status.ok()) {
-            return status;
+        if (!status.ok) {
+            return status.wrap_error(`user ${username} not found`);
         }
         const user = status.value!;
         user.put_incoming_item({ what: "callback", callback: query });
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     async handle_admin_message(msg: TelegramBot.Message): Promise<Status> {
@@ -297,12 +297,12 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         const username = msg.from?.username;
         if (msg.text == undefined || username == undefined) {
             // Ignoring message
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         const user = this.get_user(username);
-        if (!user.ok() || user.value == undefined) {
-            return user.wrap(`can't get user ${username}`);
+        if (!user.ok) {
+            return user.wrap_error(`can't get user ${username}`);
         }
 
         const message: GroupChatMessage = {
@@ -315,36 +315,36 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         if (msg.text.startsWith("@ursa_major_choir")) {
             this.bot!.sendMessage(msg.chat.id, "Пошёл думать, скоро вернусь...");
             const status = await ManagersChat.answer_question(msg.text);
-            if (!status.ok()) {
+            if (!status.ok) {
                 this.bot!.sendMessage(msg.chat.id,
-                    `Я потерпел фиаско:\n\n${status.what()}`);
-                this.journal.log().error(`Failed to answer question: ${status.what()}`);
+                    `Я потерпел фиаско:\n\n${status.error}`);
+                this.journal.log().error(`Failed to answer question: ${status.error}`);
             } else {
                 this.bot!.sendMessage(msg.chat.id, status.value!, {
                     parse_mode: "HTML",
                 });
             }
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         const status = await ManagersChat.on_new_message(user.value, message);
-        if (!status.ok()) {
+        if (!status.ok) {
             return status;
         }
 
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     async handle_announce_chat_message(msg: TelegramBot.Message): Promise<Status> {
         const username = msg.from?.username;
         if (msg.text == undefined || username == undefined) {
             // Ignoring message
-            return Status.ok();
+            return Expected.ok(undefined);
         }
 
         const user = this.get_user(username);
-        if (!user.ok() || user.value == undefined) {
-            return user.wrap(`can't get user ${username}`);
+        if (!user.ok) {
+            return user.wrap_error(`can't get user ${username}`);
         }
 
         const message: GroupChatMessage = {
@@ -355,11 +355,11 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         }
 
         const status = await AnnouncesChat.on_new_message(user.value, message);
-        if (!status.ok()) {
+        if (!status.ok) {
             return status;
         }
 
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private async on_set_announce_thread_message(msg: TelegramBot.Message): Promise<Status> {
@@ -376,7 +376,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             `Thread: ${this.announce_thread_id}`,
         ].join("\n");
         await AdminActions.notify_all_admins(message, this.journal);
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private async on_set_manager_chat_message(msg: TelegramBot.Message): Promise<Status> {
@@ -387,7 +387,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             `Group: ${msg.chat.title} (${this.managers_chat_id})`,
         ].join("\n")
         await AdminActions.notify_all_admins(message, this.journal);
-        return Status.ok();
+        return Expected.ok(undefined);
     }
 
     private log_message(msg: TelegramBot.Message, msg_type: "private" | "group") {
@@ -405,38 +405,38 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         }
     }
 
-    private get_user(tgid: string): StatusWith<TelegramUser> {
+    private get_user(tgid: string): Expected<TelegramUser> {
         const user = this.users.get(tgid);
         if (user) {
-            return Status.ok().with(user);
+            return Expected.ok(user);
         }
-        return Status.fail("user not found");
+        return Expected.err("user not found");
     }
 
-    private get_or_create_user(tgid: string, chat_id: number): StatusWith<TelegramUser> {
+    private get_or_create_user(tgid: string, chat_id: number): Expected<TelegramUser> {
         const user = this.users.get(tgid);
         if (user) {
-            return Status.ok().with(user);
+            return Expected.ok(user);
         }
         const user_data = CoreAPI.get_user_by_tg_id(tgid, true);
-        if (!user_data.ok() || user_data.value == undefined) {
-            return Status.fail("user not found");
+        if (!user_data.ok) {
+            return Expected.err("user not found");
         }
         if (this.bot == undefined) {
-            return Status.fail("bot is not initialized");
+            return Expected.err("bot is not initialized");
         }
 
         this.journal.log().info(`Creating telegram agent for ${tgid}...`);
 
         const new_user = new TelegramUser(user_data.value, chat_id, this.journal);
         let status = new_user.init(this.bot);
-        if (!status.ok()) {
-            return status.wrap("initialization error");
+        if (!status.ok) {
+            return status.wrap_error("initialization error");
         }
 
         this.users.set(tgid, new_user);
         this.journal.log().info(`Telegram agent for ${tgid} created`);
-        return Status.ok().with(new_user);
+        return Expected.ok(new_user);
     }
 }
 

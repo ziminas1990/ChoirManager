@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 
-import { Status } from "@src/status.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { return_exception, seconds_since } from "@src/utils.js";
@@ -28,7 +28,7 @@ export class GuestDialog {
         }
 
         if (seconds_since(this.last_welcome) < 5) {
-            return Status.ok();
+            return Expected.ok(undefined);
         }
         this.last_welcome = new Date();
 
@@ -45,7 +45,7 @@ export class GuestDialog {
                 {
                     reply_markup: keyboard,
                 });
-            return Status.ok();
+            return Expected.ok(undefined);
         } catch (err) {
             return return_exception(err, this.journal.log());
         }
