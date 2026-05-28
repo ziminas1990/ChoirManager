@@ -29,6 +29,15 @@ export class Config {
             range: string,
             fetch_interval_sec: number,
         },
+        new_records_tracker?: {
+            fetch_interval_sec: number,
+            tables: Array<{
+                google_sheet_id: string,
+                sheet: string,
+                name: string,
+                key_column: number,
+            }>
+        },
         deposit_tracking?: {
             google_sheet_id: string
             fetch_interval_sec: number,    // not less than 5 seconds
@@ -100,6 +109,10 @@ export class Config {
         return this.data.scores_fetcher != undefined;
     }
 
+    static HasNewRecordsTracker(): boolean {
+        return this.data.new_records_tracker != undefined;
+    }
+
     static HasTransactionStorage(): boolean {
         return this.data.transaction_storage != undefined;
     }
@@ -130,6 +143,13 @@ export class Config {
             throw new Error("scores_fetcher is not specified!")
         }
         return this.data.scores_fetcher!;
+    }
+
+    static NewRecordsTracker() {
+        if (!this.data.new_records_tracker) {
+            throw new Error("new_records_tracker is not specified!")
+        }
+        return this.data.new_records_tracker!;
     }
 
     static Assistant() {
@@ -207,6 +227,37 @@ export class Config {
             }
             if (cfg.fetch_interval_sec < 60) {
                 return Expected.err("'scores_fetcher.fetch_interval_sec' MUST be at least 60 seconds");
+            }
+        }
+
+        // New records tracker configuration
+        if (this.data.new_records_tracker) {
+            const cfg = this.data.new_records_tracker;
+            if (!cfg.fetch_interval_sec) {
+                return Expected.err("'new_records_tracker.fetch_interval_sec' MUST be specified");
+            }
+            if (cfg.fetch_interval_sec < 10) {
+                return Expected.err("'new_records_tracker.fetch_interval_sec' MUST be at least 10 seconds");
+            }
+            if (!cfg.tables || cfg.tables.length === 0) {
+                return Expected.err("'new_records_tracker.tables' MUST contain at least one table");
+            }
+            for (const table of cfg.tables) {
+                if (!table.google_sheet_id) {
+                    return Expected.err("'new_records_tracker.tables[].google_sheet_id' MUST be specified");
+                }
+                if (!table.sheet) {
+                    return Expected.err("'new_records_tracker.tables[].sheet' MUST be specified");
+                }
+                if (!table.name) {
+                    return Expected.err("'new_records_tracker.tables[].name' MUST be specified");
+                }
+                if (table.key_column == undefined) {
+                    return Expected.err("'new_records_tracker.tables[].key_column' MUST be specified");
+                }
+                if (!Number.isInteger(table.key_column) || table.key_column < 1) {
+                    return Expected.err("'new_records_tracker.tables[].key_column' MUST be a positive integer");
+                }
             }
         }
 

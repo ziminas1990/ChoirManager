@@ -26,6 +26,7 @@ import { MessagesStorageFactory } from "./adapters/messages_storage/factory.js";
 import { GroupChat } from "./logic/group_chat.js";
 import { ITransactionsStorage } from "./interfaces/transactions_storage.js";
 import { TransactionStorageFactory } from "./adapters/transactions_storage/factory.js";
+import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
 
 export class Runtime {
 
@@ -53,6 +54,7 @@ export class Runtime {
     private deposits_fetcher?: DepositsFetcher;
     private documents_fetcher?: DocumentsFetcher;
     private scores_fetcher?: ScoresFetcher;
+    private new_records_fetcher?: NewRecordsFetcher;
     private feedback_storage?: IFeedbackStorage;
     private rehersals_storage?: IRehersalsStorage;
     private transactions_storage?: ITransactionsStorage;
@@ -142,6 +144,19 @@ export class Runtime {
             const scores_status = await this.scores_fetcher.start();
             if (!scores_status.ok) {
                 return scores_status.wrap_error("Failed to start scores fetcher");
+            }
+        }
+
+        if (Config.HasNewRecordsTracker()) {
+            this.journal.log().info("Starting new records tracker");
+            if (!this.new_records_fetcher) {
+                this.new_records_fetcher = new NewRecordsFetcher(
+                    this.journal,
+                    () => this.get_adapters());
+            }
+            const new_records_status = await this.new_records_fetcher.start();
+            if (!new_records_status.ok) {
+                return new_records_status.wrap_error("Failed to start new records tracker");
             }
         }
 
@@ -343,6 +358,13 @@ export class Runtime {
             const scores_status = await this.scores_fetcher.proceed();
             if (!scores_status.ok) {
                 this.journal.log().error(`Scores fetcher proceed failed: ${scores_status.error}`);
+            }
+        }
+
+        if (this.new_records_fetcher) {
+            const new_records_status = await this.new_records_fetcher.proceed();
+            if (!new_records_status.ok) {
+                this.journal.log().error(`New records tracker proceed failed: ${new_records_status.error}`);
             }
         }
 
