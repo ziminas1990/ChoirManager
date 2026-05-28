@@ -1,7 +1,44 @@
 import { Expected, Status } from "@src/utils/expected.js";
-import { Config } from '@src/config.js';
 import { GoogleSpreadsheet } from '@src/api/google_docs.js';
 import { Database, Scores } from '@src/database.js';
+
+export type ScoresFetcherConfigJson = {
+    google_sheet_id: string;
+    range: string;
+    fetch_interval_sec: number;
+}
+
+export class ScoresFetcherConfig {
+    constructor(private readonly json: ScoresFetcherConfigJson) {}
+
+    get google_sheet_id(): string {
+        return this.json.google_sheet_id;
+    }
+
+    get range(): string {
+        return this.json.range;
+    }
+
+    get fetch_interval_sec(): number {
+        return this.json.fetch_interval_sec;
+    }
+
+    verify(): Status {
+        if (!this.json.google_sheet_id) {
+            return Expected.err("'google_sheet_id' MUST be specified");
+        }
+        if (!this.json.range) {
+            return Expected.err("'range' MUST be specified");
+        }
+        if (!this.json.fetch_interval_sec) {
+            return Expected.err("'fetch_interval_sec' MUST be specified");
+        }
+        if (this.json.fetch_interval_sec < 60) {
+            return Expected.err("'fetch_interval_sec' MUST be at least 60 seconds");
+        }
+        return Expected.ok(undefined);
+    }
+}
 
 type TableColumns = {
     name: number,
@@ -52,8 +89,11 @@ export class ScoresFetcher {
     private last_fetch_date?: Date;
     private sheet: GoogleSpreadsheet;
 
-    constructor(private database: Database) {
-        this.sheet = new GoogleSpreadsheet(Config.ScoresFetcher().google_sheet_id)
+    constructor(
+        private readonly config: ScoresFetcherConfig,
+        private database: Database
+    ) {
+        this.sheet = new GoogleSpreadsheet(this.config.google_sheet_id);
     }
 
     async start(): Promise<Status> {
@@ -65,7 +105,7 @@ export class ScoresFetcher {
             return Expected.ok(undefined);
         }
 
-        const sheet_status = await this.sheet.read(Config.ScoresFetcher().range);
+        const sheet_status = await this.sheet.read(this.config.range);
         if (!sheet_status.ok) {
             return sheet_status.wrap_error("can't fetch sheet data");
         }
@@ -110,7 +150,7 @@ export class ScoresFetcher {
             this.last_fetch_date = new Date();
             return true;
         }
-        const fetch_interval_ms = Config.ScoresFetcher().fetch_interval_sec * 1000;
+        const fetch_interval_ms = this.config.fetch_interval_sec * 1000;
         const time_since_last_fetch = now_ms - this.last_fetch_date.getTime();
         if (time_since_last_fetch < fetch_interval_ms) {
             return false;

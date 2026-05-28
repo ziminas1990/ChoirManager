@@ -1,7 +1,6 @@
 import { Journal } from "@src/journal.js";
 import { Expected } from "@src/utils/expected.js";
-import { Config } from "@src/config.js";
-import { Deposit, DepositChange, DepositsFetcher } from "@src/fetchers/deposits_fetcher.js";
+import { Deposit, DepositChange, DepositTrackingConfig, DepositsFetcher } from "@src/fetchers/deposits_fetcher.js";
 import { Logic } from "./abstracts.js";
 import { seconds_since } from "@src/utils.js";
 import { Runtime } from "../runtime.js";
@@ -27,12 +26,11 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
 
     private deposit_fetcher?: DepositsFetcher;
 
-    private collect_interval_ms = Config.DepositTracker().collect_interval_sec * 1000;
-
     private last_reminder_date?: Date;
 
     constructor(
         private readonly tgid: string,
+        private readonly config: DepositTrackingConfig | undefined,
         parent_journal: Journal)
     {
         super(1000);
@@ -101,12 +99,13 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
     }
 
     private maybe_produce_change_event(now: Date): Expected<DepositsTrackerEvent[]> {
-        if (!this.pending_change || !this.last_deposit) {
+        if (!this.pending_change || !this.last_deposit || !this.config) {
             return Expected.ok([]);
         }
 
+        const collect_interval_ms = this.config.collect_interval_sec * 1000;
         const time_since_last_change = now.getTime() - this.pending_change.last_update.getTime();
-        if (time_since_last_change < this.collect_interval_ms) {
+        if (time_since_last_change < collect_interval_ms) {
             return Expected.ok([]);
         }
 
@@ -124,7 +123,10 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
     }
 
     private should_send_reminders(now: Date): boolean {
-        const cfg = Config.DepositTracker();
+        const cfg = this.config;
+        if (!cfg) {
+            return false;
+        }
         if (!cfg.reminders?.length) {
             return false;
         }
@@ -170,7 +172,11 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
             return Expected.ok([]);
         }
 
-        const diff = Config.DepositTracker().membership_fee - deposit.current_month_balance();
+        if (!this.config) {
+            return Expected.ok(events);
+        }
+
+        const diff = this.config.membership_fee - deposit.current_month_balance();
         if (diff > 0) {
             this.last_reminder_date = now;
             events.push({
@@ -193,10 +199,11 @@ export class DepositsTracker extends Logic<DepositsTrackerEvent> {
     static unpack(
         tgid: string,
         packed: ReturnType<typeof DepositsTracker.pack>,
+        config: DepositTrackingConfig | undefined,
         parent_journal: Journal
     ): DepositsTracker {
         const [last_reminder] = [packed.last_reminder];
-        const logic = new DepositsTracker(tgid, parent_journal);
+        const logic = new DepositsTracker(tgid, config, parent_journal);
         logic.last_reminder_date = last_reminder ? new Date(last_reminder) : undefined;
         return logic;
     }

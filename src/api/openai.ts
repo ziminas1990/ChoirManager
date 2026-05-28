@@ -1,12 +1,12 @@
 import OpenAI from "openai";
 import fs from "fs";
+import { BotConfig } from "@src/config.js";
 import {
     ChatCompletionMessage,
     ChatCompletionMessageParam,
     ChatCompletionTool
 } from "openai/resources/chat/completions";
 import { ResponseFormatJSONObject, ResponseFormatText } from "openai/resources/shared";
-import { Config } from "@src/config.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { return_exception, return_fail } from "@src/utils.js";
 import { Journal } from "@src/journal.js";
@@ -131,14 +131,14 @@ function tokens_usage_from_openai(usage: OpenaiUsage | undefined): TokensUsage {
 export class OpenaiAPI {
     private static _instance: OpenAI;
 
-    public static init(): Status {
-        if (!Config.HasOpenAI()) {
+    public static init(config: BotConfig): Status {
+        if (!config.json.openai_api_key_file) {
             return Expected.err("OpenAI API key is not specified");
         }
         if (this._instance) {
             return Expected.err("OpenAI API is already initialized");
         }
-        const api_key = fs.readFileSync(Config.data.openai_api_key_file!, "utf-8").trim();
+        const api_key = fs.readFileSync(config.json.openai_api_key_file, "utf-8").trim();
         this._instance = new OpenAI({ apiKey: api_key, });
         return Expected.ok(undefined);
     }

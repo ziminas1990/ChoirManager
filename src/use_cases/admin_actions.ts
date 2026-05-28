@@ -1,7 +1,7 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
 import { Runtime } from "@src/runtime.js";
-import { Config } from "@src/config.js";
+import { RuntimeConfig } from "@src/runtime.js";
 import { return_fail } from "@src/utils.js";
 import { User } from "@src/database.js";
 import { exit } from "process";
@@ -22,7 +22,7 @@ export class AdminActions {
         }
     }
 
-    static async send_runtime_backup(user: User, journal: Journal): Promise<Status> {
+    static async send_runtime_backup(user: User, config: RuntimeConfig, journal: Journal): Promise<Status> {
         journal.log().info(`Sending runtime backup to @${user.tgid}`);
 
         const user_logic = Runtime.get_instance().get_user(user.tgid);
@@ -35,7 +35,7 @@ export class AdminActions {
         }
 
         for (const agent of user_logic.as_admin()) {
-            const status = await agent.send_runtime_backup(Config.data.runtime_cache_filename);
+            const status = await agent.send_runtime_backup(config.runtime_cache_filename);
             if (!status.ok) {
                 journal.log().warn([
                     `Failed to send runtime backup to @${agent.base().userid()}`,
@@ -46,7 +46,7 @@ export class AdminActions {
         return Expected.ok(undefined);
     }
 
-    static async send_logs(user: User, journal: Journal): Promise<Status> {
+    static async send_logs(user: User, config: RuntimeConfig, journal: Journal): Promise<Status> {
         journal.log().info(`Sending logs to @${user.tgid}`);
 
         const user_logic = Runtime.get_instance().get_user(user.tgid);
@@ -59,7 +59,7 @@ export class AdminActions {
         }
 
         for (const agent of user_logic.as_admin()) {
-            const status = await agent.send_logs(Config.data.logs_file);
+            const status = await agent.send_logs(config.logs_file);
             if (!status.ok) {
                 journal.log().warn([
                     `Failed to send runtime backup to @${agent.base().userid()}`,

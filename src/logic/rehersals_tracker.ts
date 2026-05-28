@@ -1,8 +1,29 @@
-import { Config } from "@src/config.js";
 import { Database } from "@src/database.js";
 import { IRehersalsStorage, RehersalInfo } from "@src/interfaces/rehersals_storage.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
+
+export type RehersalsTrackerConfigJson = {
+    fetch_interval_sec: number;
+}
+
+export class RehersalsTrackerConfig {
+    constructor(private readonly json: RehersalsTrackerConfigJson) {}
+
+    get fetch_interval_sec(): number {
+        return this.json.fetch_interval_sec;
+    }
+
+    verify(): Status {
+        if (!this.json.fetch_interval_sec) {
+            return Expected.err("'fetch_interval_sec' MUST be specified");
+        }
+        if (this.json.fetch_interval_sec < 10) {
+            return Expected.err("'fetch_interval_sec' MUST be at least 10 seconds");
+        }
+        return Expected.ok(undefined);
+    }
+}
 
 
 export class RehersalsTracker {
@@ -12,6 +33,7 @@ export class RehersalsTracker {
     private fetch_promise?: Promise<void>;
 
     constructor(
+        private readonly config: RehersalsTrackerConfig,
         private rehersals_storage: IRehersalsStorage,
         private database: Database,
         parent_journal: Journal)
@@ -46,10 +68,7 @@ export class RehersalsTracker {
     }
 
     private async fetch_rehersals(): Promise<Status> {
-        if (!Config.data.rehersals_tracker) {
-            return Expected.err("'rehersals_tracker' is not specified");
-        }
-        const fetch_interval_sec = Config.data.rehersals_tracker.fetch_interval_sec;
+        const fetch_interval_sec = this.config.fetch_interval_sec;
 
         const rehersals = await this.rehersals_storage.fetch();
         if (rehersals.ok) {
