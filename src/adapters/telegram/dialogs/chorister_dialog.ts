@@ -149,23 +149,31 @@ export class ChoristerDialog implements IChorister {
         return sent.as_status();
     }
 
+    private async send_typing_indicator(): Promise<void> {
+        const status = await this.user.send_chat_action("typing");
+        if (!status.ok) {
+            this.journal.log().warn(`Failed to send typing chat action: ${status.error}`);
+        }
+    }
+
     private async with_typing_indicator<T>(operation: () => Promise<T>): Promise<T> {
-        const send_typing = async (): Promise<void> => {
-            const status = await this.user.send_chat_action("typing");
-            if (!status.ok) {
-                this.journal.log().warn(`Failed to send typing chat action: ${status.error}`);
-            }
-        };
 
         const typing_interval = setInterval(() => {
-            void send_typing();
-        }, 2000);
+            void this.send_typing_indicator();
+        }, 3000);
 
         try {
             return await operation();
         } finally {
             clearInterval(typing_interval);
         }
+    }
+
+    private async send_assistant_message(message: string): Promise<Status> {
+        const status = await this.user.send_message(message, {
+            reply_markup: this.get_keyboard(),
+        });
+        return status.as_status();
     }
 
     private async dialog_with_assistant(message: string): Promise<Status> {
@@ -197,9 +205,7 @@ export class ChoristerDialog implements IChorister {
         const tools = new ToolsMultiplexer();
         const statuses = [
             tools.add_tool(new MessangerTools(
-                async (message: string) => (await this.user.send_message(message, {
-                    reply_markup: this.get_keyboard(),
-                })).as_status(),
+                async (message: string) => this.send_assistant_message(message),
             )),
             tools.add_tool(new ScoresTools(this.user, this.journal)),
             tools.add_tool(new DepositManagerTools(this.user, this.journal)),
@@ -501,7 +507,11 @@ class DepositManagerTools implements IToolchain {
             }],
             ["deposit_manager_already_paid", {
                 name: "deposit_manager_already_paid",
-                description: "Notify the system that user said they already paid the deposit/membership fee.",
+                description: [
+                    "Does two things:",
+                    "1. sends a message to the user that notification is received",
+                    "2. notifies the system that user said they already paid the deposit/membership fee",
+                ].join("\n"),
                 parameters: {
                     type: "object",
                     additionalProperties: false,
@@ -510,7 +520,11 @@ class DepositManagerTools implements IToolchain {
             }],
             ["deposit_manager_top_up", {
                 name: "deposit_manager_top_up",
-                description: "Notify the system that user deposited money.",
+                description: [
+                    "Does two things:",
+                    "1. sends a message to the user that notification is received",
+                    "2. notifies the system that user deposited money",
+                ].join("\n"),
                 parameters: {
                     type: "object",
                     additionalProperties: false,

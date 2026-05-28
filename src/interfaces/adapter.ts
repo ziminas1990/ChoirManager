@@ -17,6 +17,16 @@ export interface IAdapter {
     get_managers_chat(): Promise<IManagersChat | undefined>;
 }
 
+export type TableRecord = {
+    table_name: string;
+    fields: {
+        name: string;
+        value: string;
+    }[];
+}
+
 export interface IManagersChat {
     on_new_feedback(feedback: Feedback): Promise<Status>;
+
+    on_new_table_record(record: TableRecord): Promise<Status>;
 }
