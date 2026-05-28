@@ -1,8 +1,45 @@
 import { Expected, Status } from "@src/utils/expected.js";
-import { Config } from '@src/config.js';
 import { GoogleSpreadsheet } from '@src/api/google_docs.js';
 import { Database, Language, Role, User, Voice } from '@src/database.js';
 import { Journal } from '@src/journal';
+
+export type UsersFetcherConfigJson = {
+    google_sheet_id: string;
+    range: string;
+    fetch_interval_sec: number;
+}
+
+export class UsersFetcherConfig {
+    constructor(private readonly json: UsersFetcherConfigJson) {}
+
+    get google_sheet_id(): string {
+        return this.json.google_sheet_id;
+    }
+
+    get range(): string {
+        return this.json.range;
+    }
+
+    get fetch_interval_sec(): number {
+        return this.json.fetch_interval_sec;
+    }
+
+    verify(): Status {
+        if (!this.json.google_sheet_id) {
+            return Expected.err("'google_sheet_id' MUST be specified");
+        }
+        if (!this.json.range) {
+            return Expected.err("'range' MUST be specified");
+        }
+        if (!this.json.fetch_interval_sec) {
+            return Expected.err("'fetch_interval_sec' MUST be specified");
+        }
+        if (this.json.fetch_interval_sec < 10) {
+            return Expected.err("'fetch_interval_sec' MUST be at least 10 seconds");
+        }
+        return Expected.ok(undefined);
+    }
+}
 
 type TableColumns = {
     tgid: number,
@@ -109,8 +146,12 @@ export class UsersFetcher {
     private sheet: GoogleSpreadsheet;
     private journal: Journal;
 
-    constructor(private database: Database, parent_journal: Journal) {
-        this.sheet = new GoogleSpreadsheet(Config.UsersFetcher().google_sheet_id)
+    constructor(
+        private readonly config: UsersFetcherConfig,
+        private database: Database,
+        parent_journal: Journal
+    ) {
+        this.sheet = new GoogleSpreadsheet(this.config.google_sheet_id);
         this.journal = parent_journal.child("users_fetcher");
     }
 
@@ -123,7 +164,7 @@ export class UsersFetcher {
             return Expected.ok(undefined);
         }
 
-        const sheet_status = await this.sheet.read("Users!A:K");
+        const sheet_status = await this.sheet.read(this.config.range);
         if (!sheet_status.ok) {
             return sheet_status.wrap_error("can't fetch sheet data");
         }
@@ -172,7 +213,7 @@ export class UsersFetcher {
             this.last_fetch_date = new Date();
             return true;
         }
-        const fetch_interval_ms = Config.UsersFetcher().fetch_interval_sec * 1000;
+        const fetch_interval_ms = this.config.fetch_interval_sec * 1000;
         const time_since_last_fetch = now_ms - this.last_fetch_date.getTime();
         if (time_since_last_fetch < fetch_interval_ms) {
             return false;

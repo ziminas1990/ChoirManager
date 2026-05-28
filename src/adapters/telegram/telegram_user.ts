@@ -13,7 +13,13 @@ import { AccounterDialog } from "./dialogs/accounter_dialog.js";
 import { ChoristerDialog } from "./dialogs/chorister_dialog.js";
 import { GuestDialog } from "./dialogs/guest_dialog.js";
 import { AdminDialog } from "./dialogs/admin_dialog.js";
+import { DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
+import { RuntimeConfig } from "@src/runtime.js";
 
+type TelegramUserDependencies = {
+    deposit_tracking?: DepositTrackingConfig;
+    runtime: RuntimeConfig;
+}
 
 export class TelegramUser implements IUserAgent {
     private journal: Journal;
@@ -41,12 +47,18 @@ export class TelegramUser implements IUserAgent {
     public static unpack(
         user_info: User,
         packed: ReturnType<typeof TelegramUser.pack>,
+        dependencies: TelegramUserDependencies,
         parent_journal: Journal): TelegramUser
     {
-        return new TelegramUser(user_info, packed.chat_id, parent_journal);
+        return new TelegramUser(user_info, packed.chat_id, dependencies, parent_journal);
     }
 
-    constructor(private user_info: User, private chat_id: number, parent_journal: Journal) {
+    constructor(
+        private user_info: User,
+        private chat_id: number,
+        private readonly dependencies: TelegramUserDependencies,
+        parent_journal: Journal,
+    ) {
         this.journal = parent_journal.child(`@${this.user_info.tgid}`);
         this.callbacks_registry = new TelegramCallbacks(this.journal);
         this.timings = {};
@@ -77,7 +89,7 @@ export class TelegramUser implements IUserAgent {
     // From IUserAgent
     as_chorister(): IChorister {
         if (!this.chorister_dialog) {
-            this.chorister_dialog = new ChoristerDialog(this, this.journal);
+            this.chorister_dialog = new ChoristerDialog(this, this.dependencies.runtime, this.journal);
         }
         return this.chorister_dialog;
     }
@@ -85,7 +97,7 @@ export class TelegramUser implements IUserAgent {
     // From IUserAgent
     as_deposit_owner(): IDepositOwnerAgent {
         if (!this.deposit_owner_dialog) {
-            this.deposit_owner_dialog = new DepositOwnerDialog(this, this.journal);
+            this.deposit_owner_dialog = new DepositOwnerDialog(this, this.journal, this.dependencies.deposit_tracking);
         }
         return this.deposit_owner_dialog;
     }
@@ -287,7 +299,7 @@ export class TelegramUser implements IUserAgent {
             return this.guest_dialog;
         } else if (this.user_info.is(Role.Chorister)) {
             if (!this.chorister_dialog) {
-                this.chorister_dialog = new ChoristerDialog(this, this.journal);
+                this.chorister_dialog = new ChoristerDialog(this, this.dependencies.runtime, this.journal);
             }
             return this.chorister_dialog;
         }

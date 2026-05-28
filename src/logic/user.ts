@@ -1,7 +1,7 @@
 import { Logic } from '@src/logic/abstracts.js';
 import { Database, Role, User } from '@src/database.js';
 import { Expected } from "@src/utils/expected.js";
-import { DepositsFetcher } from '@src/fetchers/deposits_fetcher.js';
+import { DepositTrackingConfig, DepositsFetcher } from '@src/fetchers/deposits_fetcher.js';
 import { DepositsTracker } from '@src/logic/deposits_tracker.js';
 import { Journal } from "@src/journal.js";
 import { DepositActions } from '@src/use_cases/deposit_actions.js';
@@ -16,7 +16,9 @@ export class UserLogic extends Logic<void> {
     constructor(
         public readonly data: User,
         proceed_interval_ms: number,
-        parent_journal: Journal)
+        parent_journal: Journal,
+        private readonly deposit_tracking: DepositTrackingConfig | undefined,
+    )
     {
         super(proceed_interval_ms);
 
@@ -28,7 +30,7 @@ export class UserLogic extends Logic<void> {
         this.journal = parent_journal.child(`@${data.tgid}`, additional_tags);
         this.journal.log().info(`UserLogic created for ${data.tgid}`);
 
-        this.deposit_tracker = new DepositsTracker(this.data.tgid, this.journal);
+        this.deposit_tracker = new DepositsTracker(this.data.tgid, this.deposit_tracking, this.journal);
     }
 
     get_journal(): Journal {
@@ -143,6 +145,7 @@ export class UserLogic extends Logic<void> {
     static unpack(
         database: Database,
         packed: ReturnType<typeof UserLogic.pack>,
+        deposit_tracking: DepositTrackingConfig | undefined,
         parent_journal: Journal
     ): Expected<UserLogic> {
         const tgid = packed.tgid;
@@ -151,10 +154,10 @@ export class UserLogic extends Logic<void> {
         if (!user) {
             return Expected.err(`User @${tgid} not found`);
         }
-        const logic = new UserLogic(user, 100, parent_journal);
+        const logic = new UserLogic(user, 100, parent_journal, deposit_tracking);
 
         if (packed.deposit_tracker) {
-            logic.deposit_tracker = DepositsTracker.unpack(tgid, packed.deposit_tracker, parent_journal);
+            logic.deposit_tracker = DepositsTracker.unpack(tgid, packed.deposit_tracker, deposit_tracking, parent_journal);
         }
 
         return Expected.ok(logic);

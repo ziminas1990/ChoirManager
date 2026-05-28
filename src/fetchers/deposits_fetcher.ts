@@ -1,7 +1,134 @@
 import { Expected, Status } from "@src/utils/expected.js";
-import { Config } from '@src/config.js';
 import { GoogleSpreadsheet } from '@src/api/google_docs.js';
 import { current_month, only_month } from '@src/utils.js';
+
+export type DepositReminderConfigJson = {
+    day_of_month: number;
+    hour_utc: number;
+}
+
+export type DepositAccountConfigJson = {
+    title: string;
+    account: string;
+    receiver?: string;
+    comment?: string;
+}
+
+export type DepositTrackingConfigJson = {
+    google_sheet_id: string;
+    fetch_interval_sec: number;
+    collect_interval_sec: number;
+    membership_fee: number;
+    reminders?: DepositReminderConfigJson[];
+    reminder_cooldown_hours?: number;
+    startup_reminders_freeze_sec?: number;
+    accounts?: DepositAccountConfigJson[];
+}
+
+export class DepositTrackingConfig {
+    constructor(private readonly json: DepositTrackingConfigJson) {}
+
+    get google_sheet_id(): string {
+        return this.json.google_sheet_id;
+    }
+
+    get fetch_interval_sec(): number {
+        return this.json.fetch_interval_sec;
+    }
+
+    get collect_interval_sec(): number {
+        return this.json.collect_interval_sec;
+    }
+
+    get membership_fee(): number {
+        return this.json.membership_fee;
+    }
+
+    get reminders(): DepositReminderConfigJson[] {
+        return this.json.reminders ?? [];
+    }
+
+    get reminder_cooldown_hours(): number {
+        return this.json.reminder_cooldown_hours ?? 0;
+    }
+
+    get startup_reminders_freeze_sec(): number {
+        return this.json.startup_reminders_freeze_sec ?? 0;
+    }
+
+    get accounts(): DepositAccountConfigJson[] {
+        return this.json.accounts ?? [];
+    }
+
+    verify(): Status {
+        const fail_prefix = "deposit_tracking misconfiguration";
+
+        if (!this.json.google_sheet_id) {
+            return Expected.err(`${fail_prefix}: 'google_sheet_id' MUST be specified`);
+        }
+        if (!this.json.fetch_interval_sec) {
+            return Expected.err(`${fail_prefix}: 'fetch_interval_sec' MUST be specified`);
+        }
+        if (this.json.fetch_interval_sec < 5) {
+            return Expected.err(`${fail_prefix}: 'fetch_interval_sec' MUST be at least 5 seconds`);
+        }
+        if (!this.json.collect_interval_sec) {
+            return Expected.err(`${fail_prefix}: 'collect_interval_sec' MUST be specified`);
+        }
+        if (this.json.collect_interval_sec < 5) {
+            return Expected.err(`${fail_prefix}: 'collect_interval_sec' MUST be at least 5 seconds`);
+        }
+        if (this.json.membership_fee == undefined) {
+            return Expected.err(`${fail_prefix}: 'membership_fee' MUST be specified`);
+        }
+        if (this.json.membership_fee <= 0) {
+            return Expected.err(`${fail_prefix}: 'membership_fee' MUST be positive`);
+        }
+        if (this.json.fetch_interval_sec >= this.json.collect_interval_sec) {
+            return Expected.err([
+                `${fail_prefix}:`,
+                `fetch_interval (${this.json.fetch_interval_sec})`,
+                `MUST be less than collect_interval_sec (${this.json.collect_interval_sec})`
+            ].join(" "));
+        }
+
+        if (this.reminders.length > 0) {
+            for (const reminder of this.reminders) {
+                if (reminder.day_of_month == undefined) {
+                    return Expected.err(`${fail_prefix}: 'day_of_month' MUST be specified`);
+                }
+                if (reminder.hour_utc == undefined) {
+                    return Expected.err(`${fail_prefix}: 'hour_utc' MUST be specified`);
+                }
+                if (reminder.day_of_month < 1 || reminder.day_of_month > 31) {
+                    return Expected.err(`${fail_prefix}: 'day_of_month' MUST be between 1 and 31`);
+                }
+                if (reminder.hour_utc < 0 || reminder.hour_utc > 23) {
+                    return Expected.err(`${fail_prefix}: 'hour_utc' MUST be between 0 and 23`);
+                }
+            }
+            if (this.json.reminder_cooldown_hours == undefined) {
+                return Expected.err(`${fail_prefix}: 'reminder_cooldown_hours' MUST be specified`);
+            }
+            if (this.json.startup_reminders_freeze_sec == undefined) {
+                return Expected.err(`${fail_prefix}: 'startup_reminders_freeze_sec' MUST be specified`);
+            }
+        }
+
+        if (this.accounts.length > 0) {
+            for (const account of this.accounts) {
+                if (!account.title) {
+                    return Expected.err(`${fail_prefix}: account's 'title' MUST be specified`);
+                }
+                if (!account.account) {
+                    return Expected.err(`${fail_prefix}: account's 'account' MUST be specified`);
+                }
+            }
+        }
+
+        return Expected.ok(undefined);
+    }
+}
 
 // Assuming the date format is DD.MM.YY
 function try_parse_date(date: string): Date | undefined {
@@ -184,8 +311,8 @@ export class DepositsFetcher {
 
     private sheet: GoogleSpreadsheet;
 
-    constructor() {
-        this.sheet = new GoogleSpreadsheet(Config.DepositTracker().google_sheet_id)
+    constructor(private readonly config: DepositTrackingConfig) {
+        this.sheet = new GoogleSpreadsheet(this.config.google_sheet_id);
     }
 
     async start(): Promise<Status> {
@@ -235,7 +362,7 @@ export class DepositsFetcher {
             this.last_fetch_date = new Date();
             return true;
         }
-        const fetch_interval_ms = Config.DepositTracker().fetch_interval_sec * 1000;
+        const fetch_interval_ms = this.config.fetch_interval_sec * 1000;
         const time_since_last_fetch = now_ms - this.last_fetch_date.getTime();
         if (time_since_last_fetch < fetch_interval_ms) {
             return false;

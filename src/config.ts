@@ -1,100 +1,313 @@
-import fs from "fs"
+import fs from "fs";
+
+import { FeedbackStorageConfig, FeedbackStorageFactory } from "@src/adapters/feedback_storage/factory.js";
+import { MessagesStorageConfig, MessagesStorageFactory } from "@src/adapters/messages_storage/factory.js";
+import { RehersalsStorageConfig, RehersalsStorageFactory } from "@src/adapters/rehersals_storage/factory.js";
+import { TransactionStorageConfig } from "@src/adapters/transactions_storage/factory.js";
+import { AssistantConfig, AssistantConfigJson } from "@src/fetchers/document_fetcher.js";
+import { DepositTrackingConfig, DepositTrackingConfigJson } from "@src/fetchers/deposits_fetcher.js";
+import { ScoresFetcherConfig, ScoresFetcherConfigJson } from "@src/fetchers/scores_fetcher.js";
+import { UsersFetcherConfig, UsersFetcherConfigJson } from "@src/fetchers/users_fetcher.js";
+import { RehersalsTrackerConfig, RehersalsTrackerConfigJson } from "@src/logic/rehersals_tracker.js";
+import { RuntimeConfig } from "@src/runtime.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Formatting } from "@src/utils.js";
-import { FeedbackStorageConfig, FeedbackStorageFactory } from "@src/adapters/feedback_storage/factory.js";
-import { RehersalsStorageConfig, RehersalsStorageFactory } from "@src/adapters/rehersals_storage/factory.js";
-import { MessagesStorageConfig, MessagesStorageFactory } from "@src/adapters/messages_storage/factory.js";
-import { TransactionStorageConfig } from "@src/adapters/transactions_storage/factory.js";
+
+export type TgAdapterConfigJson = {
+    token_file: string;
+    formatting: Formatting;
+    bot_id?: string;
+}
+
+export class TgAdapterConfig {
+    constructor(private readonly json: TgAdapterConfigJson) {}
+
+    get token_file(): string {
+        return this.json.token_file;
+    }
+
+    get formatting(): Formatting {
+        return this.json.formatting;
+    }
+
+    get bot_id(): string | undefined {
+        return this.json.bot_id;
+    }
+
+    verify(): Status {
+        if (!this.json.token_file) {
+            return Expected.err("'token_file' MUST be specified");
+        }
+        if (!this.json.formatting || !["markdown", "html", "plain"].includes(this.json.formatting)) {
+            return Expected.err("'formatting' MUST be specified (markdown, html, plain)");
+        }
+        return Expected.ok(undefined);
+    }
+}
+
+export type NewRecordsTrackerTableConfigJson = {
+    google_sheet_id: string;
+    sheet: string;
+    name: string;
+    key_column: number;
+}
+
+export type NewRecordsTrackerConfigJson = {
+    fetch_interval_sec: number;
+    tables: NewRecordsTrackerTableConfigJson[];
+}
+
+export class NewRecordsTrackerConfig {
+    constructor(private readonly json: NewRecordsTrackerConfigJson) {}
+
+    get fetch_interval_sec(): number {
+        return this.json.fetch_interval_sec;
+    }
+
+    get tables(): NewRecordsTrackerTableConfigJson[] {
+        return this.json.tables ?? [];
+    }
+
+    verify(): Status {
+        if (!this.json.fetch_interval_sec) {
+            return Expected.err("'fetch_interval_sec' MUST be specified");
+        }
+        if (this.json.fetch_interval_sec < 10) {
+            return Expected.err("'fetch_interval_sec' MUST be at least 10 seconds");
+        }
+        if (this.tables.length === 0) {
+            return Expected.err("'tables' MUST contain at least one table");
+        }
+        for (const table of this.tables) {
+            if (!table.google_sheet_id) {
+                return Expected.err("'tables[].google_sheet_id' MUST be specified");
+            }
+            if (!table.sheet) {
+                return Expected.err("'tables[].sheet' MUST be specified");
+            }
+            if (!table.name) {
+                return Expected.err("'tables[].name' MUST be specified");
+            }
+            if (table.key_column == undefined) {
+                return Expected.err("'tables[].key_column' MUST be specified");
+            }
+            if (!Number.isInteger(table.key_column) || table.key_column < 1) {
+                return Expected.err("'tables[].key_column' MUST be a positive integer");
+            }
+        }
+        return Expected.ok(undefined);
+    }
+}
+
+export type ChatConfigJson = {
+    backlog?: MessagesStorageConfig;
+}
+
+export type BotConfigJson = {
+    runtime_cache_filename: string;
+    google_cloud_key_file: string;
+    runtime_dump_interval_sec: number;
+    openai_api_key_file?: string;
+    logs_file: string;
+    tg_adapter: TgAdapterConfigJson;
+    users_fetcher: UsersFetcherConfigJson;
+    scores_fetcher?: ScoresFetcherConfigJson;
+    new_records_tracker?: NewRecordsTrackerConfigJson;
+    deposit_tracking?: DepositTrackingConfigJson;
+    rehersals_tracker?: RehersalsTrackerConfigJson;
+    assistant?: AssistantConfigJson;
+    feedback_storage?: FeedbackStorageConfig;
+    transaction_storage?: TransactionStorageConfig;
+    rehersals_storage?: RehersalsStorageConfig;
+    managers_chat?: ChatConfigJson;
+    announce_chat?: ChatConfigJson;
+}
+
+export class BotConfig {
+    public readonly runtime: RuntimeConfig;
+    public readonly tg_adapter?: TgAdapterConfig;
+    public readonly users_fetcher?: UsersFetcherConfig;
+    public readonly scores_fetcher?: ScoresFetcherConfig;
+    public readonly new_records_tracker?: NewRecordsTrackerConfig;
+    public readonly deposit_tracking?: DepositTrackingConfig;
+    public readonly rehersals_tracker?: RehersalsTrackerConfig;
+    public readonly assistant?: AssistantConfig;
+
+    constructor(public readonly json: BotConfigJson) {
+        this.runtime = new RuntimeConfig({
+            runtime_cache_filename: json.runtime_cache_filename,
+            runtime_dump_interval_sec: json.runtime_dump_interval_sec,
+            logs_file: json.logs_file,
+        });
+
+        if (json.tg_adapter != undefined) {
+            this.tg_adapter = new TgAdapterConfig(json.tg_adapter);
+        }
+        if (json.users_fetcher != undefined) {
+            this.users_fetcher = new UsersFetcherConfig(json.users_fetcher);
+        }
+        if (json.scores_fetcher != undefined) {
+            this.scores_fetcher = new ScoresFetcherConfig(json.scores_fetcher);
+        }
+        if (json.new_records_tracker != undefined) {
+            this.new_records_tracker = new NewRecordsTrackerConfig(json.new_records_tracker);
+        }
+        if (json.deposit_tracking != undefined) {
+            this.deposit_tracking = new DepositTrackingConfig(json.deposit_tracking);
+        }
+        if (json.rehersals_tracker != undefined) {
+            this.rehersals_tracker = new RehersalsTrackerConfig(json.rehersals_tracker);
+        }
+        if (json.assistant != undefined) {
+            this.assistant = new AssistantConfig(json.assistant);
+        }
+    }
+
+    verify(): Status {
+        if (!this.json) {
+            return Expected.err("configuration MUST be specified");
+        }
+
+        if (!this.json.google_cloud_key_file) {
+            return Expected.err("'google_cloud_key_file' MUST be specified");
+        }
+
+        if (!this.tg_adapter) {
+            return Expected.err("'tg_adapter' MUST be specified");
+        }
+        let status = this.tg_adapter.verify();
+        if (!status.ok) {
+            return status.wrap_error("'tg_adapter' misconfiguration");
+        }
+
+        status = this.runtime.verify();
+        if (!status.ok) {
+            return status.wrap_error("runtime misconfiguration");
+        }
+
+        if (!this.users_fetcher) {
+            return Expected.err("'users_fetcher' MUST be specified");
+        }
+        status = this.users_fetcher.verify();
+        if (!status.ok) {
+            return status.wrap_error("'users_fetcher' misconfiguration");
+        }
+
+        if (this.scores_fetcher) {
+            status = this.scores_fetcher.verify();
+            if (!status.ok) {
+                return status.wrap_error("'scores_fetcher' misconfiguration");
+            }
+        }
+
+        if (this.new_records_tracker) {
+            status = this.new_records_tracker.verify();
+            if (!status.ok) {
+                return status.wrap_error("'new_records_tracker' misconfiguration");
+            }
+        }
+
+        if (this.deposit_tracking) {
+            status = this.deposit_tracking.verify();
+            if (!status.ok) {
+                return status;
+            }
+        } else {
+            console.warn("'deposit_tracking' is not specifed, feature will be DISABLED");
+        }
+
+        if (this.assistant) {
+            status = this.assistant.verify();
+            if (!status.ok) {
+                return status;
+            }
+        } else {
+            console.warn("'assistant' is not specifed, feature will be DISABLED");
+        }
+
+        if (this.assistant && !this.json.openai_api_key_file) {
+            console.warn(
+                "'assistant' is specifed, but 'openai_api_key_file' is not specifed, feature will be DISABLED"
+            );
+        }
+
+        if (this.json.feedback_storage) {
+            status = FeedbackStorageFactory.verify(this.json.feedback_storage);
+            if (!status.ok) {
+                return status.wrap_error("feedback_storage misconfiguration");
+            }
+        }
+
+        if (this.json.rehersals_storage) {
+            status = RehersalsStorageFactory.verify(this.json.rehersals_storage);
+            if (!status.ok) {
+                return status.wrap_error("rehersals_storage misconfiguration");
+            }
+        }
+
+        if (this.rehersals_tracker) {
+            if (!this.json.rehersals_storage) {
+                return Expected.err("'rehersals_tracker' is specified, but 'rehersals_storage' is not specified");
+            }
+            status = this.rehersals_tracker.verify();
+            if (!status.ok) {
+                return status.wrap_error("'rehersals_tracker' misconfiguration");
+            }
+        }
+
+        if (this.json.managers_chat?.backlog) {
+            status = MessagesStorageFactory.verify(this.json.managers_chat.backlog);
+            if (!status.ok) {
+                return status.wrap_error("managers_chat_backlog misconfiguration");
+            }
+        }
+
+        if (this.json.announce_chat?.backlog) {
+            status = MessagesStorageFactory.verify(this.json.announce_chat.backlog);
+            if (!status.ok) {
+                return status.wrap_error("announce_chat_backlog misconfiguration");
+            }
+        }
+
+        // TODO: delegate transaction_storage validation once the factory exposes verify().
+        return Expected.ok(undefined);
+    }
+}
+
+export function load_config(path: string): Expected<BotConfig> {
+    try {
+        const json = JSON.parse(fs.readFileSync(path, "utf-8")) as BotConfigJson;
+        const config = new BotConfig(json);
+        const status = config.verify();
+        if (!status.ok) {
+            return Expected.err("Invalid configuration", status);
+        }
+        return Expected.ok(config);
+    } catch (error) {
+        return Expected.exception("Failed to load configuration", error);
+    }
+}
 
 export class Config {
-
-    public static data: {
-        runtime_cache_filename: string;
-        google_cloud_key_file: string;
-        runtime_dump_interval_sec: number;
-        openai_api_key_file?: string;
-        logs_file: string;
-        firestore_database_id: string;
-        tg_adapter: {
-            token_file: string;
-            formatting: Formatting;
-        },
-        users_fetcher: {
-            google_sheet_id: string
-            range: string,
-            fetch_interval_sec: number,
-        },
-        scores_fetcher?: {
-            google_sheet_id: string
-            range: string,
-            fetch_interval_sec: number,
-        },
-        new_records_tracker?: {
-            fetch_interval_sec: number,
-            tables: Array<{
-                google_sheet_id: string,
-                sheet: string,
-                name: string,
-                key_column: number,
-            }>
-        },
-        deposit_tracking?: {
-            google_sheet_id: string
-            fetch_interval_sec: number,    // not less than 5 seconds
-            collect_interval_sec: number,  // not less than 10 seconds
-            membership_fee: number,        // in GEL
-            reminders: Array<{
-                day_of_month: number,      // 1-31
-                hour_utc: number           // 0-23
-            }>,
-            reminder_cooldown_hours: number,
-            startup_reminders_freeze_sec: number,
-            accounts: Array<{
-                title: string,
-                account: string,
-                receiver: string,
-                comment: string
-            }>
-        },
-        rehersals_tracker?: {
-            fetch_interval_sec: number  // not less than 60 seconds
-        },
-        assistant?: {
-            model: string
-            fetch_interval_sec: number  // not less than 60 seconds
-            faq_document_id: string
-        },
-        feedback_storage: FeedbackStorageConfig;
-        transaction_storage: TransactionStorageConfig;
-        rehersals_storage: RehersalsStorageConfig;
-        managers_chat?: {
-            backlog?: MessagesStorageConfig
-        }
-        announce_chat?: {
-            backlog?: MessagesStorageConfig
-        }
-    }
+    public static data: BotConfigJson;
+    private static current?: BotConfig;
 
     static Load(path: string): Status {
-        try {
-            const raw = fs.readFileSync(path, 'utf-8');
-            Config.data = JSON.parse(raw);
-            return Config.verify();
-        } catch (error) {
-            if (error instanceof Error) {
-                return Expected.err(error.message);
-            }
-            return Expected.err(`${error}`);
+        const status = load_config(path);
+        if (!status.ok) {
+            return status.as_status();
         }
+        this.current = status.value;
+        this.data = status.value.json;
+        return Expected.ok(undefined);
     }
 
-
     static HasTgAdapter(): boolean {
-        return this.data.tg_adapter != undefined;
+        return this.current_config().tg_adapter != undefined;
     }
 
     static HasDepoditTracker(): boolean {
-        return this.data.deposit_tracking != undefined;
+        return this.current_config().deposit_tracking != undefined;
     }
 
     static HasOpenAI(): boolean {
@@ -102,304 +315,73 @@ export class Config {
     }
 
     static HasAssistant(): boolean {
-        return this.data.assistant != undefined;
+        return this.current_config().assistant != undefined;
     }
 
     static HasScoresFetcher(): boolean {
-        return this.data.scores_fetcher != undefined;
+        return this.current_config().scores_fetcher != undefined;
     }
 
     static HasNewRecordsTracker(): boolean {
-        return this.data.new_records_tracker != undefined;
+        return this.current_config().new_records_tracker != undefined;
     }
 
     static HasTransactionStorage(): boolean {
         return this.data.transaction_storage != undefined;
     }
 
-    static DepositTracker() {
-        if (!this.data.deposit_tracking) {
-            throw new Error("deposit_tracking is not specified!")
+    static DepositTracker(): DepositTrackingConfig {
+        const cfg = this.current_config().deposit_tracking;
+        if (!cfg) {
+            throw new Error("deposit_tracking is not specified!");
         }
-        return this.data.deposit_tracking!;
+        return cfg;
     }
 
-    static TgAdapter() {
-        if (!this.data.tg_adapter) {
-            throw new Error("tg_adapter is not specified!")
+    static TgAdapter(): TgAdapterConfig {
+        const cfg = this.current_config().tg_adapter;
+        if (!cfg) {
+            throw new Error("tg_adapter is not specified!");
         }
-        return this.data.tg_adapter!;
+        return cfg;
     }
 
-    static UsersFetcher() {
-        if (!this.data.users_fetcher) {
-            throw new Error("users_fetcher is not specified!")
+    static UsersFetcher(): UsersFetcherConfig {
+        const cfg = this.current_config().users_fetcher;
+        if (!cfg) {
+            throw new Error("users_fetcher is not specified!");
         }
-        return this.data.users_fetcher!;
+        return cfg;
     }
 
-    static ScoresFetcher() {
-        if (!this.data.scores_fetcher) {
-            throw new Error("scores_fetcher is not specified!")
+    static ScoresFetcher(): ScoresFetcherConfig {
+        const cfg = this.current_config().scores_fetcher;
+        if (!cfg) {
+            throw new Error("scores_fetcher is not specified!");
         }
-        return this.data.scores_fetcher!;
+        return cfg;
     }
 
-    static NewRecordsTracker() {
-        if (!this.data.new_records_tracker) {
-            throw new Error("new_records_tracker is not specified!")
+    static NewRecordsTracker(): NewRecordsTrackerConfig {
+        const cfg = this.current_config().new_records_tracker;
+        if (!cfg) {
+            throw new Error("new_records_tracker is not specified!");
         }
-        return this.data.new_records_tracker!;
+        return cfg;
     }
 
-    static Assistant() {
-        if (!this.data.assistant) {
-            throw new Error("assistant is not specified!")
+    static Assistant(): AssistantConfig {
+        const cfg = this.current_config().assistant;
+        if (!cfg) {
+            throw new Error("assistant is not specified!");
         }
-        return this.data.assistant!;
+        return cfg;
     }
 
-    private static verify(): Status {
-
-        if (!this.data) {
-            return Expected.err("configuration MUST be specified");
+    private static current_config(): BotConfig {
+        if (!this.current) {
+            throw new Error("configuration is not loaded");
         }
-
-        // Required files
-        if (!this.data.runtime_cache_filename) {
-            return Expected.err("'runtime_cache_filename' MUST be specified");
-        }
-        if (!this.data.google_cloud_key_file) {
-            return Expected.err("'google_cloud_key_file' MUST be specified");
-        }
-        if (!this.data.logs_file) {
-            return Expected.err("'logs_file' MUST be specified");
-        }
-
-        if (!this.data.tg_adapter) {
-            return Expected.err("'tg_adapter' MUST be specified");
-        }
-        if (!this.data.tg_adapter.token_file) {
-            return Expected.err("'tg_adapter.token_file' MUST be specified");
-        }
-        if (!this.data.tg_adapter.formatting ||
-            !["markdown", "html", "plain"].includes(this.data.tg_adapter.formatting)) {
-            return Expected.err("'tg_adapter.formatting' MUST be specified (markdown, html, plain)");
-        }
-
-        // Runtime configuration
-        if (!this.data.runtime_dump_interval_sec) {
-            return Expected.err("'runtime_dump_interval_sec' MUST be specified");
-        }
-        if (this.data.runtime_dump_interval_sec < 0) {
-            return Expected.err("'runtime_dump_interval_sec' MUST be positive");
-        }
-
-        // Users fetcher configuration
-        if (this.data.users_fetcher == undefined) {
-            return Expected.err("'users_fetcher' MUST be specified");
-        }
-        const cfg = this.data.users_fetcher;
-        if (!cfg.google_sheet_id) {
-            return Expected.err("'users_fetcher.google_sheet_id' MUST be specified");
-        }
-        if (!cfg.range) {
-            return Expected.err("'users_fetcher.range' MUST be specified");
-        }
-        if (!cfg.fetch_interval_sec) {
-            return Expected.err("'users_fetcher.fetch_interval_sec' MUST be specified");
-        }
-        if (cfg.fetch_interval_sec < 10) {
-            return Expected.err("'users_fetcher.fetch_interval_sec' MUST be at least 10 seconds");
-        }
-
-        // Scores fetcher configuration
-        if (this.data.scores_fetcher) {
-            const cfg = this.data.scores_fetcher;
-            if (!cfg.google_sheet_id) {
-                return Expected.err("'scores_fetcher.google_sheet_id' MUST be specified");
-            }
-            if (!cfg.range) {
-                return Expected.err("'scores_fetcher.range' MUST be specified");
-            }
-            if (!cfg.fetch_interval_sec) {
-                return Expected.err("'scores_fetcher.fetch_interval_sec' MUST be specified");
-            }
-            if (cfg.fetch_interval_sec < 60) {
-                return Expected.err("'scores_fetcher.fetch_interval_sec' MUST be at least 60 seconds");
-            }
-        }
-
-        // New records tracker configuration
-        if (this.data.new_records_tracker) {
-            const cfg = this.data.new_records_tracker;
-            if (!cfg.fetch_interval_sec) {
-                return Expected.err("'new_records_tracker.fetch_interval_sec' MUST be specified");
-            }
-            if (cfg.fetch_interval_sec < 10) {
-                return Expected.err("'new_records_tracker.fetch_interval_sec' MUST be at least 10 seconds");
-            }
-            if (!cfg.tables || cfg.tables.length === 0) {
-                return Expected.err("'new_records_tracker.tables' MUST contain at least one table");
-            }
-            for (const table of cfg.tables) {
-                if (!table.google_sheet_id) {
-                    return Expected.err("'new_records_tracker.tables[].google_sheet_id' MUST be specified");
-                }
-                if (!table.sheet) {
-                    return Expected.err("'new_records_tracker.tables[].sheet' MUST be specified");
-                }
-                if (!table.name) {
-                    return Expected.err("'new_records_tracker.tables[].name' MUST be specified");
-                }
-                if (table.key_column == undefined) {
-                    return Expected.err("'new_records_tracker.tables[].key_column' MUST be specified");
-                }
-                if (!Number.isInteger(table.key_column) || table.key_column < 1) {
-                    return Expected.err("'new_records_tracker.tables[].key_column' MUST be a positive integer");
-                }
-            }
-        }
-
-        // Deposit tracking configuration
-        if (this.data.deposit_tracking) {
-            const fail_prefix = "deposit_tracking misconfiguration";
-            const cfg = this.data.deposit_tracking;
-            if (!cfg.google_sheet_id) {
-                return Expected.err(`${fail_prefix}: 'google_sheet_id' MUST be specified`);
-            }
-            if (!cfg.fetch_interval_sec) {
-                return Expected.err(`${fail_prefix}: 'fetch_interval_sec' MUST be specified`);
-            }
-            if (cfg.fetch_interval_sec < 5) {
-                return Expected.err(`${fail_prefix}: 'fetch_interval_sec' MUST be at least 5 seconds`);
-            }
-            if (!cfg.collect_interval_sec) {
-                return Expected.err(`${fail_prefix}: 'collect_interval_sec' MUST be specified`);
-            }
-            if (cfg.collect_interval_sec < 5) {
-                return Expected.err(`${fail_prefix}: 'collect_interval_sec' MUST be at least 5 seconds`);
-            }
-            if (!cfg.membership_fee) {
-                return Expected.err(`${fail_prefix}: 'membership_fee' MUST be specified`);
-            }
-            if (cfg.membership_fee <= 0) {
-                return Expected.err(`${fail_prefix}: 'membership_fee' MUST be positive`);
-            }
-            if (cfg.fetch_interval_sec >= cfg.collect_interval_sec) {
-                return Expected.err([
-                    `${fail_prefix}:`,
-                    `fetch_interval (${cfg.fetch_interval_sec})`,
-                    `MUST be less than collect_interval_sec (${cfg.collect_interval_sec})`
-                ].join(" "))
-            }
-
-            if (cfg.reminders && cfg.reminders.length > 0) {
-                for (const reminder of cfg.reminders) {
-                    if (!reminder.day_of_month) {
-                        return Expected.err(`${fail_prefix}: 'day_of_month' MUST be specified`);
-                    }
-                    if (!reminder.hour_utc) {
-                        return Expected.err(`${fail_prefix}: 'hour_utc' MUST be specified`);
-                    }
-                    if (reminder.day_of_month < 1 || reminder.day_of_month > 31) {
-                        return Expected.err(`${fail_prefix}: 'day_of_month' MUST be between 1 and 31`);
-                    }
-                    if (reminder.hour_utc < 0 || reminder.hour_utc > 23) {
-                        return Expected.err(`${fail_prefix}: 'hour_utc' MUST be between 0 and 23`);
-                    }
-                }
-                if (cfg.reminder_cooldown_hours == undefined) {
-                    return Expected.err(`${fail_prefix}: 'reminder_cooldown_hours' MUST be specified`);
-                }
-                if (cfg.startup_reminders_freeze_sec == undefined) {
-                    return Expected.err(`${fail_prefix}: 'startup_reminders_freeze_sec' MUST be specified`);
-                }
-            }
-
-            if (cfg.accounts && cfg.accounts.length > 0) {
-                for (const account of cfg.accounts) {
-                    if (!account.title) {
-                        return Expected.err(`${fail_prefix}: account's 'title' MUST be specified`);
-                    }
-                    if (!account.account) {
-                        return Expected.err(`${fail_prefix}: account's 'account' MUST be specified`);
-                    }
-                }
-            }
-
-        } else {
-            console.warn("'deposit_tracking' is not specifed, feature will be DISABLED");
-        }
-
-        // Assistant configuration
-        if (this.data.assistant) {
-            const fail_prefix = "assistant misconfiguration";
-            const cfg = this.data.assistant;
-            if (!cfg.faq_document_id) {
-                return Expected.err(`${fail_prefix}: 'faq_document_id' MUST be specified`);
-            }
-            if (!cfg.fetch_interval_sec) {
-                return Expected.err(`${fail_prefix}: 'fetch_interval_sec' MUST be specified`);
-            }
-            if (cfg.fetch_interval_sec < 60) {
-                return Expected.err(`${fail_prefix}: 'fetch_interval_sec' MUST be at least 60 seconds`);
-            }
-        } else {
-            console.warn("'assistant' is not specifed, feature will be DISABLED");
-        }
-
-        if (this.HasAssistant() && !this.HasOpenAI()) {
-            console.warn(
-                "'assistant' is specifed, but 'openai_api_key_file' is not specifed, feature will be DISABLED"
-            );
-        }
-
-        if (this.data.feedback_storage) {
-            const status = FeedbackStorageFactory.verify(this.data.feedback_storage);
-            if (!status.ok) {
-                return status.wrap_error("feedback_storage misconfiguration");
-            }
-        }
-
-        if (this.data.rehersals_storage) {
-            const status = RehersalsStorageFactory.verify(this.data.rehersals_storage);
-            if (!status.ok) {
-                return status.wrap_error("rehersals_storage misconfiguration");
-            }
-        }
-
-        if (this.data.rehersals_tracker) {
-            if (!this.data.rehersals_storage) {
-                return Expected.err("'rehersals_tracker' is specified, but 'rehersals_storage' is not specified");
-            }
-            const cfg = this.data.rehersals_tracker;
-            if (!cfg.fetch_interval_sec) {
-                return Expected.err("'rehersals_tracker.fetch_interval_sec' MUST be specified");
-            }
-            if (cfg.fetch_interval_sec < 10) {
-                return Expected.err("'rehersals_tracker.fetch_interval_sec' MUST be at least 10 seconds");
-            }
-        }
-
-        if (this.data.managers_chat) {
-            if (this.data.managers_chat.backlog) {
-                const status = MessagesStorageFactory.verify(this.data.managers_chat.backlog);
-                if (!status.ok) {
-                    return status.wrap_error("managers_chat_backlog misconfiguration");
-                }
-            }
-        }
-
-        if (this.data.announce_chat) {
-            if (this.data.announce_chat.backlog) {
-                const status = MessagesStorageFactory.verify(this.data.announce_chat.backlog);
-                if (!status.ok) {
-                    return status.wrap_error("announce_chat_backlog misconfiguration");
-                }
-            }
-        }
-
-        return Expected.ok(undefined);
+        return this.current;
     }
 }

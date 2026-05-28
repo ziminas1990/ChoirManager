@@ -18,6 +18,7 @@ import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
 import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/chorister_statistics.js";
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
 import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
+import { RuntimeConfig } from "@src/runtime.js";
 
 export class ChoristerDialog implements IChorister {
     private last_welcome: Date = new Date(0);
@@ -26,7 +27,11 @@ export class ChoristerDialog implements IChorister {
     private widgets: AbstractWidget[] = [];
     private assistant_tools?: IToolchain;
 
-    constructor(private user: TelegramUser, parent_journal: Journal)
+    constructor(
+        private user: TelegramUser,
+        private readonly runtime_config: RuntimeConfig,
+        parent_journal: Journal,
+    )
     {
         this.journal = parent_journal.child("chorister_dialog");
     }
@@ -231,9 +236,9 @@ export class ChoristerDialog implements IChorister {
         }
 
         if (command == "/backup") {
-            return AdminActions.send_runtime_backup(user.value, this.journal);
+            return AdminActions.send_runtime_backup(user.value, this.runtime_config, this.journal);
         } else if (command == "/get_logs") {
-            return AdminActions.send_logs(user.value, this.journal);
+            return AdminActions.send_logs(user.value, this.runtime_config, this.journal);
         } else if (command == "/stop") {
             return AdminActions.stop_application(this.journal);
         } else {

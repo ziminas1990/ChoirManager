@@ -1,5 +1,5 @@
 import { GoogleSpreadsheet, Row } from "@src/api/google_docs.js";
-import { Config } from "@src/config.js";
+import { NewRecordsTrackerConfig } from "@src/config.js";
 import { IAdapter, TableRecord } from "@src/interfaces/adapter.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -36,6 +36,7 @@ export class NewRecordsFetcher {
 
     constructor(
         parent_journal: Journal,
+        private readonly config: NewRecordsTrackerConfig,
         private readonly get_adapters: () => IAdapter[])
     {
         this.journal = parent_journal.child("new_records_fetcher");
@@ -50,7 +51,7 @@ export class NewRecordsFetcher {
             return Expected.ok(undefined);
         }
 
-        for (const table of Config.NewRecordsTracker().tables) {
+        for (const table of this.config.tables) {
             const status = await this.check_table(table);
             if (!status.ok) {
                 this.journal.log().warn(`Failed to check table '${table.name}': ${status.error}`);
@@ -147,7 +148,7 @@ export class NewRecordsFetcher {
             this.last_fetch_date = new Date();
             return true;
         }
-        const fetch_interval_ms = Config.NewRecordsTracker().fetch_interval_sec * 1000;
+        const fetch_interval_ms = this.config.fetch_interval_sec * 1000;
         const time_since_last_fetch = now_ms - this.last_fetch_date.getTime();
         if (time_since_last_fetch < fetch_interval_ms) {
             return false;

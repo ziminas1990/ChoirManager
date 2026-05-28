@@ -1,7 +1,7 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { DocumentsFetcher } from "@src/fetchers/document_fetcher.js";
 import { OpenaiAPI } from "@src/api/openai.js";
-import { Config } from "@src/config.js";
+import { AssistantConfig } from "@src/fetchers/document_fetcher.js";
 import { Journal } from "@src/journal.js";
 import { Agent } from "@src/components/ai/agent.js";
 import { IToolchain } from "@src/interfaces/llm.js";
@@ -80,9 +80,9 @@ interface IAssistant {
 export class ChoristerAssistant {
     private static instance: ChoristerAssistant;
 
-    static init(documents_fetcher: DocumentsFetcher, journal: Journal) {
+    static init(config: AssistantConfig, documents_fetcher: DocumentsFetcher, journal: Journal) {
         if (!ChoristerAssistant.instance) {
-            ChoristerAssistant.instance = new ChoristerAssistant(documents_fetcher, journal);
+            ChoristerAssistant.instance = new ChoristerAssistant(config, documents_fetcher, journal);
         }
     }
 
@@ -100,6 +100,7 @@ export class ChoristerAssistant {
     private users: Map<string, IAssistant> = new Map();
 
     constructor(
+        private readonly config: AssistantConfig,
         private documents_fetcher: DocumentsFetcher,
         private readonly journal: Journal)
     {
@@ -153,7 +154,7 @@ export class ChoristerAssistant {
                 tool_calls_limit: 5,
                 output_format: "json",
             },
-            OpenaiAPI.get_llm(Config.Assistant().model),
+            OpenaiAPI.get_llm(this.config.model),
             this.journal.child(username),
             tools,
         );

@@ -5,9 +5,8 @@ import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { current_month, Formatter, GlobalFormatter } from "@src/utils.js";
 import { Status } from "@src/utils/expected.js";
 import { Language } from "@src/database.js";
-import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
+import { Deposit, DepositChange, DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
-import { Config } from "@src/config.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Transaction } from "@src/interfaces/transactions_storage.js";
 
@@ -19,10 +18,11 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
     constructor(
         private user: TelegramUser,
         parent_journal: Journal,
+        private readonly deposit_tracking?: DepositTrackingConfig,
         formatter?: Formatter)
     {
         this.journal = parent_journal.child("dialog.deposit_owner");
-        this.orator = new Orator(formatter ?? GlobalFormatter.instance());
+        this.orator = new Orator(formatter ?? GlobalFormatter.instance(), this.deposit_tracking);
     }
 
     base(): IUserAgent {
@@ -135,7 +135,10 @@ export function format_date(date: Date, lang: Language): string {
 }
 
 export class Orator {
-    constructor(private formatter: Formatter) {}
+    constructor(
+        private formatter: Formatter,
+        private readonly deposit_tracking?: DepositTrackingConfig,
+    ) {}
 
     deposit_change(deposit: Deposit, change: DepositChange, lang: Language): string {
         const lines: string[] = [];
@@ -265,12 +268,16 @@ export class Orator {
     }
 
     waiting_membership(deposit: Deposit, lang: Language): string {
+        if (!this.deposit_tracking) {
+            return "";
+        }
+
         const this_month = current_month();
         const month = monthes[lang][this_month.getMonth()];
         const paid = deposit.membership.get(this_month.getTime()) ?? 0;
 
         const total = paid + deposit.balance;
-        const membership_fee = Config.DepositTracker().membership_fee;
+        const membership_fee = this.deposit_tracking.membership_fee;
 
         if (total < membership_fee) {
             const diff = membership_fee - total;
@@ -307,6 +314,10 @@ export class Orator {
     }
 
     account_info(lang: Language): string {
+        if (!this.deposit_tracking || this.deposit_tracking.accounts.length === 0) {
+            return "";
+        }
+
         const lines: string[] = [];
 
         const langs: {[key in Language]: {title: string, account: string, receiver: string}} = {
@@ -326,7 +337,7 @@ export class Orator {
         lines.push(words.title);
         lines.push("");
 
-        for (const account of Config.DepositTracker().accounts) {
+        for (const account of this.deposit_tracking.accounts) {
             lines.push(this.formatter.bold(account.title) + ":");
             lines.push(`${words.account}: ${this.formatter.copiable(account.account)}`)
             if (account.receiver) {

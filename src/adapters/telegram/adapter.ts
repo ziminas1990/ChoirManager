@@ -18,6 +18,8 @@ import { ManagersGroup } from "@src/adapters/telegram/dialogs/managers_group.js"
 import { ManagersChat } from "@src/use_cases/managers_chat";
 import { GroupChatMessage } from "@src/logic/group_chat";
 import { AnnouncesChat } from "@src/use_cases/announces_chat";
+import { DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
+import { RuntimeConfig } from "@src/runtime.js";
 
 export type Config = {
     token_file: string;
@@ -34,6 +36,11 @@ export type IcomingItem = {
 
 type PendingAction = () => Promise<Status>;
 
+type TgAdapterDependencies = {
+    deposit_tracking?: DepositTrackingConfig;
+    runtime: RuntimeConfig;
+}
+
 export class TgAdapter extends Logic<void> implements IAdapter {
     private bot?: TelegramBot;
     private users: Map<string, TelegramUser> = new Map();
@@ -49,11 +56,12 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
     public static unpack(
         cfg: Config,
+        dependencies: TgAdapterDependencies,
         packed: ReturnType<typeof TgAdapter.pack>,
         parent_journal: Journal)
     : TgAdapter
     {
-        const adapter = new TgAdapter(cfg, parent_journal)
+        const adapter = new TgAdapter(cfg, dependencies, parent_journal)
         adapter.unpack(packed);
         return adapter;
     }
@@ -79,12 +87,16 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 this.journal.log().warn(`Can't get user ${tgid}: ${user_info.error}`);
                 continue;
             }
-            const user = TelegramUser.unpack(user_info.value, packed_user, this.journal);
+            const user = TelegramUser.unpack(user_info.value, packed_user, this.dependencies, this.journal);
             this.users.set(tgid, user);
         }
     }
 
-    constructor(private cfg: Config, parent_journal: Journal) {
+    constructor(
+        private cfg: Config,
+        private readonly dependencies: TgAdapterDependencies,
+        parent_journal: Journal,
+    ) {
         super(50);
         this.journal = parent_journal.child("adapter.telegram");
     }
@@ -440,7 +452,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
         this.journal.log().info(`Creating telegram agent for ${tgid}...`);
 
-        const new_user = new TelegramUser(user_data.value, chat_id, this.journal);
+        const new_user = new TelegramUser(user_data.value, chat_id, this.dependencies, this.journal);
         let status = new_user.init(this.bot);
         if (!status.ok) {
             return status.wrap_error("initialization error");
