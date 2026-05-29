@@ -48,6 +48,7 @@
     },
     "assistant": {
         "model": "gpt-5-mini",
+        "fetch_interval_sec": 600,
         "faq_document_id": "1Voaud1Thf71QuATIOC_2zDK29o-aVcmi5Fnz_3RoBes"
     },
     "feedback_storage": {
@@ -81,5 +82,16 @@
             "database_id": "ursa-major-test-db",
             "collection_name": "announce_chat_backlog"
         }
+    },
+    "new_records_tracker": {
+        "fetch_interval_sec": 30,
+        "tables": [
+            {
+                "google_sheet_id": "",
+                "sheet": "Ответы на форму",
+                "name": "Анкеты новых участников",
+                "key_column": 1
+            }
+        ]
     }
 }

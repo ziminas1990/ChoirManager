@@ -56,8 +56,9 @@ export class ManagersGroup implements IManagersChat {
             "",
             ...record.fields.map(field => [
                 `<b>${escape_html(field.name)}</b>`,
-                escape_html(field.value),
-            ].join(": ")),
+                field.value.trim().length > 0 ? escape_html(field.value) : "(нет ответа)",
+                "",
+            ].join("\n")),
         ];
 
         return await this.chat.send_message(message.join("\n"));
