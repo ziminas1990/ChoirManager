@@ -73,7 +73,8 @@ export class AdminActions {
 
     static stop_application(journal: Journal): Promise<Status> {
         journal.log().info("Stopping application...");
-        exit(0);
+        setTimeout(() => exit(0), 1000);
+        return Promise.resolve(Expected.ok(undefined));
     }
 }
 

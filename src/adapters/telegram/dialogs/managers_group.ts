@@ -20,6 +20,10 @@ export class ManagersGroup implements IManagersChat {
         this.journal = parent_journal.child("managers_chat");
     }
 
+    async send_message(message: string): Promise<Status> {
+        return await this.chat.send_message(message);
+    }
+
     async on_new_feedback(feedback: Feedback): Promise<Status> {
         const formatter = GlobalFormatter.instance();
         this.journal.log().info(`new feedback: ${JSON.stringify(feedback)}`);

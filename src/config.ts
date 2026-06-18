@@ -3,6 +3,7 @@ import fs from "fs";
 import { FeedbackStorageConfig, FeedbackStorageFactory } from "@src/adapters/feedback_storage/factory.js";
 import { MessagesStorageConfig, MessagesStorageFactory } from "@src/adapters/messages_storage/factory.js";
 import { RehersalsStorageConfig, RehersalsStorageFactory } from "@src/adapters/rehersals_storage/factory.js";
+import { TaskTrackerDatabaseConfig, TaskTrackerFactory } from "@src/adapters/task_tracker/factory.js";
 import { TransactionStorageConfig } from "@src/adapters/transactions_storage/factory.js";
 import { AssistantConfig, AssistantConfigJson } from "@src/fetchers/document_fetcher.js";
 import { DepositTrackingConfig, DepositTrackingConfigJson } from "@src/fetchers/deposits_fetcher.js";
@@ -103,6 +104,64 @@ export type ChatConfigJson = {
     backlog?: MessagesStorageConfig;
 }
 
+export type TaskTrackerConfigJson = {
+    database: TaskTrackerDatabaseConfig;
+    enable_notifications: boolean;
+    deadline_threshold_days: number;
+    notification_time_utc: string;
+}
+
+export class TaskTrackerConfig {
+    constructor(private readonly json: TaskTrackerConfigJson) {}
+
+    get database(): TaskTrackerDatabaseConfig {
+        return this.json.database;
+    }
+
+    get enable_notifications(): boolean {
+        return this.json.enable_notifications;
+    }
+
+    get deadline_threshold_days(): number {
+        return this.json.deadline_threshold_days;
+    }
+
+    get notification_time_utc(): { hours: number; minutes: number } {
+        const [hours, minutes] = this.json.notification_time_utc.split(":").map(part => parseInt(part, 10));
+        return { hours, minutes };
+    }
+
+    verify(): Status {
+        if (!this.json.database) {
+            return Expected.err("'database' MUST be specified");
+        }
+        let status = TaskTrackerFactory.verify(this.json.database);
+        if (!status.ok) {
+            return status.wrap_error("'database' misconfiguration");
+        }
+
+        if (typeof this.json.enable_notifications !== "boolean") {
+            return Expected.err("'enable_notifications' MUST be specified");
+        }
+
+        if (!Number.isFinite(this.json.deadline_threshold_days)) {
+            return Expected.err("'deadline_threshold_days' MUST be specified");
+        }
+        if (this.json.deadline_threshold_days < 0) {
+            return Expected.err("'deadline_threshold_days' MUST be non-negative");
+        }
+
+        if (!this.json.notification_time_utc) {
+            return Expected.err("'notification_time_utc' MUST be specified");
+        }
+        if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(this.json.notification_time_utc)) {
+            return Expected.err("'notification_time_utc' MUST be in HH:MM format");
+        }
+
+        return Expected.ok(undefined);
+    }
+}
+
 export type BotConfigJson = {
     runtime_cache_filename: string;
     google_cloud_key_file: string;
@@ -121,6 +180,7 @@ export type BotConfigJson = {
     rehersals_storage?: RehersalsStorageConfig;
     managers_chat?: ChatConfigJson;
     announce_chat?: ChatConfigJson;
+    task_tracker?: TaskTrackerConfigJson;
 }
 
 export class BotConfig {
@@ -132,6 +192,7 @@ export class BotConfig {
     public readonly deposit_tracking?: DepositTrackingConfig;
     public readonly rehersals_tracker?: RehersalsTrackerConfig;
     public readonly assistant?: AssistantConfig;
+    public readonly task_tracker?: TaskTrackerConfig;
 
     constructor(public readonly json: BotConfigJson) {
         this.runtime = new RuntimeConfig({
@@ -160,6 +221,9 @@ export class BotConfig {
         }
         if (json.assistant != undefined) {
             this.assistant = new AssistantConfig(json.assistant);
+        }
+        if (json.task_tracker != undefined) {
+            this.task_tracker = new TaskTrackerConfig(json.task_tracker);
         }
     }
 
@@ -252,6 +316,13 @@ export class BotConfig {
             status = this.rehersals_tracker.verify();
             if (!status.ok) {
                 return status.wrap_error("'rehersals_tracker' misconfiguration");
+            }
+        }
+
+        if (this.task_tracker) {
+            status = this.task_tracker.verify();
+            if (!status.ok) {
+                return status.wrap_error("'task_tracker' misconfiguration");
             }
         }
 

@@ -4,6 +4,7 @@ import { GlobalFormatter } from "@src/utils.js";
 import { Status } from "@src/utils/expected.js";
 
 export class AdminDialog implements IAdminAgent {
+
     constructor(private user: TelegramUser) {}
 
     base(): IUserAgent {

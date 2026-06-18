@@ -227,7 +227,8 @@ export class ChoristerDialog implements IChorister {
         return tools;
     }
 
-    private async on_service_message(command: string): Promise<Status> {
+    private async on_service_message(text: string): Promise<Status> {
+        const command = text.split(/\s/)[0].split("@")[0];
         this.journal.log().info(`Processing service message: ${command}`);
 
         const user = CoreAPI.get_user_by_tg_id(this.user.userid(), false);

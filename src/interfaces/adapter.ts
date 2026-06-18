@@ -26,6 +26,8 @@ export type TableRecord = {
 }
 
 export interface IManagersChat {
+    send_message(message: string): Promise<Status>;
+
     on_new_feedback(feedback: Feedback): Promise<Status>;
 
     on_new_table_record(record: TableRecord): Promise<Status>;

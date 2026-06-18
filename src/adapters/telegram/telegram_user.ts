@@ -33,6 +33,9 @@ export class TelegramUser implements IUserAgent {
     private guest_dialog?: GuestDialog;
     private admin_dialog?: AdminDialog;
 
+    // Can't send messages more often than 1 message per 1 second
+    private last_api_call?: Date;
+
     private timings: {
         next_user_info_update?: number;
     };
@@ -157,6 +160,7 @@ export class TelegramUser implements IUserAgent {
             return return_fail("API is not initialized", this.journal.log());
         }
         try {
+            await this.wait_api_cooldown();
             const sent = await this.bot.sendMessage(this.chat_id, message, {
                 ...options,
                 parse_mode: "HTML"
@@ -173,6 +177,7 @@ export class TelegramUser implements IUserAgent {
             return return_fail("API is not initialized", this.journal.log());
         }
         try {
+            // Note: do not wait for cooldown here
             await this.bot.sendChatAction(this.chat_id, action);
             return Expected.ok(undefined);
         } catch (e) {
@@ -192,6 +197,7 @@ export class TelegramUser implements IUserAgent {
             const file_options: TelegramBot.FileOptions = {
                 contentType: content_type,
             };
+            await this.wait_api_cooldown();
             await this.bot.sendDocument(this.chat_id, filename, options, file_options);
             this.journal.log().info({ document: filename }, "document sent")
             return Expected.ok(undefined);
@@ -210,6 +216,7 @@ export class TelegramUser implements IUserAgent {
 
         try {
             if (what.text != undefined) {
+                await this.wait_api_cooldown();
                 await this.bot.editMessageText(what.text, {
                     chat_id: this.chat_id,
                     message_id: message_id,
@@ -219,6 +226,7 @@ export class TelegramUser implements IUserAgent {
                     } : undefined
                 });
             } else if (what.inline_keyboard != undefined) {
+                await this.wait_api_cooldown();
                 await this.bot.editMessageReplyMarkup(
                     {
                         inline_keyboard: what.inline_keyboard,
@@ -240,6 +248,7 @@ export class TelegramUser implements IUserAgent {
             return return_fail("API is not initialized", this.journal.log());
         }
         try {
+            await this.wait_api_cooldown();
             const ok = await this.bot.deleteMessage(this.chat_id, message_id);
             return ok ? Expected.ok(undefined) : return_fail("Failed to delete message", this.journal.log());
         } catch(e) {
@@ -304,5 +313,15 @@ export class TelegramUser implements IUserAgent {
             return this.chorister_dialog;
         }
         return undefined;
+    }
+
+    private async wait_api_cooldown(): Promise<void> {
+        if (this.last_api_call != undefined) {
+            const elapsed_ms = new Date().getTime() - this.last_api_call.getTime();
+            if (elapsed_ms < 1000) {
+                await new Promise(resolve => setTimeout(resolve, 1000 - elapsed_ms));
+            }
+        }
+        this.last_api_call = new Date();
     }
 }

@@ -1,5 +1,6 @@
 import fs from "fs";
 import crypto from "crypto";
+import path from "path";
 
 import { BotConfig } from "./config.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -17,6 +18,7 @@ import { AdminActions } from "./use_cases/admin_actions.js";
 import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
 import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
+import { TaskTrackerFactory } from "./adapters/task_tracker/factory.js";
 import { update_v2_v3 } from "./configuration/update_v2_v3.js";
 import { IAdapter } from "./interfaces/adapter.js";
 import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
@@ -27,6 +29,7 @@ import { GroupChat } from "./logic/group_chat.js";
 import { ITransactionsStorage } from "./interfaces/transactions_storage.js";
 import { TransactionStorageFactory } from "./adapters/transactions_storage/factory.js";
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
+import { TaskTracker } from "./logic/task_tracker.js";
 
 export type RuntimeConfigJson = {
     runtime_cache_filename: string;
@@ -72,13 +75,30 @@ export class Runtime {
 
     static Load(config: BotConfig, database: Database, parent_journal: Journal): Expected<Runtime> {
         const journal = parent_journal.child("rt");
+        const runtime_cache_filename = path.resolve(config.runtime.runtime_cache_filename);
         try {
-            const packed = JSON.parse(fs.readFileSync(
-                config.runtime.runtime_cache_filename,
-                "utf8"
-            ));
-            return Runtime.unpack(config, database, packed, journal);
+            journal.log().info({ runtime_cache_filename }, "Reading runtime cache");
+            const packed_raw = fs.readFileSync(runtime_cache_filename, "utf8");
+            journal.log().info({
+                runtime_cache_filename,
+                bytes: Buffer.byteLength(packed_raw, "utf8"),
+            }, "Runtime cache read");
+
+            const packed = JSON.parse(packed_raw);
+            const runtime = Runtime.unpack(config, database, packed, journal);
+            if (!runtime.ok) {
+                journal.log().error({
+                    runtime_cache_filename,
+                    error: runtime.error,
+                }, "Failed to unpack runtime cache");
+            }
+            return runtime;
         } catch (e) {
+            journal.log().error({
+                runtime_cache_filename,
+                error: e instanceof Error ? e.message : String(e),
+                stack: e instanceof Error ? e.stack : undefined,
+            }, "Failed to load runtime cache, falling back to empty runtime");
             const empty_runtime = new Runtime(config, database, "", new Map(), journal);
             return Expected.ok(empty_runtime);
         }
@@ -101,6 +121,7 @@ export class Runtime {
     private announce_chat?: GroupChat;
 
     private rehersals_tracker?: RehersalsTracker;
+    private task_tracker?: TaskTracker;
 
     private tg_adapter?: TgAdapter;
 
@@ -268,6 +289,27 @@ export class Runtime {
             }
         }
 
+        if (this.config.task_tracker) {
+            this.journal.log().info("Initializing task tracker...");
+            const create_status = TaskTrackerFactory.create(
+                this.config.task_tracker.database,
+                this.journal,
+            );
+            if (!create_status.ok) {
+                return create_status.wrap_error("Failed to create task tracker");
+            }
+            this.task_tracker = new TaskTracker(
+                this.config.task_tracker,
+                create_status.value,
+                () => this.get_adapters(),
+                this.journal,
+            );
+            const init_status = await this.task_tracker.init();
+            if (!init_status.ok) {
+                return init_status.wrap_error("Failed to initialize task tracker");
+            }
+        }
+
         if (this.config.json.managers_chat) {
             this.journal.log().info("Initializing managers chat...");
             this.managers_chat = new GroupChat(this.journal);
@@ -408,6 +450,13 @@ export class Runtime {
             }
         }
 
+        if (this.task_tracker) {
+            const task_tracker_status = await this.task_tracker.proceed(now);
+            if (!task_tracker_status.ok) {
+                this.journal.log().error(`Task tracker proceed failed: ${task_tracker_status.error}`);
+            }
+        }
+
         if (this.scores_fetcher) {
             const scores_status = await this.scores_fetcher.proceed();
             if (!scores_status.ok) {
@@ -473,10 +522,21 @@ export class Runtime {
     do_backup(): string {
         const runtime_data = JSON.stringify(Runtime.pack(this), null, 2);
         const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
+        const runtime_cache_filename = path.resolve(this.config.runtime.runtime_cache_filename);
+        const bytes = Buffer.byteLength(runtime_data, "utf8");
 
         if (runtime_hash != this.runtime_hash) {
-            this.journal.log().info(`Updating runtime, hash: ${runtime_hash}`);
-            fs.writeFileSync(this.config.runtime.runtime_cache_filename, runtime_data);
+            this.journal.log().info({
+                runtime_cache_filename,
+                bytes,
+                hash: runtime_hash,
+            }, "Writing runtime dump");
+            fs.writeFileSync(runtime_cache_filename, runtime_data);
+            this.journal.log().info({
+                runtime_cache_filename,
+                bytes,
+                hash: runtime_hash,
+            }, "Runtime dump written");
             this.runtime_hash = runtime_hash;
         }
         return runtime_hash;
@@ -513,6 +573,7 @@ export class Runtime {
             const status = UserLogic.unpack(database, packed, config.deposit_tracking, journal);
             if (!status.ok) {
                 journal.log().warn(`loading users: ${status.error}`);
+                return undefined;
             }
             return status.value;
         });

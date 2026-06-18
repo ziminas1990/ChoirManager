@@ -8,6 +8,9 @@ import { Journal } from "@src/journal.js";
 export class GroupChat implements IGroupChat {
     private journal: Journal;
 
+    // Can't send messages more often than 1 message per 1 second
+    private last_api_call?: Date;
+
     constructor(
         private readonly chat_id: number,
         private readonly thread_id: number | undefined,
@@ -22,6 +25,7 @@ export class GroupChat implements IGroupChat {
             return return_fail("API is not initialized", this.journal.log());
         }
         try {
+            await this.wait_api_cooldown();
             await this.bot.sendMessage(this.chat_id, message, {
                 parse_mode: "HTML",
                 message_thread_id: this.thread_id,
@@ -44,11 +48,22 @@ export class GroupChat implements IGroupChat {
             const file_options: TelegramBot.FileOptions = {
                 contentType: content_type,
             };
+            await this.wait_api_cooldown();
             await this.bot.sendDocument(this.chat_id, filename, options, file_options);
             return Expected.ok(undefined);
         } catch (e) {
             return return_exception(e, this.journal.log());
         }
+    }
+
+    private async wait_api_cooldown(): Promise<void> {
+        if (this.last_api_call != undefined) {
+            const elapsed_ms = new Date().getTime() - this.last_api_call.getTime();
+            if (elapsed_ms < 1000) {
+                await new Promise(resolve => setTimeout(resolve, 1000 - elapsed_ms));
+            }
+        }
+        this.last_api_call = new Date();
     }
 
 }
