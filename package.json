@@ -8,12 +8,10 @@
     "webpack-prod": "webpack --mode production",
     "webpack-dev": "webpack --mode development",
     "compile": "tsc && tsc-alias",
-    "build": "npm run compile && npm run webpack-dev",
-    "build_and_run": "npm run build && npm run app",
-    "build_app_and_run": "npm run build-app && npm run app",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build-app": "npm run compile && node build.js",
+    "build": "npm run compile && node build.js",
     "app": "node dist/app.cjs",
+    "build_and_run": "npm run build && npm run app",
+    "test": "echo \"Error: no test specified\" && exit 1",
     "firestore-updater": "node dist/tools/firestore_updater_new.js"
   },
   "devDependencies": {

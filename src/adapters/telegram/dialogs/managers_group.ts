@@ -1,6 +1,6 @@
 import { IManagersChat, TableRecord } from "@src/interfaces/adapter.js";
 import { Feedback } from "@src/entities/feedback.js";
-import { Status } from "@src/utils/expected.js";
+import { Expected, Status } from "@src/utils/expected.js";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
 import { Journal } from "@src/journal.js";
 import { GlobalFormatter } from "@src/utils.js";
@@ -20,8 +20,12 @@ export class ManagersGroup implements IManagersChat {
         this.journal = parent_journal.child("managers_chat");
     }
 
-    async send_message(message: string): Promise<Status> {
+    async send_message(message: string): Promise<Expected<string>> {
         return await this.chat.send_message(message);
+    }
+
+    async send_typing_action(): Promise<Status> {
+        return await this.chat.send_typing_action();
     }
 
     async on_new_feedback(feedback: Feedback): Promise<Status> {
@@ -49,7 +53,7 @@ export class ManagersGroup implements IManagersChat {
         message.push("");
         message.push("#feedback");
 
-        return await this.chat.send_message(message.join("\n"));
+        return (await this.chat.send_message(message.join("\n"))).as_status();
     }
 
     async on_new_table_record(record: TableRecord): Promise<Status> {
@@ -65,6 +69,6 @@ export class ManagersGroup implements IManagersChat {
             ].join("\n")),
         ];
 
-        return await this.chat.send_message(message.join("\n"));
+        return (await this.chat.send_message(message.join("\n"))).as_status();
     }
 }

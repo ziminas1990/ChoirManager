@@ -104,6 +104,44 @@ export type ChatConfigJson = {
     backlog?: MessagesStorageConfig;
 }
 
+export type ManagersChatAgentConfigJson = {
+    model: string;
+    context_days: number;
+    prompt_file: string;
+}
+
+export class ManagersChatAgentConfig {
+    constructor(private readonly json: ManagersChatAgentConfigJson) {}
+
+    get model(): string {
+        return this.json.model;
+    }
+
+    get context_days(): number {
+        return this.json.context_days;
+    }
+
+    get prompt_file(): string {
+        return this.json.prompt_file;
+    }
+
+    verify(): Status {
+        if (!this.json.model) {
+            return Expected.err("'model' MUST be specified");
+        }
+        if (!Number.isInteger(this.json.context_days) || this.json.context_days <= 0) {
+            return Expected.err("'context_days' MUST be a positive integer");
+        }
+        if (!this.json.prompt_file) {
+            return Expected.err("'prompt_file' MUST be specified");
+        }
+        if (!fs.existsSync(this.json.prompt_file)) {
+            return Expected.err(`'prompt_file' does not exist: ${this.json.prompt_file}`);
+        }
+        return Expected.ok(undefined);
+    }
+}
+
 export type TaskTrackerConfigJson = {
     database: TaskTrackerDatabaseConfig;
     enable_notifications: boolean;
@@ -179,6 +217,7 @@ export type BotConfigJson = {
     transaction_storage?: TransactionStorageConfig;
     rehersals_storage?: RehersalsStorageConfig;
     managers_chat?: ChatConfigJson;
+    managers_chat_agent?: ManagersChatAgentConfigJson;
     announce_chat?: ChatConfigJson;
     task_tracker?: TaskTrackerConfigJson;
 }
@@ -193,6 +232,7 @@ export class BotConfig {
     public readonly rehersals_tracker?: RehersalsTrackerConfig;
     public readonly assistant?: AssistantConfig;
     public readonly task_tracker?: TaskTrackerConfig;
+    public readonly managers_chat_agent?: ManagersChatAgentConfig;
 
     constructor(public readonly json: BotConfigJson) {
         this.runtime = new RuntimeConfig({
@@ -224,6 +264,9 @@ export class BotConfig {
         }
         if (json.task_tracker != undefined) {
             this.task_tracker = new TaskTrackerConfig(json.task_tracker);
+        }
+        if (json.managers_chat_agent != undefined) {
+            this.managers_chat_agent = new ManagersChatAgentConfig(json.managers_chat_agent);
         }
     }
 
@@ -323,6 +366,28 @@ export class BotConfig {
             status = this.task_tracker.verify();
             if (!status.ok) {
                 return status.wrap_error("'task_tracker' misconfiguration");
+            }
+        }
+
+        if (this.managers_chat_agent) {
+            status = this.managers_chat_agent.verify();
+            if (!status.ok) {
+                return status.wrap_error("'managers_chat_agent' misconfiguration");
+            }
+            if (!this.json.openai_api_key_file) {
+                return Expected.err(
+                    "'managers_chat_agent' is specified, but 'openai_api_key_file' is not specified"
+                );
+            }
+            if (!this.json.managers_chat?.backlog) {
+                return Expected.err(
+                    "'managers_chat_agent' is specified, but 'managers_chat.backlog' is not specified"
+                );
+            }
+            if (!this.json.tg_adapter?.bot_id) {
+                return Expected.err(
+                    "'managers_chat_agent' is specified, but 'tg_adapter.bot_id' is not specified"
+                );
             }
         }
 

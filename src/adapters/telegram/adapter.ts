@@ -336,22 +336,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             text: msg.text,
         }
 
-        if (msg.text.startsWith("@ursa_major_choir")) {
-            this.bot!.sendMessage(msg.chat.id, "Пошёл думать, скоро вернусь...");
-            const status = await ManagersChat.answer_question(msg.text);
-            if (!status.ok) {
-                this.bot!.sendMessage(msg.chat.id,
-                    `Я потерпел фиаско:\n\n${status.error}`);
-                this.journal.log().error(`Failed to answer question: ${status.error}`);
-            } else {
-                this.bot!.sendMessage(msg.chat.id, status.value!, {
-                    parse_mode: "HTML",
-                });
-            }
-            return Expected.ok(undefined);
-        }
-
-        const status = await ManagersChat.on_new_message(user.value, message);
+        const status = await ManagersChat.on_new_message(message);
         if (!status.ok) {
             return status;
         }
@@ -378,7 +363,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             text: msg.text,
         }
 
-        const status = await AnnouncesChat.on_new_message(user.value, message);
+        const status = await AnnouncesChat.on_new_message(message);
         if (!status.ok) {
             return status;
         }

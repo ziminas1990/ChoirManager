@@ -52,7 +52,7 @@ export class Agent {
 
     private journal: Journal;
     private context: ContextItem[] = [];
-    private last_user_activity?: Date;
+    private last_activity?: Date;
 
     private busy: boolean = false;
 
@@ -90,35 +90,43 @@ export class Agent {
 
     private cfg: AgentCfg;
 
-    async generate_response(messages: Message[]): Promise<Expected<string>> {
+    add_user_messages(messages: Message[], time?: Date): void {
+        for (const message of messages) {
+            this.add_context_message(message, time);
+        }
+    }
+
+    add_assistant_message(content: string, time?: Date): void {
+        this.add_context_message({
+            role: "assistant",
+            content,
+        }, time);
+    }
+
+    add_context_message(message: Message, time: Date = new Date()): void {
+        this.append_ttl_message(message, time);
+    }
+
+    async generate_response(): Promise<Expected<string>> {
         if (this.busy) {
             return Expected.err("agent is still processing previous request");
         }
 
         this.busy = true;
         try {
-            return await this.generate_response_impl(messages);
+            return await this.generate_response_impl();
         } finally {
             this.busy = false;
         }
     }
 
-    add_assistant_message(content: string): void {
-        this.add_message({
-            role: "assistant",
-            content,
-        });
-    }
 
-    private async generate_response_impl(messages: Message[])
-    : Promise<Expected<string>>
-    {
+    private async generate_response_impl(): Promise<Expected<string>> {
         this.cleanup_context();
-        this.last_user_activity = new Date();
+        this.last_activity = new Date();
 
-        for (const message of messages) {
-            this.add_message(message);
-        }
+        this.journal.log().info(
+            `generating response with ${this.get_context_messages().length} context length`);
 
         for (let i = 0; i <= this.cfg.tool_calls_limit; i++) {
             const tools_limit_reached = i === this.cfg.tool_calls_limit;
@@ -155,6 +163,8 @@ export class Agent {
 
             const has_assistant = response_messages.some(m => m.role === "assistant");
             if (has_assistant && response.value.content !== null) {
+                this.journal.log().info(
+                    `assistant response after ${i} iterations: ${response.value.content}`);
                 return Expected.ok(response.value.content);
             }
         }
@@ -169,7 +179,7 @@ export class Agent {
     private async handle_llm_response(messages: Message[]): Promise<Status> {
         try {
             for (const message of messages) {
-                this.add_message(message);
+                this.append_ttl_message(message, new Date());
                 if (message.role === "tool_calls") {
                     await this.do_tool_calls(message);
                 }
@@ -208,22 +218,22 @@ export class Agent {
             const duration_ms = Date.now() - started_at;
             this.journal.log().info(`Tool '${call.name}' completed in ${duration_ms}ms`);
 
-            this.add_message({
+            this.append_ttl_message({
                 role: "tool_result",
                 tool_call_id: call.tool_call_id,
                 name: call.name,
                 result: result_text,
-            });
+            }, new Date());
         }
     }
 
     private cleanup_context(): void {
         const now = Date.now();
-        if (this.last_user_activity !== undefined) {
-            const time_since_last_activity = now - this.last_user_activity.getTime();
+        if (this.cfg.inactivity_timeout_ms > 0 && this.last_activity !== undefined) {
+            const time_since_last_activity = now - this.last_activity.getTime();
             if (time_since_last_activity > this.cfg.inactivity_timeout_ms) {
                 this.context = this.context.filter(item => item.retention === "persistent");
-                this.last_user_activity = undefined;
+                this.last_activity = undefined;
                 return;
             }
         }
@@ -239,11 +249,50 @@ export class Agent {
         });
     }
 
-    private add_message(message: Message): void {
-        this.context.push({
-            time: new Date(),
-            message,
-            retention: "ttl",
-        });
+    private append_ttl_message(message: Message, time: Date): void {
+        if (message.role !== "tool_result") {
+            this.context.push({
+                time,
+                message,
+                retention: "ttl",
+            });
+        } else {
+            // Special case: tool results must be placed in context right
+            // after the tool call that produced them. If several results
+            // belong to the same tool_calls block, preserve their order.
+            for (let i = this.context.length - 1; i >= 0; i--) {
+                const item = this.context[i];
+                if (item.message.role !== "tool_calls") {
+                    continue;
+                }
+                if (!item.message.calls.some(call => call.tool_call_id === message.tool_call_id)) {
+                    continue;
+                }
+
+                let insert_at = i + 1;
+                while (insert_at < this.context.length) {
+                    const next = this.context[insert_at];
+                    if (next.message.role !== "tool_result") {
+                        break;
+                    }
+                    insert_at++;
+                }
+
+                this.context.splice(insert_at, 0, {
+                    time,
+                    message,
+                    retention: "ttl",
+                });
+                return;
+            }
+
+            // Fallback for malformed/internal states: append instead of
+            // silently dropping the tool result.
+            this.context.push({
+                time,
+                message,
+                retention: "ttl",
+            });
+        }
     }
 }

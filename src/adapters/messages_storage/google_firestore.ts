@@ -4,6 +4,7 @@ import { Expected, Status } from "@src/utils/expected.js";
 import { IMessagesBacklog, Message } from "@src/interfaces/messages_backlog.js";
 import { CollectionReference, Firestore } from "@google-cloud/firestore";
 import { GoogleAuth } from "@src/api/google_auth";
+import { TokenBucket } from "@src/utils/token_bucket";
 
 export type Config = {
     database_id: string,
@@ -22,11 +23,17 @@ export class GoogleFirestore implements IMessagesBacklog {
 
     private db: Firestore;
     private collection: CollectionReference;
+    // Limit API calls rate
+    private api_tokens: TokenBucket;
 
     constructor(private config: Config, private read_only: boolean)
     {
         this.db = GoogleAuth.get_firestore(this.config.database_id);
         this.collection = this.db.collection(this.config.collection_name);
+        this.api_tokens = new TokenBucket({
+            max_tokens: 6,
+            refill_rate: 2  // not more than 2 API calls per second
+        });
     }
 
     async init(): Promise<Status> {
@@ -39,6 +46,7 @@ export class GoogleFirestore implements IMessagesBacklog {
             if (this.read_only) {
                 return Expected.err("Read-only mode");
             }
+            await this.api_tokens.wait_tokens(1);
             await this.collection.doc(doc_id).create({
                 time: message.time,
                 message_id: message.message_id,
@@ -57,6 +65,7 @@ export class GoogleFirestore implements IMessagesBacklog {
             if (this.read_only) {
                 return Expected.err("Read-only mode");
             }
+            await this.api_tokens.wait_tokens(1);
             await this.collection.doc(doc_id).update({
                 text: message.text
             });
@@ -68,6 +77,7 @@ export class GoogleFirestore implements IMessagesBacklog {
 
     async get_messages(from: Date, to: Date): Promise<Expected<Message[]>> {
         try {
+            await this.api_tokens.wait_tokens(1);
             const messages = await this.collection
                 .where("time", ">=", from)
                 .where("time", "<=", to)

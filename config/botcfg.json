@@ -75,6 +75,11 @@
             "collection_name": "managers_chat_backlog"
         }
     },
+    "managers_chat_agent": {
+        "model": "gpt-5.4-mini",
+        "context_days": 3,
+        "prompt_file": "./config/managers_chat_agent_prompt.txt"
+    },
     "announce_chat": {
         "backlog": {
             "type": "google_firestore",

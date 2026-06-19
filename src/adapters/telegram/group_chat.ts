@@ -20,14 +20,28 @@ export class GroupChat implements IGroupChat {
         this.journal = parent_journal.child(`group.${chat_id}`);
     }
 
-    async send_message(message: string): Promise<Status> {
+    async send_message(message: string): Promise<Expected<string>> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal.log());
         }
         try {
             await this.wait_api_cooldown();
-            await this.bot.sendMessage(this.chat_id, message, {
+            const sent = await this.bot.sendMessage(this.chat_id, message, {
                 parse_mode: "HTML",
+                message_thread_id: this.thread_id,
+            });
+            return Expected.ok(sent.message_id.toString());
+        } catch (e) {
+            return return_exception(e, this.journal.log());
+        }
+    }
+
+    async send_typing_action(): Promise<Status> {
+        if (!this.bot) {
+            return return_fail("API is not initialized", this.journal.log());
+        }
+        try {
+            await this.bot.sendChatAction(this.chat_id, "typing", {
                 message_thread_id: this.thread_id,
             });
             return Expected.ok(undefined);

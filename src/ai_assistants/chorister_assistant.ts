@@ -178,9 +178,10 @@ class AgentAssistant implements IAssistant {
     constructor(private agent: Agent) {}
 
     public async send_message(message: string): Promise<Status> {
-        const response = await this.agent.generate_response([
+        this.agent.add_user_messages([
             { role: "user", content: message },
         ]);
+        const response = await this.agent.generate_response();
         if (!response.ok) {
             return Expected.err("agent failed to send message", response);
         }

@@ -1,5 +1,4 @@
 import { IMessagesBacklog } from "@src/interfaces/messages_backlog";
-import { IUserAgent } from "@src/interfaces/user_agent";
 import { Journal } from "@src/journal";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -16,8 +15,8 @@ export class GroupChat extends Logic<void> {
     private backlog?: IMessagesBacklog;
 
     // Queue of incoming messages, that should be processed by the logic
-    private new_messages_queue: [IUserAgent, GroupChatMessage][] = [];
-    private edited_messages_queue: [IUserAgent, GroupChatMessage][] = [];
+    private new_messages_queue: GroupChatMessage[] = [];
+    private edited_messages_queue: GroupChatMessage[] = [];
 
     constructor(private journal: Journal)
     {
@@ -28,14 +27,16 @@ export class GroupChat extends Logic<void> {
         this.backlog = backlog;
     }
 
+    // Queue message to be added to the backlog
     // NOTE: this function must NOT be async, it should return immediately
-    on_new_message(sender: IUserAgent, message: GroupChatMessage): void {
-        this.new_messages_queue.push([sender, message]);
+    on_new_message(message: GroupChatMessage): void {
+        this.new_messages_queue.push(message);
     }
 
+    // Queue message to be updated in the backlog
     // NOTE: this function must NOT be async, it should return immediately
-    on_message_edited(sender: IUserAgent, message: GroupChatMessage): void {
-        this.edited_messages_queue.push([sender, message]);
+    on_message_edited(message: GroupChatMessage): void {
+        this.edited_messages_queue.push(message);
     }
 
     async fetch_messages(from: Date, to: Date): Promise<Expected<GroupChatMessage[]>> {
@@ -67,7 +68,7 @@ export class GroupChat extends Logic<void> {
         }
 
         // TODO: handle messages in parallel?
-        const promises = this.new_messages_queue.map(async ([_, message]) => {
+        const promises = this.new_messages_queue.map(async (message) => {
             const status = await this.backlog!.add_message({
                 time: message.time,
                 message_id: message.message_id,
@@ -91,7 +92,7 @@ export class GroupChat extends Logic<void> {
             return Expected.err("backlog is not attached");
         }
 
-        const promises = this.edited_messages_queue.map(async ([_, message]) => {
+        const promises = this.edited_messages_queue.map(async (message) => {
             const status = await this.backlog!.update_message({
                 time: message.time,
                 message_id: message.message_id,

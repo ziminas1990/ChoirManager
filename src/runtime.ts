@@ -30,6 +30,7 @@ import { ITransactionsStorage } from "./interfaces/transactions_storage.js";
 import { TransactionStorageFactory } from "./adapters/transactions_storage/factory.js";
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
 import { TaskTracker } from "./logic/task_tracker.js";
+import { ManagersAgent } from "./logic/managers_agent.js";
 
 export type RuntimeConfigJson = {
     runtime_cache_filename: string;
@@ -118,6 +119,7 @@ export class Runtime {
     private transactions_storage?: ITransactionsStorage;
 
     private managers_chat?: GroupChat;
+    private managers_agent?: ManagersAgent;
     private announce_chat?: GroupChat;
 
     private rehersals_tracker?: RehersalsTracker;
@@ -326,6 +328,39 @@ export class Runtime {
             }
         }
 
+        if (this.config.managers_chat_agent && this.managers_chat) {
+            this.journal.log().info("Initializing managers chat agent...");
+            this.managers_agent = new ManagersAgent(
+                this.config.managers_chat_agent,
+                this.managers_chat,
+                {
+                    get_managers_chat: async () => {
+                        return await this.tg_adapter?.get_managers_chat();
+                    },
+                    resolve_author: (user_id) => {
+                        if (user_id === this.config.tg_adapter?.bot_id) {
+                            return "Ursa Major Bot";
+                        }
+                        const user = this.get_user(user_id);
+                        if (!user) {
+                            return `@${user_id}`;
+                        }
+                        const name = [user.data.name, user.data.surname]
+                            .filter(part => part.length > 0)
+                            .join(" ");
+                        const username = user.data.tgid ? ` (@${user.data.tgid})` : "";
+                        return `${name.length > 0 ? name : user_id}${username}`;
+                    },
+                    bot_id: this.config.tg_adapter!.bot_id!,
+                },
+                this.journal,
+            );
+            const init_status = await this.managers_agent.init();
+            if (!init_status.ok) {
+                return init_status.wrap_error("Failed to initialize managers chat agent");
+            }
+        }
+
         if (this.config.json.announce_chat) {
             this.journal.log().info("Initializing announce chat...");
             this.announce_chat = new GroupChat(this.journal);
@@ -367,6 +402,10 @@ export class Runtime {
 
     get_managers_chat(): GroupChat | undefined {
         return this.managers_chat;
+    }
+
+    get_managers_agent(): ManagersAgent | undefined {
+        return this.managers_agent;
     }
 
     get_announce_chat(): GroupChat | undefined {
