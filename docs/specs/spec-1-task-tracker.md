@@ -102,7 +102,7 @@ Use Google Sheets as the task database. The spreadsheet should contain a single 
 
 If `TaskData.status` uses normalized internal values, the Google Sheets status values must be mapped to those internal values during parsing.
 
-An `ITaskTracker` interface should be introduced. For now, it should expose only one method, `fetch_all`, which returns all tasks. Initially, there should be a single implementation, `GoogleSheetTaskTracker`, which polls the spreadsheet every `N` seconds and stores the parsed tasks in memory.
+An `ITaskTracker` interface should be introduced. For now, it should expose only one method, `fetch`, which returns tasks optionally filtered by `TaskFilter`. Initially, there should be a single implementation, `GoogleSheetTaskTracker`, which polls the spreadsheet every `N` seconds and stores the parsed tasks in memory.
 
 ## Configuration
 
@@ -119,5 +119,32 @@ The task tracker is an optional module and should be enabled only when it is con
     "enable_notifications": true,
     "deadline_threshold_days": 5,
     "notification_time_utc": "HH:MM"
+}
+```
+
+## AI Tooling
+
+Task Tracker provides an implementation of the `IToolchain` interface, that allows LLM to fetch tasks from the database.
+
+```typescript
+
+type TaskFilter = {
+    status?: TaskStatus[];
+}
+
+interface TaskTrackerTool {
+    get_tasks(filter: TaskFilter): Promise<string>;
+}
+```
+
+### get_tasks()
+
+`get_tasks()` method returns a stringified JSON array of tasks or an error message.
+
+```typescript
+type Response = {
+    tasks: TaskData[];
+} | {
+    error: string;
 }
 ```

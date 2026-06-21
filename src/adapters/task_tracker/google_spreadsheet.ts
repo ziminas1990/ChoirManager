@@ -1,5 +1,5 @@
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
-import { TaskData, TaskStatus } from "@src/entities/task.js";
+import { TaskData, TaskFilter, TaskStatus, filter_tasks } from "@src/entities/task.js";
 import { ITaskTracker } from "@src/interfaces/task_tracker.js";
 import { Journal } from "@src/journal.js";
 import { Expected } from "@src/utils/expected.js";
@@ -185,10 +185,10 @@ export class GoogleSheetTaskTracker implements ITaskTracker {
         this.journal = parent_journal.child("task_tracker");
     }
 
-    async fetch_all(): Promise<Expected<TaskData[]>> {
+    async fetch(filter?: TaskFilter): Promise<Expected<TaskData[]>> {
         const now = new Date();
         if (now < this.next_fetch) {
-            return Expected.ok([...this.tasks]);
+            return Expected.ok([...filter_tasks(this.tasks, filter)]);
         }
 
         const load_status = await this.load_tasks();
@@ -198,7 +198,7 @@ export class GoogleSheetTaskTracker implements ITaskTracker {
         this.journal.log().info(`Fetched ${this.tasks.length} tasks`);
 
         this.next_fetch = new Date(Date.now() + this.config.fetch_interval_sec * 1000);
-        return Expected.ok([...this.tasks]);
+        return Expected.ok([...filter_tasks(this.tasks, filter)]);
     }
 
     private async load_tasks(): Promise<Expected<void>> {

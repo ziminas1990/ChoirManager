@@ -2,9 +2,10 @@ import fs from "fs";
 
 import { OpenaiAPI } from "@src/api/openai.js";
 import { Agent } from "@src/components/ai/agent.js";
+import { ManagersMessengerTools } from "@src/components/ai/tools/managers_messenger_tools.js";
 import { ManagersChatAgentConfig } from "@src/config.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
-import { IToolchain, Message, Tool } from "@src/interfaces/llm.js";
+import { Message } from "@src/interfaces/llm.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { GroupChat, GroupChatMessage } from "./group_chat.js";
@@ -28,14 +29,6 @@ function format_message_time(time: Date): string {
     const hours = time.getHours().toString().padStart(2, "0");
     const minutes = time.getMinutes().toString().padStart(2, "0");
     return `${day}.${month}, ${hours}:${minutes}`;
-}
-
-function return_success<T>(value: T): string {
-    return JSON.stringify({ value });
-}
-
-function return_error(error: string): string {
-    return JSON.stringify({ error });
 }
 
 function parse_agent_response(text: string): Expected<AgentResponse> {
@@ -64,63 +57,6 @@ function parse_agent_response(text: string): Expected<AgentResponse> {
         });
     }
     return Expected.err("response status must be either 'sent' or 'error'");
-}
-
-class ManagersMessengerTools implements IToolchain {
-    constructor(
-        private readonly send_message: (html_text: string) => Promise<Expected<string>>,
-    ) {}
-
-    get_name(): string {
-        return "messenger";
-    }
-
-    get_readme(): string {
-        return [
-            "This toolchain sends messages to the managers' chat.",
-            "Use messenger_send_message for every visible response.",
-        ].join("\n");
-    }
-
-    get_tools(): Map<string, Tool> {
-        return new Map([
-            ["messenger_send_message", {
-                name: "messenger_send_message",
-                description: [
-                    "Send an HTML-formatted message to the managers' chat.",
-                    "This is the only way to send a visible response.",
-                    "Only Telegram-safe HTML tags are allowed: <b>, <i>, <code>, <s>, <u>, <pre>.",
-                ].join("\n"),
-                parameters: {
-                    type: "object",
-                    additionalProperties: false,
-                    properties: {
-                        html_text: {
-                            type: "string",
-                            description: "Telegram HTML text to send to the managers' chat.",
-                        },
-                    },
-                    required: ["html_text"],
-                },
-            }],
-        ]);
-    }
-
-    async call_tool(name: string, parameters: Record<string, unknown>): Promise<Expected<string>> {
-        if (name !== "messenger_send_message") {
-            return Expected.err(return_error(`Unknown tool: ${name}`));
-        }
-
-        const html_text = parameters.html_text;
-        if (typeof html_text !== "string" || html_text.trim().length === 0) {
-            return Expected.err(return_error("'html_text' must be a non-empty string"));
-        }
-
-        const sent = await this.send_message(html_text);
-        return sent.ok
-            ? Expected.ok(return_success({ message_id: sent.value }))
-            : Expected.err(return_error(sent.error));
-    }
 }
 
 export class ManagersAgent {

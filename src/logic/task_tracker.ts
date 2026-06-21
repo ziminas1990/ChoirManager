@@ -1,5 +1,5 @@
 import { TaskTrackerConfig } from "@src/config.js";
-import { TaskData, TaskStatus } from "@src/entities/task.js";
+import { TaskData, TaskFilter, TaskStatus, filter_tasks } from "@src/entities/task.js";
 import { IAdapter } from "@src/interfaces/adapter.js";
 import { ITaskTracker } from "@src/interfaces/task_tracker.js";
 import { Journal } from "@src/journal.js";
@@ -140,8 +140,12 @@ export class TaskTracker extends Logic<void> {
         this.journal = parent_journal.child("task_tracker_logic");
     }
 
+    get_tasks(filter?: TaskFilter): TaskData[] {
+        return filter_tasks(Array.from(this.tasks.values()), filter);
+    }
+
     async init(now: Date = new Date()): Promise<Status> {
-        const tasks_status = await this.tracker.fetch_all();
+        const tasks_status = await this.tracker.fetch();
         if (!tasks_status.ok) {
             return tasks_status.wrap_error("failed to fetch tasks");
         }
@@ -177,7 +181,7 @@ export class TaskTracker extends Logic<void> {
     }
 
     private async refresh(now: Date): Promise<Status> {
-        const tasks_status = await this.tracker.fetch_all();
+        const tasks_status = await this.tracker.fetch();
         if (!tasks_status.ok) {
             return tasks_status.wrap_error("failed to fetch tasks");
         }

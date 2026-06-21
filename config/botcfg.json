@@ -6,7 +6,7 @@
     "runtime_dump_interval_sec": 10,
     "tg_adapter": {
         "token_file": "./config/tgbot_token",
-        "bot_id": "ursa_major_test_bot",
+        "bot_id": "ursa_major_choir_test_bot",
         "formatting": "html"
     },
     "users_fetcher": {
@@ -21,8 +21,8 @@
     },
     "deposit_tracking": {
         "google_sheet_id": "1F-ZlOD8ags8A-r40V700qBCbJrXTG07Dbet9wFmWtYc",
-        "fetch_interval_sec": 30,
-        "collect_interval_sec": 60,
+        "fetch_interval_sec": 10,
+        "collect_interval_sec": 20,
         "reminders": [
             { "day_of_month": 15, "hour_utc": 12 },
             { "day_of_month": 25, "hour_utc": 12 }
@@ -47,7 +47,7 @@
         "fetch_interval_sec": 3600
     },
     "assistant": {
-        "model": "gpt-5-mini",
+        "model": "gpt-5.2",
         "fetch_interval_sec": 600,
         "faq_document_id": "1Voaud1Thf71QuATIOC_2zDK29o-aVcmi5Fnz_3RoBes"
     },
@@ -58,8 +58,8 @@
     },
     "transaction_storage": {
         "type": "google_firestore",
-        "read_only": true,
-        "database_id": "ursa-major-db",
+        "read_only": false,
+        "database_id": "ursa-major-db-test",
         "collection_name": "deposit_transactions"
     },
     "rehersals_storage": {
@@ -84,7 +84,7 @@
         "backlog": {
             "type": "google_firestore",
             "read_only": false,
-            "database_id": "ursa-major-test-db",
+            "database_id": "ursa-major-db-test",
             "collection_name": "announce_chat_backlog"
         }
     },
@@ -92,11 +92,22 @@
         "fetch_interval_sec": 30,
         "tables": [
             {
-                "google_sheet_id": "",
+                "google_sheet_id": "1_kHC-AoHvRUZfiLn_CrUeYtePlq7VA-n8Yh51lsugTI",
                 "sheet": "Ответы на форму",
                 "name": "Анкеты новых участников",
                 "key_column": 1
             }
         ]
+    },
+    "task_tracker": {
+        "database": {
+            "type": "google_spreadsheet",
+            "spreadsheet_id": "1P1X5cyoODKTaVc86Yuqbv27y9hScdllryRADKr00PhY",
+            "sheet_name": "Tasks",
+            "fetch_interval_sec": 20
+        },
+        "enable_notifications": true,
+        "deadline_threshold_days": 5,
+        "notification_time_utc": "08:00"
     }
 }
