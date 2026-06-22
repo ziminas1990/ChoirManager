@@ -7,7 +7,9 @@ COPY tsconfig.json ./
 COPY build.js ./
 COPY src ./src
 
-RUN npm install && npm run build-app
+RUN npm install && npm run build
+
+#==============================================================================
 
 # Minimal runtime image:
 FROM node:18-slim

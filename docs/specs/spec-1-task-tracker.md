@@ -1,5 +1,6 @@
 # Minimal Task Tracker Proposal
 
+
 ## Problem
 
 The bot should track all active tasks and send reminder messages containing the current list of active tasks.

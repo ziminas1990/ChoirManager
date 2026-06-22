@@ -3,9 +3,10 @@ import fs from "fs";
 import { OpenaiAPI } from "@src/api/openai.js";
 import { Agent } from "@src/components/ai/agent.js";
 import { ManagersMessengerTools } from "@src/components/ai/tools/managers_messenger_tools.js";
+import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 import { ManagersChatAgentConfig } from "@src/config.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
-import { Message } from "@src/interfaces/llm.js";
+import { IToolchain, Message } from "@src/interfaces/llm.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { GroupChat, GroupChatMessage } from "./group_chat.js";
@@ -67,6 +68,7 @@ export class ManagersAgent {
         private readonly config: ManagersChatAgentConfig,
         private readonly chat: GroupChat,
         private readonly dependencies: ManagersAgentDependencies,
+        private readonly extra_tools: IToolchain | undefined,
         parent_journal: Journal,
     ) {
         this.journal = parent_journal.child("managers_agent");
@@ -76,6 +78,20 @@ export class ManagersAgent {
         const instruction_status = this.read_instruction();
         if (!instruction_status.ok) {
             return instruction_status.wrap_error("failed to read managers agent prompt");
+        }
+
+        const tools = new ToolsMultiplexer();
+        let status = tools.add_tool(new ManagersMessengerTools(
+            (html_text) => this.send_agent_message(html_text),
+        ));
+        if (!status.ok) {
+            return status.wrap_error("failed to register managers messenger tools");
+        }
+        if (this.extra_tools) {
+            status = tools.add_tool(this.extra_tools);
+            if (!status.ok) {
+                return status.wrap_error("failed to register extra managers agent tools");
+            }
         }
 
         this.agent = new Agent(
@@ -88,7 +104,7 @@ export class ManagersAgent {
             },
             OpenaiAPI.get_llm(this.config.model),
             this.journal,
-            new ManagersMessengerTools((html_text) => this.send_agent_message(html_text)),
+            tools,
         );
 
         const now = new Date();

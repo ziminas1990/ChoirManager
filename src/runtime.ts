@@ -31,6 +31,7 @@ import { TransactionStorageFactory } from "./adapters/transactions_storage/facto
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
 import { TaskTracker } from "./logic/task_tracker.js";
 import { ManagersAgent } from "./logic/managers_agent.js";
+import { TaskTrackerTools } from "./components/ai/tools/task_tracker_tools.js";
 
 export type RuntimeConfigJson = {
     runtime_cache_filename: string;
@@ -330,6 +331,9 @@ export class Runtime {
 
         if (this.config.managers_chat_agent && this.managers_chat) {
             this.journal.log().info("Initializing managers chat agent...");
+            const task_tracker_tools = this.task_tracker
+                ? new TaskTrackerTools((filter) => this.task_tracker!.get_tasks(filter))
+                : undefined;
             this.managers_agent = new ManagersAgent(
                 this.config.managers_chat_agent,
                 this.managers_chat,
@@ -353,6 +357,7 @@ export class Runtime {
                     },
                     bot_id: this.config.tg_adapter!.bot_id!,
                 },
+                task_tracker_tools,
                 this.journal,
             );
             const init_status = await this.managers_agent.init();
