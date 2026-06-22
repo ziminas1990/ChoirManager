@@ -21,8 +21,8 @@
     },
     "deposit_tracking": {
         "google_sheet_id": "1F-ZlOD8ags8A-r40V700qBCbJrXTG07Dbet9wFmWtYc",
-        "fetch_interval_sec": 10,
-        "collect_interval_sec": 20,
+        "fetch_interval_sec": 30,
+        "collect_interval_sec": 60,
         "reminders": [
             { "day_of_month": 15, "hour_utc": 12 },
             { "day_of_month": 25, "hour_utc": 12 }
@@ -47,7 +47,7 @@
         "fetch_interval_sec": 3600
     },
     "assistant": {
-        "model": "gpt-5.2",
+        "model": "gpt-5.4",
         "fetch_interval_sec": 600,
         "faq_document_id": "1Voaud1Thf71QuATIOC_2zDK29o-aVcmi5Fnz_3RoBes"
     },
@@ -59,7 +59,7 @@
     "transaction_storage": {
         "type": "google_firestore",
         "read_only": false,
-        "database_id": "ursa-major-db-test",
+        "database_id": "ursa-major-db",
         "collection_name": "deposit_transactions"
     },
     "rehersals_storage": {
@@ -76,7 +76,7 @@
         }
     },
     "managers_chat_agent": {
-        "model": "gpt-5.4-mini",
+        "model": "gpt-5.4",
         "context_days": 3,
         "prompt_file": "./config/managers_chat_agent_prompt.txt"
     },
@@ -84,7 +84,7 @@
         "backlog": {
             "type": "google_firestore",
             "read_only": false,
-            "database_id": "ursa-major-db-test",
+            "database_id": "ursa-major-db",
             "collection_name": "announce_chat_backlog"
         }
     },
@@ -92,7 +92,7 @@
         "fetch_interval_sec": 30,
         "tables": [
             {
-                "google_sheet_id": "1_kHC-AoHvRUZfiLn_CrUeYtePlq7VA-n8Yh51lsugTI",
+                "google_sheet_id": "",
                 "sheet": "Ответы на форму",
                 "name": "Анкеты новых участников",
                 "key_column": 1
