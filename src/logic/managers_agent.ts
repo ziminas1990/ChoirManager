@@ -7,9 +7,12 @@ import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 import { ManagersChatAgentConfig } from "@src/config.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
 import { IToolchain, Message } from "@src/interfaces/llm.js";
+import { IBroadcaster, ISubscription } from "@src/interfaces/message_queue.js";
 import { Journal } from "@src/journal.js";
+import { render_task_tracker_event } from "@src/utils/string_engine/task_tracker.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { GroupChat, GroupChatMessage } from "./group_chat.js";
+import { TaskTrackerEvent } from "./task_tracker.js";
 
 type AgentResponse = {
     status: "done";
@@ -62,16 +65,19 @@ function parse_agent_response(text: string): Expected<AgentResponse> {
 
 export class ManagersAgent {
     private readonly journal: Journal;
+    private readonly task_tracker_subscription: ISubscription<TaskTrackerEvent>;
     private agent?: Agent;
 
     constructor(
         private readonly config: ManagersChatAgentConfig,
         private readonly chat: GroupChat,
+        task_tracker_events: IBroadcaster<TaskTrackerEvent>,
         private readonly dependencies: ManagersAgentDependencies,
         private readonly extra_tools: IToolchain | undefined,
         parent_journal: Journal,
     ) {
         this.journal = parent_journal.child("managers_agent");
+        this.task_tracker_subscription = task_tracker_events.subscribe();
     }
 
     async init(): Promise<Status> {
@@ -82,7 +88,7 @@ export class ManagersAgent {
 
         const tools = new ToolsMultiplexer();
         let status = tools.add_tool(new ManagersMessengerTools(
-            (html_text) => this.send_agent_message(html_text),
+            (html_text) => this.publish_message(html_text),
         ));
         if (!status.ok) {
             return status.wrap_error("failed to register managers messenger tools");
@@ -152,6 +158,23 @@ export class ManagersAgent {
         });
     }
 
+    async proceed(): Promise<Status> {
+        while (true) {
+            const event = await this.task_tracker_subscription.poll();
+            if (!event.ok) {
+                return event.wrap_error("failed to poll task tracker events").as_status();
+            }
+            if (!event.value) {
+                return Expected.ok(undefined);
+            }
+
+            const status = await this.on_task_tracker_event(event.value);
+            if (!status.ok) {
+                return status.wrap_error("failed to handle task tracker event");
+            }
+        }
+    }
+
     private read_instruction(): Expected<string> {
         try {
             return Expected.ok(fs.readFileSync(this.config.prompt_file, "utf-8").trim());
@@ -166,6 +189,15 @@ export class ManagersAgent {
 
     private add_message_to_context(message: GroupChatMessage): void {
         this.agent!.add_context_message(this.to_context_message(message), message.time);
+    }
+
+    private async on_task_tracker_event(event: TaskTrackerEvent): Promise<Status> {
+        const message = render_task_tracker_event(event, new Date());
+        const sent = await this.publish_message(message);
+        if (!sent.ok) {
+            return sent.wrap_error("failed to publish task tracker event").as_status();
+        }
+        return Expected.ok(undefined);
     }
 
     private to_context_message(message: GroupChatMessage): Message {
@@ -189,7 +221,7 @@ export class ManagersAgent {
         return message.user_id === this.dependencies.bot_id;
     }
 
-    private async send_agent_message(html_text: string): Promise<Expected<string>> {
+    private async publish_message(html_text: string): Promise<Expected<string>> {
         const managers_chat = await this.dependencies.get_managers_chat();
         if (!managers_chat) {
             return Expected.err("Managers chat sender is not available");
@@ -237,4 +269,5 @@ export class ManagersAgent {
             this.journal.log().warn(`Failed to send typing action: ${status.error}`);
         }
     }
+
 }

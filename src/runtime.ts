@@ -25,11 +25,12 @@ import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
 import { RehersalsStorageFactory } from "./adapters/rehersals_storage/factory.js";
 import { RehersalsTracker } from "./logic/rehersals_tracker.js";
 import { MessagesStorageFactory } from "./adapters/messages_storage/factory.js";
+import { LocalBroadcaster } from "./adapters/local_message_queue/local_broadcaster.js";
 import { GroupChat } from "./logic/group_chat.js";
 import { ITransactionsStorage } from "./interfaces/transactions_storage.js";
 import { TransactionStorageFactory } from "./adapters/transactions_storage/factory.js";
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
-import { TaskTracker } from "./logic/task_tracker.js";
+import { TaskTracker, TaskTrackerEvent } from "./logic/task_tracker.js";
 import { ManagersAgent } from "./logic/managers_agent.js";
 import { TaskTrackerTools } from "./components/ai/tools/task_tracker_tools.js";
 
@@ -122,6 +123,7 @@ export class Runtime {
     private managers_chat?: GroupChat;
     private managers_agent?: ManagersAgent;
     private announce_chat?: GroupChat;
+    private readonly task_tracker_broadcaster = new LocalBroadcaster<TaskTrackerEvent>();
 
     private rehersals_tracker?: RehersalsTracker;
     private task_tracker?: TaskTracker;
@@ -304,7 +306,7 @@ export class Runtime {
             this.task_tracker = new TaskTracker(
                 this.config.task_tracker,
                 create_status.value,
-                () => this.get_adapters(),
+                this.task_tracker_broadcaster,
                 this.journal,
             );
             const init_status = await this.task_tracker.init();
@@ -337,6 +339,7 @@ export class Runtime {
             this.managers_agent = new ManagersAgent(
                 this.config.managers_chat_agent,
                 this.managers_chat,
+                this.task_tracker_broadcaster,
                 {
                     get_managers_chat: async () => {
                         return await this.tg_adapter?.get_managers_chat();
@@ -519,6 +522,13 @@ export class Runtime {
             const managers_status = await this.managers_chat.proceed(now);
             if (!managers_status.ok) {
                 this.journal.log().error(`Managers chat proceed failed: ${managers_status.error}`);
+            }
+        }
+
+        if (this.managers_agent) {
+            const managers_agent_status = await this.managers_agent.proceed();
+            if (!managers_agent_status.ok) {
+                this.journal.log().error(`Managers agent proceed failed: ${managers_agent_status.error}`);
             }
         }
 

@@ -15,6 +15,9 @@ export type TaskData = {
     assignee?: string;
 }
 
+export type TaskUpdate<T extends keyof Exclude<TaskData, "created_at">> =
+    Record<T, { previous?: TaskData[T], next?: TaskData[T] }>;
+
 export function filter_tasks(tasks: TaskData[], filter?: TaskFilter): TaskData[] {
     if (filter?.status !== undefined && filter.status.length > 0) {
         const statuses = new Set(filter.status);

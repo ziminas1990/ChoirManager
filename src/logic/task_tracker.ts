@@ -1,26 +1,13 @@
 import { TaskTrackerConfig } from "@src/config.js";
 import { TaskData, TaskFilter, TaskStatus, filter_tasks } from "@src/entities/task.js";
-import { IAdapter } from "@src/interfaces/adapter.js";
+import { IBroadcaster } from "@src/interfaces/message_queue.js";
 import { ITaskTracker } from "@src/interfaces/task_tracker.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
+
 type TaskField = Exclude<keyof TaskData, "created_at">;
-
-type ChangedField = {
-    field: TaskField;
-    old_value?: string;
-    new_value?: string;
-    multiline: boolean;
-}
-
-function escape_html(text: string): string {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-}
 
 function pad_2(value: number): string {
     return value.toString().padStart(2, "0");
@@ -46,25 +33,6 @@ function format_status(status: TaskStatus): string {
     }
 }
 
-function field_label(field: TaskField): string {
-    switch (field) {
-        case "author_email":
-            return "Автор";
-        case "title":
-            return "Заголовок";
-        case "comment":
-            return "Комментарий";
-        case "status":
-            return "Статус";
-        case "deadline":
-            return "Дедлайн";
-        case "manager":
-            return "Менеджер";
-        case "assignee":
-            return "Исполнитель";
-    }
-}
-
 function get_task_id(task: TaskData): string {
     return task.created_at.getTime().toString();
 }
@@ -86,10 +54,6 @@ function get_field_value(task: TaskData, field: TaskField): string | undefined {
         case "assignee":
             return task.assignee;
     }
-}
-
-function is_multiline_field(field: TaskField): boolean {
-    return field === "comment";
 }
 
 function task_changed(left: TaskData, right: TaskData): boolean {
@@ -118,8 +82,27 @@ function utc_day_key(now: Date): string {
     ].join("-");
 }
 
-function days_left(deadline: Date, now: Date): number {
-    return Math.ceil((deadline.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+export type TaskUpdate = {
+    task_id: string,
+    previous: TaskData,
+    next: TaskData,
+    updates: Partial<{
+        [Field in TaskField]: {
+        previous?: TaskData[Field],
+        next?: TaskData[Field],
+        };
+    }>;
+};
+
+export type TaskTrackerEvent = {
+    what: "new_task",
+    task: TaskData,
+} | {
+    what: "task_updated",
+    update: TaskUpdate[],
+} | {
+    what: "deadline_notification",
+    tasks: TaskData[],
 }
 
 export class TaskTracker extends Logic<void> {
@@ -132,8 +115,8 @@ export class TaskTracker extends Logic<void> {
 
     constructor(
         private readonly config: TaskTrackerConfig,
-        private readonly tracker: ITaskTracker,
-        private readonly get_adapters: () => IAdapter[],
+        private readonly adapter: ITaskTracker,
+        private readonly broadcaster: IBroadcaster<TaskTrackerEvent>,
         parent_journal: Journal,
     ) {
         super(5000);
@@ -145,7 +128,7 @@ export class TaskTracker extends Logic<void> {
     }
 
     async init(now: Date = new Date()): Promise<Status> {
-        const tasks_status = await this.tracker.fetch();
+        const tasks_status = await this.adapter.fetch();
         if (!tasks_status.ok) {
             return tasks_status.wrap_error("failed to fetch tasks");
         }
@@ -181,14 +164,14 @@ export class TaskTracker extends Logic<void> {
     }
 
     private async refresh(now: Date): Promise<Status> {
-        const tasks_status = await this.tracker.fetch();
+        const tasks_status = await this.adapter.fetch();
         if (!tasks_status.ok) {
             return tasks_status.wrap_error("failed to fetch tasks");
         }
 
         const next_tasks = tasks_status.value;
         if (this.initialized) {
-            const notify_status = await this.notify_about_changes(next_tasks, now);
+            const notify_status = await this.notify_about_changes(next_tasks);
             if (!notify_status.ok) {
                 return notify_status.wrap_error("failed to notify about task changes");
             }
@@ -210,15 +193,16 @@ export class TaskTracker extends Logic<void> {
         this.tasks = new Map(tasks.map(task => [get_task_id(task), task] as const));
     }
 
-    private async notify_about_changes(next_tasks: TaskData[], now: Date): Promise<Status> {
+    private async notify_about_changes(next_tasks: TaskData[]): Promise<Status> {
         for (const task of next_tasks) {
             const known_task = this.tasks.get(get_task_id(task));
             if (!known_task) {
-                const status = await this.notify_managers(
-                    this.format_new_task_message(task, now),
-                );
+                const status = await this.broadcast_event({
+                    what: "new_task",
+                    task,
+                });
                 if (!status.ok) {
-                    return status.wrap_error("failed to notify managers");
+                    return status.wrap_error("failed to broadcast new task event");
                 }
                 continue;
             }
@@ -227,112 +211,49 @@ export class TaskTracker extends Logic<void> {
                 continue;
             }
 
-            const status = await this.notify_managers(
-                this.format_task_update_message(known_task, task),
-            );
+            const status = await this.broadcast_event({
+                what: "task_updated",
+                update: [this.create_task_update(known_task, task)],
+            });
             if (!status.ok) {
-                return status.wrap_error("failed to notify managers");
+                return status.wrap_error("failed to broadcast task update event");
             }
         }
 
         return Expected.ok(undefined);
     }
 
-    private format_new_task_message(task: TaskData, now: Date): string {
-        const lines: string[] = [
-            "Создана новая задача:",
-            "",
-            `${this.bold("Автор:")} ${escape_html(task.author_email)}`,
-            `${this.bold("Заголовок:")} ${escape_html(task.title)}`,
-        ];
+    private create_task_update(previous: TaskData, next: TaskData): TaskUpdate {
+        const update: TaskUpdate = {
+            task_id: get_task_id(next),
+            previous,
+            next,
+            updates: {},
+        };
 
-        if (task.deadline) {
-            lines.push(
-                `${this.bold("Дедлайн:")} ${escape_html(format_datetime(task.deadline))} (${days_left(task.deadline, now)} дней)`,
-            );
+        if (previous.author_email !== next.author_email) {
+            update.updates.author_email = { previous: previous.author_email, next: next.author_email };
         }
-        if (task.manager) {
-            lines.push(`${this.bold("Менеджер:")} ${escape_html(task.manager)}`);
+        if (previous.title !== next.title) {
+            update.updates.title = { previous: previous.title, next: next.title };
         }
-        if (task.assignee) {
-            lines.push(`${this.bold("Исполнитель:")} ${escape_html(task.assignee)}`);
+        if (previous.comment !== next.comment) {
+            update.updates.comment = { previous: previous.comment, next: next.comment };
         }
-        if (task.comment) {
-            lines.push("", `${this.bold("Комментарий:")}`, escape_html(task.comment));
+        if (previous.status !== next.status) {
+            update.updates.status = { previous: previous.status, next: next.status };
         }
-
-        return lines.join("\n");
-    }
-
-    private format_task_update_message(previous: TaskData, next: TaskData): string {
-        const changes = this.collect_changes(previous, next);
-        const lines = ["Задача обновлена:", ""];
-
-        for (const change of changes) {
-            const label = `${this.bold(`${field_label(change.field)}:`)}`;
-            const new_value = escape_html(change.new_value ?? "(empty)");
-
-            if (change.multiline) {
-                lines.push(label, new_value);
-                continue;
-            }
-
-            if (change.old_value == undefined || change.old_value.length === 0) {
-                lines.push(`${label} ${new_value}`);
-                continue;
-            }
-
-            if (change.new_value == undefined || change.new_value.length === 0) {
-                lines.push(`${label} (empty)`);
-                continue;
-            }
-
-            if (change.old_value === change.new_value) {
-                lines.push(`${label} ${new_value}`);
-                continue;
-            }
-
-            lines.push(
-                `${label} ${escape_html(change.old_value)} -&gt; ${new_value}`,
-            );
+        if (previous.deadline?.getTime() !== next.deadline?.getTime()) {
+            update.updates.deadline = { previous: previous.deadline, next: next.deadline };
+        }
+        if (previous.manager !== next.manager) {
+            update.updates.manager = { previous: previous.manager, next: next.manager };
+        }
+        if (previous.assignee !== next.assignee) {
+            update.updates.assignee = { previous: previous.assignee, next: next.assignee };
         }
 
-        return lines.join("\n");
-    }
-
-    private collect_changes(previous: TaskData, next: TaskData): ChangedField[] {
-        const fields: TaskField[] = [
-            "author_email",
-            "status",
-            "deadline",
-            "manager",
-            "assignee",
-            "comment",
-        ];
-
-        const changes: ChangedField[] = [{
-            field: "title",
-            old_value: previous.title,
-            new_value: next.title,
-            multiline: false,
-        }];
-
-        for (const field of fields) {
-            const old_value = get_field_value(previous, field);
-            const new_value = get_field_value(next, field);
-            if (old_value === new_value) {
-                continue;
-            }
-
-            changes.push({
-                field,
-                old_value,
-                new_value,
-                multiline: is_multiline_field(field),
-            });
-        }
-
-        return changes;
+        return update;
     }
 
     private async maybe_send_deadline_notification(now: Date, tasks: TaskData[]): Promise<Status> {
@@ -372,58 +293,14 @@ export class TaskTracker extends Logic<void> {
             return Expected.ok(undefined);
         }
 
-        return this.notify_managers(this.format_deadline_message(deadline_tasks, now));
-    }
-
-    private format_deadline_message(tasks: TaskData[], now: Date): string {
-        const lines: string[] = [
-            `У ${tasks.length} задач скоро наступает дедлайн!`,
-            "",
-        ];
-
-        tasks.forEach((task, idx) => {
-            if (idx > 0) {
-                lines.push("");
-            }
-
-            lines.push(`${this.bold("Заголовок:")} ${escape_html(task.title)}`);
-            if (task.manager) {
-                lines.push(`${this.bold("Менеджер:")} ${escape_html(task.manager)}`);
-            }
-            if (task.deadline) {
-                lines.push(
-                    `${this.bold("Дедлайн:")} ${escape_html(format_datetime(task.deadline))} (${days_left(task.deadline, now)} days left)`,
-                );
-            }
+        return this.broadcast_event({
+            what: "deadline_notification",
+            tasks: deadline_tasks,
         });
-
-        return lines.join("\n");
     }
 
-    private async notify_managers(message: string): Promise<Status> {
-        let sent = false;
-
-        for (const adapter of this.get_adapters()) {
-            const managers_chat = await adapter.get_managers_chat();
-            if (!managers_chat) {
-                continue;
-            }
-
-            const status = await managers_chat.send_message(message);
-            if (!status.ok) {
-                return status.wrap_error("managers chat notification failed");
-            }
-            sent = true;
-        }
-
-        if (!sent) {
-            return Expected.err("managers chat is not configured");
-        }
-
-        return Expected.ok(undefined);
+    private async broadcast_event(event: TaskTrackerEvent): Promise<Status> {
+        return await this.broadcaster.broadcast(event);
     }
 
-    private bold(text: string): string {
-        return `<b>${escape_html(text)}</b>`;
-    }
 }
