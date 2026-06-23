@@ -52,6 +52,10 @@ export class TokenBucket {
         return this.add_pending_operation(tokens);
     }
 
+    available_tokens(): number {
+        return this.tokens;
+    }
+
     private update(now: Date = new Date()): void {
         const time_since_last_update = Math.max(0, now.getTime() - this.last_update);
         const tokens_to_add = time_since_last_update * this.config.refill_rate / 1000;

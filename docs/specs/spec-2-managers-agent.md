@@ -66,9 +66,15 @@ When the bot sends a new message through the Messenger tool, that outgoing messa
 
 The same applies to messages posted by other bot components in response to task tracker events: they must also be recorded in the backlog and added to the agent context.
 
+When the managers' agent has access to `TaskTrackerTools`, it should use them for explicit task-management requests such as creating, reassigning, rescheduling, completing, cancelling, editing, or deleting tasks. If the target task is ambiguous, it should ask a clarifying question instead of mutating the wrong task.
+
 ## Task tracker events
 
 `ManagersAgent` subscribes to `TaskTracker` events. For each event it calls `render_task_tracker_event` in the string engine to produce HTML, then posts the result to the managers' chat.
+
+If the agent itself triggered a successful task mutation through `TaskTrackerTools`, it should normally rely on this event pipeline as the visible confirmation instead of sending an extra duplicate success message. A direct explanatory message is still appropriate when no mutation happened, for example because an update request produced no actual field changes.
+
+If a `TaskTrackerTools` call fails, the failure is visible to the agent as a tool error. In that case the agent should send a short message to the managers' chat saying that the request could not be completed and include the error reason.
 
 ### New task
 

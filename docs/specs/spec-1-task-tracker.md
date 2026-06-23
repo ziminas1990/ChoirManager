@@ -120,4 +120,11 @@ The task tracker is optional and is enabled only when configured:
 
 ## AI tooling
 
-When both `managers_chat_agent` and `task_tracker` are configured, `ManagersAgent` receives a read-only `TaskTrackerTools` toolchain with a single `get_tasks` tool. It returns tasks as JSON, optionally filtered by status. Task mutations are not exposed through AI tools.
+When both `managers_chat_agent` and `task_tracker` are configured, `ManagersAgent` receives a writable `TaskTrackerTools` toolchain.
+
+It exposes:
+
+- `get_tasks` — returns tasks as JSON, optionally filtered by status. Each task also includes a tool-facing `task_id` derived from `created_at`.
+- `create_task` — creates a task through `TaskTracker.create_task(...)`.
+- `update_task` — applies a partial patch to a task identified by `task_id`, then delegates to `TaskTracker.update_task(...)`.
+- `delete_task` — deletes a task identified by `task_id` through `TaskTracker.delete_task(...)`.

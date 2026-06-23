@@ -334,7 +334,12 @@ export class Runtime {
         if (this.config.managers_chat_agent && this.managers_chat) {
             this.journal.log().info("Initializing managers chat agent...");
             const task_tracker_tools = this.task_tracker
-                ? new TaskTrackerTools((filter) => this.task_tracker!.get_tasks(filter))
+                ? new TaskTrackerTools(
+                    (filter) => this.task_tracker!.get_tasks(filter),
+                    (task) => this.task_tracker!.create_task(task),
+                    (task) => this.task_tracker!.update_task(task),
+                    (task) => this.task_tracker!.delete_task(task),
+                )
                 : undefined;
             this.managers_agent = new ManagersAgent(
                 this.config.managers_chat_agent,

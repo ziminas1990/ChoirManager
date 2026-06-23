@@ -147,7 +147,7 @@ export class GoogleSpreadsheetRehersalsStorage implements IRehersalsStorage {
     }
 
     async fetch(): Promise<Expected<RehersalInfo[]>> {
-        const sheet_status = await this.sheet.read(`${this.config.sheet_name}`);
+        const sheet_status = await this.sheet.read(`${this.config.sheet_name}!A:DZ`);
         if (!sheet_status.ok) {
             return sheet_status.wrap_error("can't fetch sheet data");
         }

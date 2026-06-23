@@ -29,7 +29,7 @@ export class GoogleSpreadsheet {
             }
             return Expected.ok(sheet.data.values);
         } catch (err) {
-            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("Failed to read sheet");
+            return Expected.exception("Got an exception", err);
         }
     }
 
@@ -48,7 +48,7 @@ export class GoogleSpreadsheet {
             }
             return Expected.ok(undefined);
         } catch (err) {
-            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("Failed to append row");
+            return Expected.exception("Got an exception while appending row", err);
         }
     }
 
@@ -66,7 +66,7 @@ export class GoogleSpreadsheet {
             }
             return Expected.ok(undefined);
         } catch (err) {
-            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("Failed to update row");
+            return Expected.exception("Got an exception while updating row", err);
         }
     }
 
@@ -98,7 +98,7 @@ export class GoogleSpreadsheet {
             }
             return Expected.ok(undefined);
         } catch (err) {
-            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("Failed to delete row");
+            return Expected.exception("Got an exception while deleting row", err);
         }
     }
 
@@ -123,7 +123,7 @@ export class GoogleSpreadsheet {
             this.sheet_id_cache.set(sheet_name, sheet_id);
             return Expected.ok(sheet_id);
         } catch (err) {
-            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("Failed to resolve sheet id");
+            return Expected.exception("Got an exception while resolving sheet id", err);
         }
     }
 }
