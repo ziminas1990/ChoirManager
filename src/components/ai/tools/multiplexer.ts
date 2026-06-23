@@ -1,5 +1,15 @@
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
+import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
+
+const LOG_RESULT_MAX_LEN = 500;
+
+function truncate_for_log(text: string, max_len = LOG_RESULT_MAX_LEN): string {
+    if (text.length <= max_len) {
+        return text;
+    }
+    return `${text.slice(0, max_len)}... (${text.length} chars total)`;
+}
 
 function validate_tool_name(name: string): Status {
     if (name.match(/^[a-zA-Z0-9_]+$/) === null) {
@@ -16,6 +26,8 @@ export class ToolsMultiplexer implements IToolchain {
     private function2toolchain: Map<string, IToolchain> = new Map();
 
     private get_tools_cache?: Map<string, Tool>;
+
+    constructor(private journal: Journal) {}
 
     add_tool(toolchain: IToolchain): Status {
         const status = validate_tool_name(toolchain.get_name());
@@ -82,8 +94,41 @@ export class ToolsMultiplexer implements IToolchain {
     {
         const toolchain = this.function2toolchain.get(name);
         if (toolchain === undefined) {
+            this.journal.log().error({ tool: name, parameters }, `tool '${name}' not found`);
             return Expected.err(`Function '${name}' not found`);
         }
-        return toolchain.call_tool(name, parameters);
+
+        const started_at = Date.now();
+        this.journal.log().info(
+            { tool: name, toolchain: toolchain.get_name(), parameters },
+            `calling tool '${name}'`,
+        );
+
+        const result = await toolchain.call_tool(name, parameters);
+        const duration_ms = Date.now() - started_at;
+
+        if (result.ok) {
+            this.journal.log().info(
+                {
+                    tool: name,
+                    toolchain: toolchain.get_name(),
+                    duration_ms,
+                    result: truncate_for_log(result.value),
+                },
+                `tool '${name}' completed in ${duration_ms}ms`,
+            );
+        } else {
+            this.journal.log().error(
+                {
+                    tool: name,
+                    toolchain: toolchain.get_name(),
+                    duration_ms,
+                    error: result.error,
+                },
+                `tool '${name}' failed in ${duration_ms}ms`,
+            );
+        }
+
+        return result;
     }
 }

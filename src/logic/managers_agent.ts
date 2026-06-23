@@ -86,7 +86,7 @@ export class ManagersAgent {
             return instruction_status.wrap_error("failed to read managers agent prompt");
         }
 
-        const tools = new ToolsMultiplexer();
+        const tools = new ToolsMultiplexer(this.journal.child("tools"));
         let status = tools.add_tool(new ManagersMessengerTools(
             (html_text) => this.publish_message(html_text),
         ));

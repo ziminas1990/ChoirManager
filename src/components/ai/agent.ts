@@ -197,12 +197,10 @@ export class Agent {
         for (const call of message.calls) {
             let result_text: string;
 
-            const started_at = Date.now();
-            this.journal.log().info(`Executing tool '${call.name}'`);
             try {
                 if (this.tools === undefined) {
                     result_text = "Tool execution has failed! Reason: no tools are available.";
-                    this.journal.log().error(result_text);
+                    this.journal.log().error({ tool: call.name, parameters: call.parameters }, result_text);
                 } else {
                     const result = await this.tools.call_tool(call.name, call.parameters);
                     result_text = result.ok
@@ -212,11 +210,11 @@ export class Agent {
             } catch (e) {
                 const error_text = e instanceof Error ? e.message : String(e);
                 result_text = `Tool execution has failed! Reason: ${error_text}`;
-                this.journal.log().error(result_text);
+                this.journal.log().error(
+                    { tool: call.name, parameters: call.parameters, error: error_text },
+                    `tool '${call.name}' threw an exception`,
+                );
             }
-
-            const duration_ms = Date.now() - started_at;
-            this.journal.log().info(`Tool '${call.name}' completed in ${duration_ms}ms`);
 
             this.append_ttl_message({
                 role: "tool_result",

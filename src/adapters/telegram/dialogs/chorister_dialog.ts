@@ -211,7 +211,7 @@ export class ChoristerDialog implements IChorister {
             return this.assistant_tools;
         }
 
-        const tools = new ToolsMultiplexer();
+        const tools = new ToolsMultiplexer(this.journal.child("tools"));
         const statuses = [
             tools.add_tool(new MessangerTools(
                 async (message: string) => this.send_assistant_message(message),
