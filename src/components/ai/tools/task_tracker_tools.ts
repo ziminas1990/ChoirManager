@@ -29,11 +29,11 @@ const nullable_datetime_schema = z.union([task_datetime_schema, z.null()]);
 
 const create_task_schema = z.object({
     title: z.string().trim().min(1).describe("Task title."),
-    author_email: z.string()
+    author: z.string()
         .trim()
         .min(1)
         .optional()
-        .describe("Optional task author email or label. Defaults to the managers chat agent if omitted."),
+        .describe("Optional task author. Defaults to the managers chat agent if omitted."),
     comment: z.string().trim().min(1).optional().describe("Optional task comment."),
     status: task_status_schema.optional().describe("Optional initial task status. Defaults to pending."),
     deadline: task_datetime_schema.optional().describe("Optional task deadline."),
@@ -43,7 +43,7 @@ const create_task_schema = z.object({
 
 const update_task_schema = z.object({
     task_id: z.string().trim().min(1).describe("Task id returned by get_tasks."),
-    author_email: z.string().trim().min(1).optional().describe("New task author email or label."),
+    author: z.string().trim().min(1).optional().describe("New task author."),
     title: z.string().trim().min(1).optional().describe("New task title."),
     comment: nullable_text_schema.optional().describe("Set to a string to update comment, or null to clear it."),
     status: task_status_schema.optional().describe("New task status."),
@@ -62,9 +62,9 @@ type SerializableTaskData = Omit<TaskData, "created_at" | "deadline"> & {
     deadline?: string;
 }
 
-const DEFAULT_AUTHOR_EMAIL = "managers-chat@ursa-major.bot";
+const DEFAULT_AUTHOR = "managers-chat@ursa-major.bot";
 const UPDATEABLE_FIELDS = [
-    "author_email",
+    "author",
     "title",
     "comment",
     "status",
@@ -138,7 +138,7 @@ export class TaskTrackerTools implements IToolchain {
                 [
                     "Fetch tasks from the task tracker database.",
                     "Returns a JSON object with a 'tasks' array.",
-                    "Each task includes a stable task_id derived from created_at.",
+                    "Each task includes a stable task_id.",
                     "Optional status filter accepts: pending, in_progress, completed, cancelled.",
                 ].join("\n"),
                 get_tasks_schema,
@@ -148,7 +148,7 @@ export class TaskTrackerTools implements IToolchain {
                 [
                     "Create a new task in the task tracker database.",
                     "Returns the created task including task_id and created_at.",
-                    "If author_email is omitted, a default managers chat author is used.",
+                    "If author is omitted, a default managers chat author is used.",
                 ].join("\n"),
                 create_task_schema,
             )],
@@ -200,7 +200,7 @@ export class TaskTrackerTools implements IToolchain {
                 }
 
                 const created = await this.create_task({
-                    author_email: parsed.value.author_email ?? DEFAULT_AUTHOR_EMAIL,
+                    author: parsed.value.author ?? DEFAULT_AUTHOR,
                     title: parsed.value.title,
                     comment: parsed.value.comment,
                     status: parsed.value.status ?? "pending",
@@ -233,8 +233,8 @@ export class TaskTrackerTools implements IToolchain {
                 }
 
                 const next: TaskData = { ...existing };
-                if (parsed.value.author_email !== undefined) {
-                    next.author_email = parsed.value.author_email;
+                if (parsed.value.author !== undefined) {
+                    next.author = parsed.value.author;
                 }
                 if (parsed.value.title !== undefined) {
                     next.title = parsed.value.title;
@@ -257,7 +257,7 @@ export class TaskTrackerTools implements IToolchain {
 
                 const updated = await this.update_task(next);
                 return updated.ok
-                    ? Expected.ok(return_updated_task(next, updated.value))
+                    ? Expected.ok(return_updated_task(updated.value.next, updated.value))
                     : Expected.err(updated.error);
             }
 

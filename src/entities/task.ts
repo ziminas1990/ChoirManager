@@ -1,3 +1,5 @@
+import assert from "assert";
+
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 export type TaskFilter = {
@@ -5,8 +7,10 @@ export type TaskFilter = {
 }
 
 export type TaskData = {
-    created_at: Date;  // Note: used as task id
-    author_email: string;
+    id: string;
+    schema: number;
+    created_at: Date;
+    author: string;
     title: string;
     comment?: string;
     status: TaskStatus;
@@ -15,8 +19,8 @@ export type TaskData = {
     assignee?: string;
 }
 
-export type TaskField = Exclude<keyof TaskData, "created_at">;
-export type NewTaskData = Omit<TaskData, "created_at">;
+export type TaskField = Exclude<keyof TaskData, "id" | "schema" | "created_at">;
+export type NewTaskData = Omit<TaskData, "id" | "schema" | "created_at">;
 
 export type TaskUpdate = {
     task_id: string,
@@ -31,19 +35,21 @@ export type TaskUpdate = {
 };
 
 export function get_task_id(task: TaskData): string {
-    return task.created_at.getTime().toString();
+    return task.id;
 }
 
 export function create_task_update(previous: TaskData, next: TaskData): TaskUpdate {
+    assert(previous.id === next.id, "task ids must be the same");
+
     const update: TaskUpdate = {
-        task_id: get_task_id(next),
+        task_id: next.id,
         previous,
         next,
         updates: {},
     };
 
-    if (previous.author_email !== next.author_email) {
-        update.updates.author_email = { previous: previous.author_email, next: next.author_email };
+    if (previous.author !== next.author) {
+        update.updates.author = { previous: previous.author, next: next.author };
     }
     if (previous.title !== next.title) {
         update.updates.title = { previous: previous.title, next: next.title };

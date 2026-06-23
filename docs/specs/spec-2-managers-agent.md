@@ -83,7 +83,7 @@ On `new_task`, the rendered message looks like:
 ```
 Создана новая задача:
 
-Автор: <author_email>
+Автор: <author>
 Заголовок: <title>
 Дедлайн: <deadline> (N дней)
 Менеджер: <manager>

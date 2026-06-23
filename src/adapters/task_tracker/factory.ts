@@ -1,10 +1,10 @@
-import { GoogleSheetTaskTracker, Config as GoogleSpreadsheetConfig } from "@src/adapters/task_tracker/google_spreadsheet.js";
+import { GoogleFirestoreTaskTracker, Config as GoogleFirestoreConfig } from "@src/adapters/task_tracker/google_firestore.js";
 import { ITaskTracker } from "@src/interfaces/task_tracker.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 export type TaskTrackerDatabaseConfig =
-    { type: "google_spreadsheet" } & GoogleSpreadsheetConfig;
+    { type: "google_firestore" } & GoogleFirestoreConfig;
 
 export class TaskTrackerFactory {
     static create(
@@ -12,8 +12,8 @@ export class TaskTrackerFactory {
         parent_journal: Journal,
     ): Expected<ITaskTracker> {
         switch (config.type) {
-            case "google_spreadsheet":
-                return Expected.ok(new GoogleSheetTaskTracker(config, parent_journal));
+            case "google_firestore":
+                return Expected.ok(new GoogleFirestoreTaskTracker(config, parent_journal));
         }
     }
 
@@ -22,21 +22,15 @@ export class TaskTrackerFactory {
             return Expected.err("'type' MUST be specified");
         }
 
-        if (config.type !== "google_spreadsheet") {
-            return Expected.err("'type' MUST be: google_spreadsheet");
+        if (config.type !== "google_firestore") {
+            return Expected.err("'type' MUST be: google_firestore");
         }
 
-        if (!config.spreadsheet_id) {
-            return Expected.err("'spreadsheet_id' MUST be specified");
+        if (!config.database_id) {
+            return Expected.err("'database_id' MUST be specified");
         }
-        if (!config.sheet_name) {
-            return Expected.err("'sheet_name' MUST be specified");
-        }
-        if (!config.fetch_interval_sec) {
-            return Expected.err("'fetch_interval_sec' MUST be specified");
-        }
-        if (config.fetch_interval_sec < 10) {
-            return Expected.err("'fetch_interval_sec' MUST be at least 10 seconds");
+        if (!config.collection_name) {
+            return Expected.err("'collection_name' MUST be specified");
         }
 
         return Expected.ok(undefined);

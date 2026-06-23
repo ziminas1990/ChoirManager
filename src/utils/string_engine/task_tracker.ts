@@ -1,7 +1,7 @@
 import { TaskData, TaskStatus, TaskUpdate } from "@src/entities/task.js";
 import { TaskTrackerEvent } from "@src/logic/task_tracker.js";
 
-type TaskField = Exclude<keyof TaskData, "created_at">;
+type TaskField = Exclude<keyof TaskData, "id" | "schema" | "created_at">;
 
 type ChangedField = {
     field: TaskField;
@@ -32,7 +32,7 @@ function format_status(status: TaskStatus): string {
 
 function field_label(field: TaskField): string {
     switch (field) {
-        case "author_email":
+        case "author":
             return "Автор";
         case "title":
             return "Заголовок";
@@ -90,7 +90,7 @@ function bold(text: string): string {
 
 function collect_changes(update: TaskUpdate): ChangedField[] {
     const fields: TaskField[] = [
-        "author_email",
+        "author",
         "status",
         "deadline",
         "manager",
@@ -126,7 +126,7 @@ function format_new_task_message(task: TaskData, now: Date): string {
     const lines: string[] = [
         "Создана новая задача:",
         "",
-        `${bold("Автор:")} ${escape_html(task.author_email)}`,
+        `${bold("Автор:")} ${escape_html(task.author)}`,
         `${bold("Заголовок:")} ${escape_html(task.title)}`,
     ];
 
