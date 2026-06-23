@@ -101,13 +101,11 @@
     },
     "task_tracker": {
         "database": {
-            "type": "google_spreadsheet",
-            "spreadsheet_id": "1P1X5cyoODKTaVc86Yuqbv27y9hScdllryRADKr00PhY",
-            "sheet_name": "Tasks",
-            "fetch_interval_sec": 20
+            "type": "google_firestore",
+            "database_id": "ursa-major-db",
+            "collection_name": "tasks"
         },
         "enable_notifications": true,
-        "deadline_threshold_days": 5,
         "notification_time_utc": "08:00"
     }
 }

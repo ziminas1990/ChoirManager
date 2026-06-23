@@ -145,7 +145,6 @@ export class ManagersChatAgentConfig {
 export type TaskTrackerConfigJson = {
     database: TaskTrackerDatabaseConfig;
     enable_notifications: boolean;
-    deadline_threshold_days: number;
     notification_time_utc: string;
 }
 
@@ -158,10 +157,6 @@ export class TaskTrackerConfig {
 
     get enable_notifications(): boolean {
         return this.json.enable_notifications;
-    }
-
-    get deadline_threshold_days(): number {
-        return this.json.deadline_threshold_days;
     }
 
     get notification_time_utc(): { hours: number; minutes: number } {
@@ -180,13 +175,6 @@ export class TaskTrackerConfig {
 
         if (typeof this.json.enable_notifications !== "boolean") {
             return Expected.err("'enable_notifications' MUST be specified");
-        }
-
-        if (!Number.isFinite(this.json.deadline_threshold_days)) {
-            return Expected.err("'deadline_threshold_days' MUST be specified");
-        }
-        if (this.json.deadline_threshold_days < 0) {
-            return Expected.err("'deadline_threshold_days' MUST be non-negative");
         }
 
         if (!this.json.notification_time_utc) {

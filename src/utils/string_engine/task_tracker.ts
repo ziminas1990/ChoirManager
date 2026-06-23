@@ -57,9 +57,13 @@ function pad_2(value: number): string {
     return value.toString().padStart(2, "0");
 }
 
+function format_date(date: Date): string {
+    return `${pad_2(date.getDate())}.${pad_2(date.getMonth() + 1)}.${date.getFullYear()}`;
+}
+
 function format_datetime(date: Date): string {
     return [
-        `${pad_2(date.getDate())}.${pad_2(date.getMonth() + 1)}.${date.getFullYear()}`,
+        format_date(date),
         `${pad_2(date.getHours())}:${pad_2(date.getMinutes())}:${pad_2(date.getSeconds())}`,
     ].join(" ");
 }
@@ -76,7 +80,7 @@ function format_task_value(field: keyof TaskData, value: TaskData[keyof TaskData
         return format_status(value as TaskStatus);
     }
     if (field === "deadline") {
-        return format_datetime(value as Date);
+        return format_date(value as Date);
     }
     if (value instanceof Date) {
         return format_datetime(value);
@@ -132,7 +136,7 @@ function format_new_task_message(task: TaskData, now: Date): string {
 
     if (task.deadline) {
         lines.push(
-            `${bold("Дедлайн:")} ${escape_html(format_datetime(task.deadline))} (${days_left(task.deadline, now)} дней)`,
+            `${bold("Дедлайн:")} ${escape_html(format_date(task.deadline))} (${days_left(task.deadline, now)} дней)`,
         );
     }
     if (task.manager) {
@@ -215,7 +219,7 @@ function format_deadline_message(tasks: TaskData[], now: Date): string {
         }
         if (task.deadline) {
             lines.push(
-                `${bold("Дедлайн:")} ${escape_html(format_datetime(task.deadline))} (${days_left(task.deadline, now)} days left)`,
+                `${bold("Дедлайн:")} ${escape_html(format_date(task.deadline))} (${days_left(task.deadline, now)} days left)`,
             );
         }
     });

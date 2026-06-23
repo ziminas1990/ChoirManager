@@ -151,6 +151,8 @@ Rules:
 
 ### Deadline notification
 
+`TaskTracker` emits `deadline_notification` only when a task deadline is exactly 7, 3, or 1 whole days away.
+
 On `deadline_notification`, the rendered message looks like:
 
 ```
