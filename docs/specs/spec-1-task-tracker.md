@@ -1,113 +1,108 @@
-# Minimal Task Tracker Proposal
+# Task Tracker
 
+## Influencing proposals
 
-## Problem
+- `prop-4-tasl-tracker-ai-tool.md` — exposed read-only task queries to the managers agent via `TaskTrackerTools`.
+- `prop-5-task-tracker-updates-feature.md` — added task creation, update, and deletion through `ITaskTracker` and `TaskTracker`, plus `task_deleted` events.
 
-The bot should track all active tasks and send reminder messages containing the current list of active tasks.
+## Overview
 
-## Behavior
+The task tracker monitors choir tasks and emits events about task changes and upcoming deadlines.
 
-### New Task Notification
+## Domain model
 
-When the bot detects a new task, it must send a notification to the managers' chat in the following format:
+A task has a timestamp (`created_at`), author email, title, optional comment, status, optional deadline, optional manager, and optional assignee.
 
-```
-Создана новая задача:
+`created_at` is the task identifier. The adapter assigns it on create and it must not change on update.
 
-Автор: <author_email>
-Заголовок: <title>
-Дедлайн: <deadline> (N дней)
-Менеджер: <manager>
-Исполнитель: <assignee>
+Status is one of: pending, in_progress, completed, cancelled. In the sheet these appear as To Do, In Progress, Done, and Cancelled.
 
-Комментарий:
-<multiline comment>
-```
+Tasks can be filtered by status. A task update records the previous and next task state and lists only the fields that actually changed.
 
-Rules:
-1. All field names must be bold.
-2. Any field with an empty value must be omitted.
+## `ITaskTracker` adapter API
 
-### Task Update Notification
+The adapter exposes four operations:
 
-When the bot detects that an existing task has been updated, it must send a notification to the managers' chat in the following format:
+- **fetch** — return tasks, optionally filtered by status. When the fetch interval has expired, read the full sheet and rebuild the cache first.
+- **create** — append a new task. The adapter assigns `created_at` and returns the created task.
+- **update** — locate a task by `created_at`, persist changes, and return a diff with only changed fields. If nothing changed, return without writing to the sheet.
+- **delete** — locate a task by `created_at`, remove it from the sheet, and return the deleted task.
 
-```
-Задача обновлена:
+## `TaskTracker` logic
 
-<changes>
-```
+`TaskTracker` is a `Logic` component that:
 
-`<changes>` is a list of changed fields formatted as follows.
+1. polls the adapter on a fixed interval;
+2. keeps its own in-memory snapshot keyed by `created_at`;
+3. broadcasts events when polling detects external changes;
+4. exposes imperative write methods that delegate to the adapter.
 
-Fields that were previously empty and now have a value:
-```
-field_name: <new_value>
-```
+### Polling
 
-Fields whose value changed:
-```
-field_name: <old_value> -> <new_value>
-```
+On each `proceed()` cycle, `TaskTracker` calls `adapter.fetch()`. When the returned snapshot differs from the local one, it broadcasts:
+- `new_task` for tasks that appeared;
+- `task_updated` for tasks whose fields changed.
 
-Fields whose value was deleted:
-```
-field_name: (empty)
-```
+Polling does not detect tasks deleted externally in the sheet.
 
-Rules:
-1. The `title` field must always be included as the first field, even if it did not change.
-2. Multiline fields such as `comment` must always use the `field_name: <new_value>` format, even if they previously had a value.
-3. Unchanged fields must be omitted, except for `title`.
+### Imperative methods
 
-### Deadline Notification
+`TaskTracker` also exposes `create_task`, `update_task`, and `delete_task`. Each method calls the adapter, updates the local snapshot only after a successful response, and broadcasts an event immediately without waiting for the next poll.
 
-If `enable_notifications` is `true`, the bot should send notifications about tasks with upcoming deadlines.
+`update_task` broadcasts only when at least one field changed. `update_task` and `delete_task` require the task to exist in the local snapshot.
 
-Every day at `notification_time_utc` (UTC), the bot should iterate through all tasks and build a list `L` of active tasks that:
-- are not in `Done` or `Cancelled` status;
-- have a deadline;
-- have a deadline less than `deadline_threshold_days` days from the current time.
+### Events
 
-If `L` is not empty, the bot must send a message to the managers' chat in the following format:
+`TaskTracker` emits these event types:
 
-```
-У {N} задач скоро наступает дедлайн!
+- `new_task` — a task was created or appeared in the sheet
+- `task_updated` — one or more fields of an existing task changed
+- `task_deleted` — a task was removed
+- `deadline_notification` — one or more active tasks have an upcoming deadline
 
-<tasks>
-```
+`TaskTracker` does not render or deliver messages. Consumers subscribe to the event broadcaster and handle presentation separately.
 
-`<tasks>` is a list of tasks formatted as follows:
+`deadline_notification` is emitted only when `enable_notifications` is `true`. Once per UTC day, at `notification_time_utc`, `TaskTracker` collects active tasks (not completed or cancelled) whose deadline falls within `deadline_threshold_days` from now, sorted by deadline ascending. If the list is non-empty, it emits `deadline_notification`.
 
-```
-title: <title>
-manager: <manager>
-deadline: <deadline> (N days left)
-```
+## `GoogleSheetTaskTracker`
 
-The list must be sorted by deadline in ascending order.
+The only `ITaskTracker` implementation uses a Google Spreadsheet as the task database.
 
-## Implementation Details
+### Sheet layout
 
-Introduce a new `TaskData` entity to represent a task.
+The spreadsheet contains a single table with these columns:
+- "Отметка времени" — timestamp in `"17.06.2026 6:02:34"` format (`created_at`)
+- "Адрес электронной почты" — author email address
+- "Заголовок" — task title
+- "Комментарий" — multiline task comment
+- "Статус" — one of `"To Do"`, `"In Progress"`, `"Done"`, or `"Cancelled"`
+- "Дедлайн" — timestamp in `"17.06.2026 6:02:34"` format
+- "Менеджер" — manager name
+- "Исполнитель" — assignee name
 
-Use Google Sheets as the task database. The spreadsheet should contain a single table with the following columns:
-- "Отметка времени" - timestamp in the `"17.06.2026 6:02:34"` format
-- "Адрес электронной почты" - author email address
-- "Заголовок" - task title
-- "Комментарий" - multiline task comment
-- "Статус" - one of `"To Do"`, `"In Progress"`, `"Done"`, or `"Cancelled"`
-- "Дедлайн" - timestamp in the `"17.06.2026 6:02:34"` format
-- "Менеджер" - manager name
-- "Исполнитель" - assignee name
+Sheet status values are mapped to internal `TaskStatus` values during parsing and back when writing.
 
-If `TaskData.status` uses normalized internal values, the Google Sheets status values must be mapped to those internal values during parsing.
+### Local cache
 
-An `ITaskTracker` interface should be introduced. For now, it should expose only one method, `fetch`, which returns tasks optionally filtered by `TaskFilter`. Initially, there should be a single implementation, `GoogleSheetTaskTracker`, which polls the spreadsheet every `N` seconds and stores the parsed tasks in memory.
+Every full `sheet.read()` rebuilds the adapter cache. Each cache entry stores:
+- the parsed `TaskData`;
+- the 0-based sheet row index.
+
+`fetch()` serves from cache when `fetch_interval_sec` has not elapsed; otherwise it refreshes the cache with a full sheet read.
+
+### Row location
+
+`locate_task(created_at)`:
+1. finds the task in the cache and reads its expected row index;
+2. fetches only that row from the sheet;
+3. verifies the fetched `created_at` matches the expected value;
+4. returns the parsed row as `previous` and the row index for write/delete operations.
+
+Write operations call `read_and_update_cache()` before and after mutating the sheet.
 
 ## Configuration
 
-The task tracker is an optional module and should be enabled only when it is configured:
+The task tracker is optional and is enabled only when configured:
 
 ```json
 "task_tracker": {
@@ -123,29 +118,6 @@ The task tracker is an optional module and should be enabled only when it is con
 }
 ```
 
-## AI Tooling
+## AI tooling
 
-Task Tracker provides an implementation of the `IToolchain` interface, that allows LLM to fetch tasks from the database.
-
-```typescript
-
-type TaskFilter = {
-    status?: TaskStatus[];
-}
-
-interface TaskTrackerTool {
-    get_tasks(filter: TaskFilter): Promise<string>;
-}
-```
-
-### get_tasks()
-
-`get_tasks()` method returns a stringified JSON array of tasks or an error message.
-
-```typescript
-type Response = {
-    tasks: TaskData[];
-} | {
-    error: string;
-}
-```
+When both `managers_chat_agent` and `task_tracker` are configured, `ManagersAgent` receives a read-only `TaskTrackerTools` toolchain with a single `get_tasks` tool. It returns tasks as JSON, optionally filtered by status. Task mutations are not exposed through AI tools.

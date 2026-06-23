@@ -1,5 +1,5 @@
-import { TaskData, TaskStatus } from "@src/entities/task.js";
-import { TaskTrackerEvent, TaskUpdate } from "@src/logic/task_tracker.js";
+import { TaskData, TaskStatus, TaskUpdate } from "@src/entities/task.js";
+import { TaskTrackerEvent } from "@src/logic/task_tracker.js";
 
 type TaskField = Exclude<keyof TaskData, "created_at">;
 
@@ -223,12 +223,31 @@ function format_deadline_message(tasks: TaskData[], now: Date): string {
     return lines.join("\n");
 }
 
+function format_task_deleted_message(task: TaskData): string {
+    const lines: string[] = [
+        "Задача удалена:",
+        "",
+        `${bold("Заголовок:")} ${escape_html(task.title)}`,
+    ];
+
+    if (task.manager) {
+        lines.push(`${bold("Менеджер:")} ${escape_html(task.manager)}`);
+    }
+    if (task.assignee) {
+        lines.push(`${bold("Исполнитель:")} ${escape_html(task.assignee)}`);
+    }
+
+    return lines.join("\n");
+}
+
 export function render_task_tracker_event(event: TaskTrackerEvent, now: Date): string {
     switch (event.what) {
         case "new_task":
             return format_new_task_message(event.task, now);
         case "task_updated":
             return format_task_update_message(event.update);
+        case "task_deleted":
+            return format_task_deleted_message(event.task);
         case "deadline_notification":
             return format_deadline_message(event.tasks, now);
     }

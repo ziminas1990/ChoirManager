@@ -64,4 +64,101 @@ When `ManagersAgent` is created, it must fetch all messages from the last `conte
 
 When the bot sends a new message through the Messenger tool, that outgoing message must also be recorded in the backlog so that it is preserved across restarts.
 
-The same applies to messages sent to the managers' chat by other bot components, such as `TaskTracker` notifications: they must also be recorded in the backlog and added to the agent context.
+The same applies to messages posted by other bot components in response to task tracker events: they must also be recorded in the backlog and added to the agent context.
+
+## Task tracker events
+
+`ManagersAgent` subscribes to `TaskTracker` events. For each event it calls `render_task_tracker_event` in the string engine to produce HTML, then posts the result to the managers' chat.
+
+### New task
+
+On `new_task`, the rendered message looks like:
+
+```
+Создана новая задача:
+
+Автор: <author_email>
+Заголовок: <title>
+Дедлайн: <deadline> (N дней)
+Менеджер: <manager>
+Исполнитель: <assignee>
+
+Комментарий:
+<multiline comment>
+```
+
+Rules:
+1. All field names must be bold.
+2. Any field with an empty value must be omitted.
+
+### Task update
+
+On `task_updated`, the rendered message looks like:
+
+```
+Задача обновлена:
+
+<changes>
+```
+
+`<changes>` is a list of changed fields formatted as follows.
+
+Fields that were previously empty and now have a value:
+
+```
+field_name: <new_value>
+```
+
+Fields whose value changed:
+
+```
+field_name: <old_value> -> <new_value>
+```
+
+Fields whose value was deleted:
+
+```
+field_name: (empty)
+```
+
+Rules:
+1. The `title` field must always be included as the first field, even if it did not change.
+2. Multiline fields such as `comment` must always use the `field_name: <new_value>` format, even if they previously had a value.
+3. Unchanged fields must be omitted, except for `title`.
+
+### Task deletion
+
+On `task_deleted`, the rendered message looks like:
+
+```
+Задача удалена:
+
+Заголовок: <title>
+Менеджер: <manager>
+Исполнитель: <assignee>
+```
+
+Rules:
+1. All field names must be bold.
+2. `title` is always included.
+3. `manager` and `assignee` are included only when present.
+
+### Deadline notification
+
+On `deadline_notification`, the rendered message looks like:
+
+```
+У {N} задач скоро наступает дедлайн!
+
+<tasks>
+```
+
+Each task in `<tasks>` is formatted as:
+
+```
+title: <title>
+manager: <manager>
+deadline: <deadline> (N days left)
+```
+
+The list is sorted by deadline in ascending order.

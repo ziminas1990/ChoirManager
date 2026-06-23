@@ -1,5 +1,13 @@
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
-import { TaskData, TaskFilter, TaskStatus, filter_tasks } from "@src/entities/task.js";
+import {
+    NewTaskData,
+    TaskData,
+    TaskFilter,
+    TaskStatus,
+    TaskUpdate,
+    create_task_update,
+    filter_tasks,
+} from "@src/entities/task.js";
 import { ITaskTracker } from "@src/interfaces/task_tracker.js";
 import { Journal } from "@src/journal.js";
 import { Expected } from "@src/utils/expected.js";
@@ -20,6 +28,11 @@ type TableColumns = {
     manager: number;
     assignee: number;
 }
+
+type CacheEntry = {
+    task: TaskData;
+    row_index: number;
+};
 
 function normalize_header_name(name: string): string {
     return name.toLowerCase().trim();
@@ -121,6 +134,30 @@ function parse_status(status: string): TaskStatus | undefined {
     }
 }
 
+function pad_2(value: number): string {
+    return value.toString().padStart(2, "0");
+}
+
+function format_datetime(date: Date): string {
+    return [
+        `${pad_2(date.getDate())}.${pad_2(date.getMonth() + 1)}.${date.getFullYear()}`,
+        `${pad_2(date.getHours())}:${pad_2(date.getMinutes())}:${pad_2(date.getSeconds())}`,
+    ].join(" ");
+}
+
+function format_status(status: TaskStatus): string {
+    switch (status) {
+        case "pending":
+            return "To Do";
+        case "in_progress":
+            return "In Progress";
+        case "completed":
+            return "Done";
+        case "cancelled":
+            return "Cancelled";
+    }
+}
+
 function get_optional_value(row: string[], idx: number): string | undefined {
     const value = row[idx]?.trim() ?? "";
     return value.length > 0 ? value : undefined;
@@ -170,11 +207,32 @@ function try_parse_row(row: string[], columns: TableColumns): Expected<TaskData>
     });
 }
 
+function format_row(task: TaskData, columns: TableColumns): string[] {
+    const max_column = Math.max(...Object.values(columns));
+    const row = Array.from({ length: max_column + 1 }, () => "");
+
+    row[columns.created_at] = format_datetime(task.created_at);
+    row[columns.author_email] = task.author_email;
+    row[columns.title] = task.title;
+    row[columns.comment] = task.comment ?? "";
+    row[columns.status] = format_status(task.status);
+    row[columns.deadline] = task.deadline ? format_datetime(task.deadline) : "";
+    row[columns.manager] = task.manager ?? "";
+    row[columns.assignee] = task.assignee ?? "";
+
+    return row;
+}
+
+function created_at_matches(left: Date, right: Date): boolean {
+    return left.getTime() === right.getTime();
+}
+
 export class GoogleSheetTaskTracker implements ITaskTracker {
     private readonly sheet: GoogleSpreadsheet;
     private readonly journal: Journal;
 
-    private tasks: TaskData[] = [];
+    private columns?: TableColumns;
+    private cache: CacheEntry[] = [];
     private next_fetch: Date = new Date(0);
 
     constructor(
@@ -188,28 +246,175 @@ export class GoogleSheetTaskTracker implements ITaskTracker {
     async fetch(filter?: TaskFilter): Promise<Expected<TaskData[]>> {
         const now = new Date();
         if (now < this.next_fetch) {
-            return Expected.ok([...filter_tasks(this.tasks, filter)]);
+            return Expected.ok([...filter_tasks(this.get_tasks(), filter)]);
         }
 
-        const load_status = await this.load_tasks();
+        const load_status = await this.read_and_update_cache();
         if (!load_status.ok) {
             return load_status.cast_error<TaskData[]>();
         }
-        this.journal.log().info(`Fetched ${this.tasks.length} tasks`);
+        this.journal.log().info(`Fetched ${this.cache.length} tasks`);
 
         this.next_fetch = new Date(Date.now() + this.config.fetch_interval_sec * 1000);
-        return Expected.ok([...filter_tasks(this.tasks, filter)]);
+        return Expected.ok([...filter_tasks(this.get_tasks(), filter)]);
     }
 
-    private async load_tasks(): Promise<Expected<void>> {
-        const sheet_status = await this.sheet.read(`${this.config.sheet_name}!A:H`);
+    async create(task: NewTaskData): Promise<Expected<TaskData>> {
+        const load_status = await this.read_and_update_cache();
+        if (!load_status.ok) {
+            return load_status.cast_error<TaskData>();
+        }
+        if (!this.columns) {
+            return Expected.err("task table columns are not loaded");
+        }
+
+        const created_task: TaskData = {
+            ...task,
+            created_at: new Date(),
+        };
+        const row = format_row(created_task, this.columns);
+        const append_status = await this.sheet.append(
+            `${this.config.sheet_name}`,
+            row,
+        );
+        if (!append_status.ok) {
+            return append_status.cast_error<TaskData>().wrap_error("failed to create task");
+        }
+
+        const refresh_status = await this.read_and_update_cache();
+        if (!refresh_status.ok) {
+            return refresh_status.cast_error<TaskData>().wrap_error("failed to refresh task cache");
+        }
+
+        return Expected.ok(created_task);
+    }
+
+    async update(task: TaskData): Promise<Expected<TaskUpdate>> {
+        const load_status = await this.read_and_update_cache();
+        if (!load_status.ok) {
+            return load_status.cast_error<TaskUpdate>();
+        }
+        if (!this.columns) {
+            return Expected.err("task table columns are not loaded");
+        }
+
+        const located_status = await this.locate_task(task.created_at);
+        if (!located_status.ok) {
+            return located_status.cast_error<TaskUpdate>();
+        }
+
+        const { previous, row_index } = located_status.value;
+        const update = create_task_update(previous, task);
+        if (Object.keys(update.updates).length === 0) {
+            return Expected.ok(update);
+        }
+
+        const row = format_row(task, this.columns);
+        const write_status = await this.sheet.write(
+            `${this.config.sheet_name}!A${row_index + 1}:H${row_index + 1}`,
+            row,
+        );
+        if (!write_status.ok) {
+            return write_status.cast_error<TaskUpdate>().wrap_error("failed to update task");
+        }
+
+        const refresh_status = await this.read_and_update_cache();
+        if (!refresh_status.ok) {
+            return refresh_status.cast_error<TaskUpdate>().wrap_error("failed to refresh task cache");
+        }
+
+        return Expected.ok(update);
+    }
+
+    async delete(task: TaskData): Promise<Expected<TaskData>> {
+        const load_status = await this.read_and_update_cache();
+        if (!load_status.ok) {
+            return load_status.cast_error<TaskData>();
+        }
+
+        const located_status = await this.locate_task(task.created_at);
+        if (!located_status.ok) {
+            return located_status.cast_error<TaskData>();
+        }
+
+        const { previous, row_index } = located_status.value;
+        const delete_status = await this.sheet.delete_row(this.config.sheet_name, row_index);
+        if (!delete_status.ok) {
+            return delete_status.cast_error<TaskData>().wrap_error("failed to delete task");
+        }
+
+        const refresh_status = await this.read_and_update_cache();
+        if (!refresh_status.ok) {
+            return refresh_status.cast_error<TaskData>().wrap_error("failed to refresh task cache");
+        }
+
+        return Expected.ok(previous);
+    }
+
+    private get_tasks(): TaskData[] {
+        return this.cache.map(entry => entry.task);
+    }
+
+    private find_cache_entry(created_at: Date): CacheEntry | undefined {
+        return this.cache.find(entry => created_at_matches(entry.task.created_at, created_at));
+    }
+
+    private async locate_task(created_at: Date): Promise<Expected<{
+        previous: TaskData;
+        row_index: number;
+    }>> {
+        const entry = this.find_cache_entry(created_at);
+        if (!entry) {
+            return Expected.err(`task with created_at '${created_at.toISOString()}' not found in cache`);
+        }
+        if (!this.columns) {
+            return Expected.err("task table columns are not loaded");
+        }
+
+        const row_number = entry.row_index + 1;
+        const row_status = await this.sheet.read(
+            `${this.config.sheet_name}!A${row_number}:H${row_number}`,
+        );
+        if (!row_status.ok) {
+            return row_status.cast_error();
+        }
+
+        const row = row_status.value[0];
+        if (!row) {
+            return Expected.err(`task row #${row_number} is empty`);
+        }
+
+        const parsed_status = try_parse_row(row, this.columns);
+        if (!parsed_status.ok) {
+            return parsed_status.cast_error();
+        }
+
+        if (!created_at_matches(parsed_status.value.created_at, created_at)) {
+            return Expected.err(
+                [
+                    `task row #${row_number} created_at mismatch:`,
+                    `expected '${created_at.toISOString()}',`,
+                    `got '${parsed_status.value.created_at.toISOString()}'`,
+                ].join(" "),
+            );
+        }
+
+        return Expected.ok({
+            previous: parsed_status.value,
+            row_index: entry.row_index,
+        });
+    }
+
+    private async read_and_update_cache(): Promise<Expected<void>> {
+        const sheet_status = await this.sheet.read(`${this.config.sheet_name}`);
         if (!sheet_status.ok) {
             return sheet_status.wrap_error("can't fetch sheet data");
         }
 
         const table = sheet_status.value;
         if (table.length === 0) {
-            this.tasks = [];
+            this.columns = undefined;
+            this.cache = [];
             return Expected.ok(undefined);
         }
 
@@ -219,7 +424,7 @@ export class GoogleSheetTaskTracker implements ITaskTracker {
         }
 
         const columns = columns_status.value;
-        const tasks: TaskData[] = [];
+        const cache: CacheEntry[] = [];
         let invalid_rows = 0;
 
         table.slice(1).forEach((row, row_idx) => {
@@ -237,14 +442,18 @@ export class GoogleSheetTaskTracker implements ITaskTracker {
                 return;
             }
 
-            tasks.push(task_status.value);
+            cache.push({
+                task: task_status.value,
+                row_index: row_idx + 1,
+            });
         });
 
         if (invalid_rows > 0) {
             this.journal.log().warn(`Skipped ${invalid_rows} invalid task rows`);
         }
 
-        this.tasks = tasks;
+        this.columns = columns;
+        this.cache = cache;
         return Expected.ok(undefined);
     }
 }

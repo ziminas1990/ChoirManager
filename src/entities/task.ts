@@ -15,8 +15,57 @@ export type TaskData = {
     assignee?: string;
 }
 
-export type TaskUpdate<T extends keyof Exclude<TaskData, "created_at">> =
-    Record<T, { previous?: TaskData[T], next?: TaskData[T] }>;
+export type TaskField = Exclude<keyof TaskData, "created_at">;
+export type NewTaskData = Omit<TaskData, "created_at">;
+
+export type TaskUpdate = {
+    task_id: string,
+    previous: TaskData,
+    next: TaskData,
+    updates: Partial<{
+        [Field in TaskField]: {
+            previous?: TaskData[Field],
+            next?: TaskData[Field],
+        };
+    }>;
+};
+
+export function get_task_id(task: TaskData): string {
+    return task.created_at.getTime().toString();
+}
+
+export function create_task_update(previous: TaskData, next: TaskData): TaskUpdate {
+    const update: TaskUpdate = {
+        task_id: get_task_id(next),
+        previous,
+        next,
+        updates: {},
+    };
+
+    if (previous.author_email !== next.author_email) {
+        update.updates.author_email = { previous: previous.author_email, next: next.author_email };
+    }
+    if (previous.title !== next.title) {
+        update.updates.title = { previous: previous.title, next: next.title };
+    }
+    if (previous.comment !== next.comment) {
+        update.updates.comment = { previous: previous.comment, next: next.comment };
+    }
+    if (previous.status !== next.status) {
+        update.updates.status = { previous: previous.status, next: next.status };
+    }
+    if (previous.deadline?.getTime() !== next.deadline?.getTime()) {
+        update.updates.deadline = { previous: previous.deadline, next: next.deadline };
+    }
+    if (previous.manager !== next.manager) {
+        update.updates.manager = { previous: previous.manager, next: next.manager };
+    }
+    if (previous.assignee !== next.assignee) {
+        update.updates.assignee = { previous: previous.assignee, next: next.assignee };
+    }
+
+    return update;
+}
 
 export function filter_tasks(tasks: TaskData[], filter?: TaskFilter): TaskData[] {
     if (filter?.status !== undefined && filter.status.length > 0) {

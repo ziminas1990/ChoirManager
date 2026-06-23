@@ -1,4 +1,5 @@
 import { Expected, Status } from "@src/utils/expected.js";
+import { TokenBucket } from "@src/utils/token_bucket.js";
 import { GoogleAuth } from "./google_auth";
 
 export type Row = string[];
@@ -7,9 +8,17 @@ export type Table = Row[];
 
 export class GoogleSpreadsheet {
 
+    private static readonly api_tokens = new TokenBucket({
+        max_tokens: 30,
+        refill_rate: 10,
+    });
+
     constructor(private sheet_id: string) {}
 
+    private sheet_id_cache = new Map<string, number>();
+
     public async read(range: string): Promise<Expected<Table>> {
+        await GoogleSpreadsheet.api_tokens.wait_tokens(1);
         try {
             const sheet = await GoogleAuth.get_sheets().spreadsheets.values.get({
                 spreadsheetId: this.sheet_id,
@@ -25,6 +34,7 @@ export class GoogleSpreadsheet {
     }
 
     public async append(range: string, row: Row): Promise<Status> {
+        await GoogleSpreadsheet.api_tokens.wait_tokens(1);
         try {
             const sheet = await GoogleAuth.get_sheets().spreadsheets.values.append({
                 spreadsheetId: this.sheet_id,
@@ -39,6 +49,81 @@ export class GoogleSpreadsheet {
             return Expected.ok(undefined);
         } catch (err) {
             return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("Failed to append row");
+        }
+    }
+
+    public async write(range: string, row: Row): Promise<Status> {
+        await GoogleSpreadsheet.api_tokens.wait_tokens(1);
+        try {
+            const sheet = await GoogleAuth.get_sheets().spreadsheets.values.update({
+                spreadsheetId: this.sheet_id,
+                range: range,
+                valueInputOption: "USER_ENTERED",
+                requestBody: { values: [row] },
+            });
+            if (sheet.status !== 200) {
+                return Expected.err(`Failed to update row: ${sheet.status}`);
+            }
+            return Expected.ok(undefined);
+        } catch (err) {
+            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("Failed to update row");
+        }
+    }
+
+    public async delete_row(sheet_name: string, row_index: number): Promise<Status> {
+        const sheet_id_status = await this.resolve_sheet_id(sheet_name);
+        if (!sheet_id_status.ok) {
+            return sheet_id_status.as_status();
+        }
+
+        try {
+            await GoogleSpreadsheet.api_tokens.wait_tokens(1);
+            const sheet = await GoogleAuth.get_sheets().spreadsheets.batchUpdate({
+                spreadsheetId: this.sheet_id,
+                requestBody: {
+                    requests: [{
+                        deleteDimension: {
+                            range: {
+                                sheetId: sheet_id_status.value,
+                                dimension: "ROWS",
+                                startIndex: row_index,
+                                endIndex: row_index + 1,
+                            },
+                        },
+                    }],
+                },
+            });
+            if (sheet.status !== 200) {
+                return Expected.err(`Failed to delete row: ${sheet.status}`);
+            }
+            return Expected.ok(undefined);
+        } catch (err) {
+            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("Failed to delete row");
+        }
+    }
+
+    private async resolve_sheet_id(sheet_name: string): Promise<Expected<number>> {
+        const cached = this.sheet_id_cache.get(sheet_name);
+        if (cached !== undefined) {
+            return Expected.ok(cached);
+        }
+
+        try {
+            await GoogleSpreadsheet.api_tokens.wait_tokens(1);
+            const response = await GoogleAuth.get_sheets().spreadsheets.get({
+                spreadsheetId: this.sheet_id,
+            });
+            const sheet = response.data.sheets?.find(
+                entry => entry.properties?.title === sheet_name,
+            );
+            const sheet_id = sheet?.properties?.sheetId;
+            if (sheet_id === undefined || sheet_id === null) {
+                return Expected.err(`Sheet '${sheet_name}' not found`);
+            }
+            this.sheet_id_cache.set(sheet_name, sheet_id);
+            return Expected.ok(sheet_id);
+        } catch (err) {
+            return (((err) instanceof Error) ? Expected.err((err).message) : Expected.err(String(err))).wrap_error("Failed to resolve sheet id");
         }
     }
 }

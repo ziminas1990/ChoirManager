@@ -1,5 +1,14 @@
 import { TaskTrackerConfig } from "@src/config.js";
-import { TaskData, TaskFilter, TaskStatus, filter_tasks } from "@src/entities/task.js";
+import {
+    NewTaskData,
+    TaskData,
+    TaskFilter,
+    TaskStatus,
+    TaskUpdate,
+    create_task_update,
+    filter_tasks,
+    get_task_id,
+} from "@src/entities/task.js";
 import { IBroadcaster } from "@src/interfaces/message_queue.js";
 import { ITaskTracker } from "@src/interfaces/task_tracker.js";
 import { Journal } from "@src/journal.js";
@@ -31,10 +40,6 @@ function format_status(status: TaskStatus): string {
         case "cancelled":
             return "Cancelled";
     }
-}
-
-function get_task_id(task: TaskData): string {
-    return task.created_at.getTime().toString();
 }
 
 function get_field_value(task: TaskData, field: TaskField): string | undefined {
@@ -82,24 +87,15 @@ function utc_day_key(now: Date): string {
     ].join("-");
 }
 
-export type TaskUpdate = {
-    task_id: string,
-    previous: TaskData,
-    next: TaskData,
-    updates: Partial<{
-        [Field in TaskField]: {
-        previous?: TaskData[Field],
-        next?: TaskData[Field],
-        };
-    }>;
-};
-
 export type TaskTrackerEvent = {
     what: "new_task",
     task: TaskData,
 } | {
     what: "task_updated",
     update: TaskUpdate[],
+} | {
+    what: "task_deleted",
+    task: TaskData,
 } | {
     what: "deadline_notification",
     tasks: TaskData[],
@@ -125,6 +121,74 @@ export class TaskTracker extends Logic<void> {
 
     get_tasks(filter?: TaskFilter): TaskData[] {
         return filter_tasks(Array.from(this.tasks.values()), filter);
+    }
+
+    async create_task(task: NewTaskData): Promise<Expected<TaskData>> {
+        const created_status = await this.adapter.create(task);
+        if (!created_status.ok) {
+            return created_status.wrap_error("failed to create task");
+        }
+
+        const created = created_status.value;
+        this.tasks.set(get_task_id(created), created);
+
+        const broadcast_status = await this.broadcast_event({
+            what: "new_task",
+            task: created,
+        });
+        if (!broadcast_status.ok) {
+            return broadcast_status.cast_error<TaskData>().wrap_error("failed to broadcast new task event");
+        }
+
+        return Expected.ok(created);
+    }
+
+    async update_task(task: TaskData): Promise<Expected<TaskUpdate>> {
+        if (!this.tasks.has(get_task_id(task))) {
+            return Expected.err("task not found in local snapshot");
+        }
+
+        const update_status = await this.adapter.update(task);
+        if (!update_status.ok) {
+            return update_status.wrap_error("failed to update task");
+        }
+
+        this.tasks.set(get_task_id(task), task);
+
+        if (Object.keys(update_status.value.updates).length > 0) {
+            const broadcast_status = await this.broadcast_event({
+                what: "task_updated",
+                update: [update_status.value],
+            });
+            if (!broadcast_status.ok) {
+                return broadcast_status.cast_error<TaskUpdate>().wrap_error("failed to broadcast task update event");
+            }
+        }
+
+        return update_status;
+    }
+
+    async delete_task(task: TaskData): Promise<Expected<TaskData>> {
+        if (!this.tasks.has(get_task_id(task))) {
+            return Expected.err("task not found in local snapshot");
+        }
+
+        const deleted_status = await this.adapter.delete(task);
+        if (!deleted_status.ok) {
+            return deleted_status.wrap_error("failed to delete task");
+        }
+
+        this.tasks.delete(get_task_id(task));
+
+        const broadcast_status = await this.broadcast_event({
+            what: "task_deleted",
+            task: deleted_status.value,
+        });
+        if (!broadcast_status.ok) {
+            return broadcast_status.cast_error<TaskData>().wrap_error("failed to broadcast task deletion event");
+        }
+
+        return deleted_status;
     }
 
     async init(now: Date = new Date()): Promise<Status> {
@@ -213,7 +277,7 @@ export class TaskTracker extends Logic<void> {
 
             const status = await this.broadcast_event({
                 what: "task_updated",
-                update: [this.create_task_update(known_task, task)],
+                update: [create_task_update(known_task, task)],
             });
             if (!status.ok) {
                 return status.wrap_error("failed to broadcast task update event");
@@ -221,39 +285,6 @@ export class TaskTracker extends Logic<void> {
         }
 
         return Expected.ok(undefined);
-    }
-
-    private create_task_update(previous: TaskData, next: TaskData): TaskUpdate {
-        const update: TaskUpdate = {
-            task_id: get_task_id(next),
-            previous,
-            next,
-            updates: {},
-        };
-
-        if (previous.author_email !== next.author_email) {
-            update.updates.author_email = { previous: previous.author_email, next: next.author_email };
-        }
-        if (previous.title !== next.title) {
-            update.updates.title = { previous: previous.title, next: next.title };
-        }
-        if (previous.comment !== next.comment) {
-            update.updates.comment = { previous: previous.comment, next: next.comment };
-        }
-        if (previous.status !== next.status) {
-            update.updates.status = { previous: previous.status, next: next.status };
-        }
-        if (previous.deadline?.getTime() !== next.deadline?.getTime()) {
-            update.updates.deadline = { previous: previous.deadline, next: next.deadline };
-        }
-        if (previous.manager !== next.manager) {
-            update.updates.manager = { previous: previous.manager, next: next.manager };
-        }
-        if (previous.assignee !== next.assignee) {
-            update.updates.assignee = { previous: previous.assignee, next: next.assignee };
-        }
-
-        return update;
     }
 
     private async maybe_send_deadline_notification(now: Date, tasks: TaskData[]): Promise<Status> {
