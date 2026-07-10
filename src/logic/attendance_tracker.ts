@@ -1,4 +1,4 @@
-import { Database, Rehersal } from "@src/database.js";
+import { Database, Rehersal, Role, User } from "@src/database.js";
 import { UserLogic } from "@src/logic/user.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
@@ -83,7 +83,7 @@ export class AttendanceTracker extends Logic<void> {
         private readonly config: AttendanceTrackerConfig,
         private readonly messages_provider: IMessagesProvider,
         private readonly database: Database,
-        private readonly users: Map<string, UserLogic>,
+        private readonly get_user_logic: (tgid: string) => UserLogic | undefined,
         parent_journal: Journal,
     ) {
         super(30000);
@@ -154,28 +154,34 @@ export class AttendanceTracker extends Logic<void> {
 
         for (const chorister of choristers) {
             const last_skipped_rehersals = Helpers.last_skipped_rehersals(
-                chorister.data.tgid, rehersals);
+                chorister.tgid, rehersals);
             if (last_skipped_rehersals.length !== skipped_rehersals_in_row) {
                 continue;
             }
 
-            for (const agent of chorister.as_chorister()) {
-                const sent = await agent.base().send_message(
-                    this.messages_provider.get_attendance_notification_message(
-                        chorister.data.lang,
-                        {
-                            chorister_name: chorister.data.name,
-                            skipped_rehersals: skipped_rehersals_in_row,
-                        }
-                    ),
-                );
+            const user_logic = this.get_user_logic(chorister.tgid);
+            if (!user_logic) {
+                continue;
+            }
+
+            const message = this.messages_provider.get_attendance_notification_message(
+                chorister.lang,
+                {
+                    chorister_name: chorister.name,
+                    skipped_rehersals: skipped_rehersals_in_row,
+                }
+            );
+            for (const agent of user_logic.as_chorister()) {
+                const sent = await agent.base().send_message(message);
                 if (!sent.ok) {
                     this.journal.log().warn({
-                        tgid: chorister.data.tgid,
+                        tgid: chorister.tgid,
                         error: sent.error,
                     }, "Failed to send attendance reminder");
                 } else {
-                    this.journal.log().info({ tgid: chorister.data.tgid }, "Attendance reminder sent");
+                    this.journal.log().info(
+                        { tgid: chorister.tgid },
+                        `Attendance reminder sent to ${chorister.name} (@${chorister.tgid})`);
                 }
             }
         }
@@ -183,8 +189,15 @@ export class AttendanceTracker extends Logic<void> {
         return Expected.ok(undefined);
     }
 
-    private get_choristers(): UserLogic[] {
-        return [...this.users.values()].filter(user => user.is_chorister());
+    private get_choristers(): User[] {
+        const choristers: User[] = [];
+        for (const user of this.database.all_users()) {
+            if (!user.is(Role.Chorister)) {
+                continue;
+            }
+            choristers.push(user);
+        }
+        return choristers;
     }
 
     private get_rehersals(): Rehersal[] {

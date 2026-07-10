@@ -315,7 +315,7 @@ export class Runtime {
                 this.config.attendance_tracker,
                 this.messages_provider,
                 this.database,
-                this.users,
+                (tgid) => this.get_user(tgid),
                 this.journal
             );
             const attendance_status = await this.attendance_tracker.init();
