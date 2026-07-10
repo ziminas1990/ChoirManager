@@ -6,21 +6,25 @@
     "runtime_dump_interval_sec": 10,
     "tg_adapter": {
         "token_file": "./config/tgbot_token",
-        "bot_id": "ursa_major_choir_test_bot",
+        "bot_id": "",
         "formatting": "html"
     },
     "users_fetcher": {
-        "google_sheet_id": "1P1X5cyoODKTaVc86Yuqbv27y9hScdllryRADKr00PhY",
+        "google_sheet_id": "",
         "range": "Users!A:Z",
         "fetch_interval_sec": 60
     },
+    "messages_provider": {
+        "sheet_id": "",
+        "table_name": "Messages"
+    },
     "scores_fetcher": {
-        "google_sheet_id": "1P1X5cyoODKTaVc86Yuqbv27y9hScdllryRADKr00PhY",
+        "google_sheet_id": "",
         "range": "Scores!A:Z",
         "fetch_interval_sec": 3600
     },
     "deposit_tracking": {
-        "google_sheet_id": "1F-ZlOD8ags8A-r40V700qBCbJrXTG07Dbet9wFmWtYc",
+        "google_sheet_id": "",
         "fetch_interval_sec": 30,
         "collect_interval_sec": 60,
         "reminders": [
@@ -32,14 +36,9 @@
         "membership_fee": 70,
         "accounts": [
             {
-                "title": "Bank of Georgia (GEL)",
-                "account": "GE57BG0000000592526515",
-                "receiver": "ALEKSANDR ZIMIN"
-            },
-            {
-                "title": "VTB or T-Bank (rubles)",
-                "account": "+79817591744",
-                "comment": "Only T-Bank or VTB please, no other banks!"
+                "title": "",
+                "account": "",
+                "receiver": ""
             }
         ]
     },
@@ -49,29 +48,29 @@
     "assistant": {
         "model": "gpt-5.4",
         "fetch_interval_sec": 600,
-        "faq_document_id": "1Voaud1Thf71QuATIOC_2zDK29o-aVcmi5Fnz_3RoBes"
+        "faq_document_id": ""
     },
     "feedback_storage": {
         "type": "google_spreadsheet",
-        "spreadsheet_id": "1P1X5cyoODKTaVc86Yuqbv27y9hScdllryRADKr00PhY",
+        "spreadsheet_id": "",
         "sheet_name": "Feedbacks"
     },
     "transaction_storage": {
         "type": "google_firestore",
         "read_only": false,
-        "database_id": "ursa-major-db",
+        "database_id": "",
         "collection_name": "deposit_transactions"
     },
     "rehersals_storage": {
         "type": "google_spreadsheet",
-        "spreadsheet_id": "1C5sfjlZgsZzRax15sizsTIucEyirAWstA0Sca-PJ-F0",
+        "spreadsheet_id": "",
         "sheet_name": "main"
     },
     "managers_chat": {
         "backlog": {
             "type": "google_firestore",
             "read_only": true,
-            "database_id": "ursa-major-db",
+            "database_id": "",
             "collection_name": "managers_chat_backlog"
         }
     },
@@ -84,7 +83,7 @@
         "backlog": {
             "type": "google_firestore",
             "read_only": false,
-            "database_id": "ursa-major-db",
+            "database_id": "",
             "collection_name": "announce_chat_backlog"
         }
     },
@@ -102,10 +101,17 @@
     "task_tracker": {
         "database": {
             "type": "google_firestore",
-            "database_id": "ursa-major-db",
+            "database_id": "",
             "collection_name": "tasks"
         },
         "enable_notifications": true,
         "notification_time_utc": "08:00"
+    },
+    "attendance_tracker": {
+        "skipped_rehersals_in_row": 3,
+        "schedule_utc": [
+            { "day_of_week_utc": 2, "time_utc": "12:00" },
+            { "day_of_week_utc": 6, "time_utc": "15:00" }
+        ]
     }
 }

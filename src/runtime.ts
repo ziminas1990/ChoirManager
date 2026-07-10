@@ -24,12 +24,14 @@ import { IAdapter } from "./interfaces/adapter.js";
 import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
 import { RehersalsStorageFactory } from "./adapters/rehersals_storage/factory.js";
 import { RehersalsTracker } from "./logic/rehersals_tracker.js";
+import { GoogleSpreadsheetMessagesProvider } from "./adapters/messages_provider/google_spreadsheet.js";
 import { MessagesStorageFactory } from "./adapters/messages_storage/factory.js";
 import { LocalBroadcaster } from "./adapters/local_message_queue/local_broadcaster.js";
 import { GroupChat } from "./logic/group_chat.js";
 import { ITransactionsStorage } from "./interfaces/transactions_storage.js";
 import { TransactionStorageFactory } from "./adapters/transactions_storage/factory.js";
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
+import { AttendanceTracker } from "./logic/attendance_tracker.js";
 import { TaskTracker, TaskTrackerEvent } from "./logic/task_tracker.js";
 import { ManagersAgent } from "./logic/managers_agent.js";
 import { TaskTrackerTools } from "./components/ai/tools/task_tracker_tools.js";
@@ -125,6 +127,8 @@ export class Runtime {
     private announce_chat?: GroupChat;
     private readonly task_tracker_broadcaster = new LocalBroadcaster<TaskTrackerEvent>();
 
+    private messages_provider?: GoogleSpreadsheetMessagesProvider;
+    private attendance_tracker?: AttendanceTracker;
     private rehersals_tracker?: RehersalsTracker;
     private task_tracker?: TaskTracker;
 
@@ -234,6 +238,17 @@ export class Runtime {
             }
         }
 
+        this.journal.log().info("Initializing messages provider...");
+        this.messages_provider = new GoogleSpreadsheetMessagesProvider(
+            this.config.messages_provider!.sheet_id,
+            this.config.messages_provider!.table_name,
+            this.journal,
+        );
+        const messages_provider_status = await this.messages_provider.init();
+        if (!messages_provider_status.ok) {
+            return messages_provider_status.wrap_error("Failed to initialize messages provider");
+        }
+
         this.update_interval_sec = this.config.runtime.runtime_dump_interval_sec;
         if (this.update_interval_sec > 0) {
             this.next_dump = new Date();
@@ -291,6 +306,21 @@ export class Runtime {
             const tracker_status = await this.rehersals_tracker.init();
             if (!tracker_status.ok) {
                 return tracker_status.wrap_error("Failed to initialize rehersals tracker");
+            }
+        }
+
+        if (this.config.attendance_tracker) {
+            this.journal.log().info("Initializing attendance tracker...");
+            this.attendance_tracker = new AttendanceTracker(
+                this.config.attendance_tracker,
+                this.messages_provider,
+                this.database,
+                this.users,
+                this.journal
+            );
+            const attendance_status = await this.attendance_tracker.init();
+            if (!attendance_status.ok) {
+                return attendance_status.wrap_error("Failed to initialize attendance tracker");
             }
         }
 
@@ -499,6 +529,20 @@ export class Runtime {
             const rehersals_status = await this.rehersals_tracker.proceed(now);
             if (!rehersals_status.ok) {
                 this.journal.log().error(`Rehersals tracker proceed failed: ${rehersals_status.error}`);
+            }
+        }
+
+        if (this.messages_provider) {
+            const messages_provider_status = await this.messages_provider.proceed();
+            if (!messages_provider_status.ok) {
+                this.journal.log().error(`Messages provider proceed failed: ${messages_provider_status.error}`);
+            }
+        }
+
+        if (this.attendance_tracker) {
+            const attendance_status = await this.attendance_tracker.proceed(now);
+            if (!attendance_status.ok) {
+                this.journal.log().error(`Attendance tracker proceed failed: ${attendance_status.error}`);
             }
         }
 

@@ -62,7 +62,7 @@ type SerializableTaskData = Omit<TaskData, "created_at" | "deadline"> & {
     deadline?: string;
 }
 
-const DEFAULT_AUTHOR = "managers-chat@ursa-major.bot";
+const DEFAULT_AUTHOR = "Ursa Major Bot";
 const UPDATEABLE_FIELDS = [
     "author",
     "title",

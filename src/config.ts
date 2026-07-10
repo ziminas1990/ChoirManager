@@ -9,6 +9,7 @@ import { AssistantConfig, AssistantConfigJson } from "@src/fetchers/document_fet
 import { DepositTrackingConfig, DepositTrackingConfigJson } from "@src/fetchers/deposits_fetcher.js";
 import { ScoresFetcherConfig, ScoresFetcherConfigJson } from "@src/fetchers/scores_fetcher.js";
 import { UsersFetcherConfig, UsersFetcherConfigJson } from "@src/fetchers/users_fetcher.js";
+import { AttendanceTrackerConfig, AttendanceTrackerConfigJson } from "@src/logic/attendance_tracker.js";
 import { RehersalsTrackerConfig, RehersalsTrackerConfigJson } from "@src/logic/rehersals_tracker.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -188,6 +189,33 @@ export class TaskTrackerConfig {
     }
 }
 
+export type MessagesProviderConfigJson = {
+    sheet_id: string;
+    table_name: string;
+}
+
+export class MessagesProviderConfig {
+    constructor(private readonly json: MessagesProviderConfigJson) {}
+
+    get sheet_id(): string {
+        return this.json.sheet_id;
+    }
+
+    get table_name(): string {
+        return this.json.table_name;
+    }
+
+    verify(): Status {
+        if (!this.json.sheet_id) {
+            return Expected.err("'sheet_id' MUST be specified");
+        }
+        if (!this.json.table_name) {
+            return Expected.err("'table_name' MUST be specified");
+        }
+        return Expected.ok(undefined);
+    }
+}
+
 export type BotConfigJson = {
     runtime_cache_filename: string;
     google_cloud_key_file: string;
@@ -196,9 +224,11 @@ export type BotConfigJson = {
     logs_file: string;
     tg_adapter: TgAdapterConfigJson;
     users_fetcher: UsersFetcherConfigJson;
+    messages_provider: MessagesProviderConfigJson;
     scores_fetcher?: ScoresFetcherConfigJson;
     new_records_tracker?: NewRecordsTrackerConfigJson;
     deposit_tracking?: DepositTrackingConfigJson;
+    attendance_tracker?: AttendanceTrackerConfigJson;
     rehersals_tracker?: RehersalsTrackerConfigJson;
     assistant?: AssistantConfigJson;
     feedback_storage?: FeedbackStorageConfig;
@@ -214,9 +244,11 @@ export class BotConfig {
     public readonly runtime: RuntimeConfig;
     public readonly tg_adapter?: TgAdapterConfig;
     public readonly users_fetcher?: UsersFetcherConfig;
+    public readonly messages_provider?: MessagesProviderConfig;
     public readonly scores_fetcher?: ScoresFetcherConfig;
     public readonly new_records_tracker?: NewRecordsTrackerConfig;
     public readonly deposit_tracking?: DepositTrackingConfig;
+    public readonly attendance_tracker?: AttendanceTrackerConfig;
     public readonly rehersals_tracker?: RehersalsTrackerConfig;
     public readonly assistant?: AssistantConfig;
     public readonly task_tracker?: TaskTrackerConfig;
@@ -235,6 +267,9 @@ export class BotConfig {
         if (json.users_fetcher != undefined) {
             this.users_fetcher = new UsersFetcherConfig(json.users_fetcher);
         }
+        if (json.messages_provider != undefined) {
+            this.messages_provider = new MessagesProviderConfig(json.messages_provider);
+        }
         if (json.scores_fetcher != undefined) {
             this.scores_fetcher = new ScoresFetcherConfig(json.scores_fetcher);
         }
@@ -243,6 +278,9 @@ export class BotConfig {
         }
         if (json.deposit_tracking != undefined) {
             this.deposit_tracking = new DepositTrackingConfig(json.deposit_tracking);
+        }
+        if (json.attendance_tracker != undefined) {
+            this.attendance_tracker = new AttendanceTrackerConfig(json.attendance_tracker);
         }
         if (json.rehersals_tracker != undefined) {
             this.rehersals_tracker = new RehersalsTrackerConfig(json.rehersals_tracker);
@@ -286,6 +324,14 @@ export class BotConfig {
         status = this.users_fetcher.verify();
         if (!status.ok) {
             return status.wrap_error("'users_fetcher' misconfiguration");
+        }
+
+        if (!this.messages_provider) {
+            return Expected.err("'messages_provider' MUST be specified");
+        }
+        status = this.messages_provider.verify();
+        if (!status.ok) {
+            return status.wrap_error("'messages_provider' misconfiguration");
         }
 
         if (this.scores_fetcher) {
@@ -347,6 +393,19 @@ export class BotConfig {
             status = this.rehersals_tracker.verify();
             if (!status.ok) {
                 return status.wrap_error("'rehersals_tracker' misconfiguration");
+            }
+        }
+
+        if (this.attendance_tracker) {
+            if (!this.json.rehersals_storage) {
+                return Expected.err("'attendance_tracker' is specified, but 'rehersals_storage' is not specified");
+            }
+            if (!this.rehersals_tracker) {
+                return Expected.err("'attendance_tracker' is specified, but 'rehersals_tracker' is not specified");
+            }
+            status = this.attendance_tracker.verify();
+            if (!status.ok) {
+                return status.wrap_error("'attendance_tracker' misconfiguration");
             }
         }
 
