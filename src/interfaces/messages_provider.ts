@@ -7,4 +7,8 @@ export interface IMessagesProvider {
         skipped_rehersals: number,
     }): string;
 
+    get_attendance_reminders_report_message(lang: Language, params: {
+        choristers_list: string,
+    }): string;
+
 }

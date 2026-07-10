@@ -316,6 +316,7 @@ export class Runtime {
                 this.messages_provider,
                 this.database,
                 (tgid) => this.get_user(tgid),
+                async () => await this.tg_adapter?.get_managers_chat(),
                 this.journal
             );
             const attendance_status = await this.attendance_tracker.init();

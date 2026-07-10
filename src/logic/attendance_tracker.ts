@@ -1,9 +1,10 @@
-import { Database, Rehersal, Role, User } from "@src/database.js";
+import { Database, Language, Rehersal, Role, User } from "@src/database.js";
 import { UserLogic } from "@src/logic/user.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IMessagesProvider } from "@src/interfaces/messages_provider.js";
+import { IManagersChat } from "@src/interfaces/adapter.js";
 
 export type AttendanceTrackerScheduleEntryJson = {
     day_of_week_utc: number;
@@ -84,6 +85,7 @@ export class AttendanceTracker extends Logic<void> {
         private readonly messages_provider: IMessagesProvider,
         private readonly database: Database,
         private readonly get_user_logic: (tgid: string) => UserLogic | undefined,
+        private readonly get_managers_chat: () => Promise<IManagersChat | undefined>,
         parent_journal: Journal,
     ) {
         super(30000);
@@ -152,6 +154,8 @@ export class AttendanceTracker extends Logic<void> {
             return Expected.ok(undefined);
         }
 
+        const notified_choristers: User[] = [];
+
         for (const chorister of choristers) {
             const last_skipped_rehersals = Helpers.last_skipped_rehersals(
                 chorister.tgid, rehersals);
@@ -179,6 +183,7 @@ export class AttendanceTracker extends Logic<void> {
                         error: sent.error,
                     }, "Failed to send attendance reminder");
                 } else {
+                    notified_choristers.push(chorister);
                     this.journal.log().info(
                         { tgid: chorister.tgid },
                         `Attendance reminder sent to ${chorister.name} (@${chorister.tgid})`);
@@ -186,6 +191,40 @@ export class AttendanceTracker extends Logic<void> {
             }
         }
 
+        if (notified_choristers.length > 0) {
+            const report_status = await this.notify_managers_about_reminders(notified_choristers);
+            if (!report_status.ok) {
+                return report_status.wrap_error("failed to notify managers about attendance reminders");
+            }
+        }
+
+        return Expected.ok(undefined);
+    }
+
+    private async notify_managers_about_reminders(choristers: User[]): Promise<Status> {
+        const managers_chat = await this.get_managers_chat();
+        if (!managers_chat) {
+            this.journal.log().warn("Managers chat is not available for attendance reminders report");
+            return Expected.ok(undefined);
+        }
+
+        const choristers_list = choristers
+            .map(chorister => `${chorister.name} (@${chorister.tgid})`)
+            .join("\n");
+        const message = this.messages_provider.get_attendance_reminders_report_message(
+            Language.RU,
+            { choristers_list },
+        );
+        const sent = await managers_chat.send_message(message);
+        if (!sent.ok) {
+            this.journal.log().warn({ error: sent.error }, "Failed to send attendance reminders report");
+            return sent.as_status();
+        }
+
+        this.journal.log().info(
+            { choristers_count: choristers.length },
+            "Attendance reminders report sent to managers chat",
+        );
         return Expected.ok(undefined);
     }
 

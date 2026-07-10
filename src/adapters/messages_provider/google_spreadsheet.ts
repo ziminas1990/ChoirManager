@@ -8,10 +8,12 @@ import { Expected, Status } from "@src/utils/expected.js";
 
 enum MessageId {
     AttendanceNotification = "ATTENDANCE_NOTIFICATION",
+    AttendanceRemindersReport = "ATTENDANCE_REMINDERS_REPORT",
 }
 
 const ALL_MESSAGE_IDS = [
     MessageId.AttendanceNotification,
+    MessageId.AttendanceRemindersReport,
 ] as const satisfies MessageId[];
 
 const REFETCH_INTERVAL_MS = 60 * 60 * 1000;
@@ -118,8 +120,22 @@ export class GoogleSpreadsheetMessagesProvider implements IMessagesProvider {
         chorister_name: string;
         skipped_rehersals: number;
     }): string {
-        const template = this.templates.get(MessageId.AttendanceNotification)?.[lang]
-            ?? this.templates.get(MessageId.AttendanceNotification)?.[Language.EN];
+        return this.render_message(MessageId.AttendanceNotification, lang, params);
+    }
+
+    get_attendance_reminders_report_message(lang: Language, params: {
+        choristers_list: string;
+    }): string {
+        return this.render_message(MessageId.AttendanceRemindersReport, lang, params);
+    }
+
+    private render_message(
+        message_id: MessageId,
+        lang: Language,
+        params: Record<string, unknown>,
+    ): string {
+        const template = this.templates.get(message_id)?.[lang]
+            ?? this.templates.get(message_id)?.[Language.EN];
         if (!template) {
             return "";
         }
