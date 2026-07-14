@@ -1,19 +1,20 @@
 import TelegramBot from "node-telegram-bot-api";
 
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
-import { ChoristerStatistics } from "@src/entities/statistics.js";
+import { ChoristerAttendanceStat } from "@src/entities/statistics.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Journal } from "@src/journal.js";
 import { Language } from "@src/database.js";
-import { GlobalFormatter, shorten } from "@src/utils.js";
+import { apply_interval, GlobalFormatter, shorten } from "@src/utils.js";
 import { Analytic } from "@src/use_cases/analytic.js";
+import { Runtime } from "@src/runtime.js";
 
 
 export class ChoristerStatisticsWidget implements AbstractWidget {
 
     private journal: Journal;
-    private data?: ChoristerStatistics;
+    private data?: ChoristerAttendanceStat;
 
     private _buttons?: {
         month: TelegramBot.InlineKeyboardButton;
@@ -132,7 +133,16 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
     private async show_statictics(period_days?: number): Promise<Status> {
         this.journal.log().info({ period_days }, "show statistics");
 
-        const statistic = Analytic.chorister_statistic_request(this.user.userid(), period_days);
+        const end = new Date();
+        const begin = period_days
+            ? apply_interval(new Date(), { days: -period_days })
+            : new Date(0);
+        const statistic = Analytic.chorister_statistic_request(
+            Runtime.get_instance().get_database(),
+            this.user.userid(),
+            begin,
+            end,
+        );
         if (!statistic.ok) {
             const status = await this.update_widget(Messages.fail_message(
                 this.user.info().lang
@@ -171,7 +181,7 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
 }
 
 class Messages {
-    static statistics(data: ChoristerStatistics, lang: Language): string {
+    static statistics(data: ChoristerAttendanceStat, lang: Language): string {
         const parts = (() => {
             switch (lang) {
                 case Language.RU:

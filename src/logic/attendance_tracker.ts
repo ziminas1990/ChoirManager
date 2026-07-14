@@ -1,10 +1,13 @@
-import { Database, Language, Rehersal, Role, User } from "@src/database.js";
+import { Database, Language, Role, User } from "@src/database.js";
 import { UserLogic } from "@src/logic/user.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IMessagesProvider } from "@src/interfaces/messages_provider.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
+import { Analytic } from "@src/use_cases/analytic.js";
+import { ChoristerAttendanceStat } from "@src/entities/statistics.js";
+import { apply_interval } from "@src/utils.js";
 
 export type AttendanceTrackerScheduleEntryJson = {
     day_of_week_utc: number;
@@ -146,20 +149,21 @@ export class AttendanceTracker extends Logic<void> {
     private async notify_absent_choristers(now: Date): Promise<Status> {
         const skipped_rehersals_in_row = this.config.skipped_rehersals_in_row;
         const choristers = this.get_choristers();
-        const rehersals = this.get_rehersals()
-            .filter(rehersal => rehersal.when().getTime() <= now.getTime())
-            .sort((left, right) => right.when().getTime() - left.when().getTime());
+        const end = now;
+        const begin = apply_interval(now, { days: -60 });
 
-        if (rehersals.length < skipped_rehersals_in_row) {
-            return Expected.ok(undefined);
-        }
+        const managers_chat = await this.get_managers_chat();
+        const chorister_stats = this.collect_chorister_stats(choristers, begin, end);
 
         const notified_choristers: User[] = [];
 
         for (const chorister of choristers) {
-            const last_skipped_rehersals = Helpers.last_skipped_rehersals(
-                chorister.tgid, rehersals);
-            if (last_skipped_rehersals.length !== skipped_rehersals_in_row) {
+            const statistic = chorister_stats.get(chorister.tgid);
+            if (!statistic) {
+                continue;
+            }
+
+            if (statistic.last_skipped_rehersals !== skipped_rehersals_in_row) {
                 continue;
             }
 
@@ -173,26 +177,42 @@ export class AttendanceTracker extends Logic<void> {
                 {
                     chorister_name: chorister.name,
                     skipped_rehersals: skipped_rehersals_in_row,
+                    attendance_stat: format_attendance_stat(statistic, chorister.lang),
                 }
             );
             for (const agent of user_logic.as_chorister()) {
                 const sent = await agent.base().send_message(message);
-                if (!sent.ok) {
+                if (sent.ok) {
+                    this.journal.log().info(
+                        { tgid: chorister.tgid },
+                        `Attendance reminder sent to ${chorister.name} (@${chorister.tgid})`);
+                    notified_choristers.push(chorister);
+
+                    if (managers_chat) {
+                        const admin_message = `Notification to @${chorister.tgid} sent:\n\n${message}`;
+                        const admin_sent = await managers_chat.send_message(admin_message);
+                        if (!admin_sent.ok) {
+                            this.journal.log().warn({
+                                tgid: chorister.tgid,
+                                error: admin_sent.error,
+                            }, "Failed to send attendance reminder copy to managers chat");
+                        }
+                    }
+                } else {
                     this.journal.log().warn({
                         tgid: chorister.tgid,
                         error: sent.error,
                     }, "Failed to send attendance reminder");
-                } else {
-                    notified_choristers.push(chorister);
-                    this.journal.log().info(
-                        { tgid: chorister.tgid },
-                        `Attendance reminder sent to ${chorister.name} (@${chorister.tgid})`);
                 }
             }
         }
 
-        if (notified_choristers.length > 0) {
-            const report_status = await this.notify_managers_about_reminders(notified_choristers);
+        const bad_attendance = format_bad_attendance_list(choristers, chorister_stats, Language.RU);
+        const has_choristers = notified_choristers.length > 0;
+        const has_bad_attendance = bad_attendance.length > 0;
+        if (has_choristers || has_bad_attendance) {
+            const report_status = await this.notify_managers_about_reminders(
+                notified_choristers, bad_attendance);
             if (!report_status.ok) {
                 return report_status.wrap_error("failed to notify managers about attendance reminders");
             }
@@ -201,7 +221,10 @@ export class AttendanceTracker extends Logic<void> {
         return Expected.ok(undefined);
     }
 
-    private async notify_managers_about_reminders(choristers: User[]): Promise<Status> {
+    private async notify_managers_about_reminders(
+        choristers: User[],
+        bad_attendance: string,
+    ): Promise<Status> {
         const managers_chat = await this.get_managers_chat();
         if (!managers_chat) {
             this.journal.log().warn("Managers chat is not available for attendance reminders report");
@@ -213,7 +236,12 @@ export class AttendanceTracker extends Logic<void> {
             .join("\n");
         const message = this.messages_provider.get_attendance_reminders_report_message(
             Language.RU,
-            { choristers_list },
+            {
+                has_choristers: choristers.length > 0,
+                choristers_list,
+                has_bad_attendance: bad_attendance.length > 0,
+                bad_attendance,
+            },
         );
         const sent = await managers_chat.send_message(message);
         if (!sent.ok) {
@@ -239,25 +267,71 @@ export class AttendanceTracker extends Logic<void> {
         return choristers;
     }
 
-    private get_rehersals(): Rehersal[] {
-        return this.database.get_rehersals();
+    private collect_chorister_stats(
+        choristers: User[],
+        begin: Date,
+        end: Date,
+    ): Map<string, ChoristerAttendanceStat> {
+        const stats = new Map<string, ChoristerAttendanceStat>();
+        for (const chorister of choristers) {
+            const statistic = Analytic.chorister_statistic_request(
+                this.database, chorister.tgid, begin, end);
+            if (!statistic.ok) {
+                this.journal.log().warn({
+                    tgid: chorister.tgid,
+                    error: statistic.error,
+                }, "Failed to collect attendance statistics");
+                continue;
+            }
+            stats.set(chorister.tgid, statistic.value);
+        }
+        return stats;
     }
 }
 
+const BAD_ATTENDANCE_THRESHOLD = 60;
 
-class Helpers {
-    // Returns rehersals skipped in a row after last known visited rehersal
-    // Note: if user has not visited any rehersal yet, returns empty array.
-    // It means that user has just joined the choir and don't need to be notified.
-    static last_skipped_rehersals(tgid: string, rehersals: Rehersal[]): Rehersal[] {
-        const skipped: Rehersal[] = [];
-        for (const rehersal of rehersals) {
-            if (rehersal.minutes_of_presence(tgid) <= 0) {
-                skipped.push(rehersal);
-            } else {
-                return skipped;
+function attendance_percent(stat: ChoristerAttendanceStat): number {
+    return stat.total_hours > 0
+        ? Math.ceil(stat.visited_hours / stat.total_hours * 100)
+        : 0;
+}
+
+function format_bad_attendance_list(
+    choristers: User[],
+    stats: Map<string, ChoristerAttendanceStat>,
+    lang: Language,
+): string {
+    return choristers
+        .flatMap(chorister => {
+            const stat = stats.get(chorister.tgid);
+            if (!stat) {
+                return [];
             }
-        }
-        return [];
+            const percent = attendance_percent(stat);
+            if (percent >= BAD_ATTENDANCE_THRESHOLD) {
+                return [];
+            }
+            return [{ chorister, stat, percent }];
+        })
+        .sort((left, right) => right.percent - left.percent)
+        .map(({ chorister, stat }) =>
+            `${chorister.name} (@${chorister.tgid}) - ${format_attendance_stat(stat, lang)}`)
+        .join("\n");
+}
+
+function format_attendance_stat(stat: ChoristerAttendanceStat, lang: Language): string {
+    const percent = stat.total_hours > 0
+        ? Math.ceil(stat.visited_hours / stat.total_hours * 100)
+        : 0;
+    const visited = stat.visited_hours.toFixed(0);
+    const total = stat.total_hours.toFixed(0);
+
+    switch (lang) {
+        case Language.RU:
+            return `${percent}% (${visited}/${total} часов)`;
+        case Language.EN:
+        default:
+            return `${percent}% (${visited}/${total} hours)`;
     }
 }

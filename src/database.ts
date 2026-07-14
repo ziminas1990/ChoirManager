@@ -41,6 +41,8 @@ function find<T>(array: Iterable<T>, what: Partial<T>): T | undefined {
 }
 
 export class User {
+    public join_date?: Date;  // the first visited rehersal
+
     constructor(
         public tgid: string,
         public name: string,
@@ -76,6 +78,10 @@ export class User {
         if (this.voice != user.voice) {
             diffs.push(`voice: ${this.voice} -> ${user.voice}`);
             this.voice = user.voice;
+        }
+        if (this.join_date == undefined && user.join_date != undefined) {
+            diffs.push(`join date: ${this.join_date} -> ${user.join_date}`);
+            this.join_date = user.join_date;
         }
 
         for (const granted_role of user.roles) {
@@ -162,6 +168,21 @@ export class Rehersal {
 
     public minutes_of_presence(tgid: string): number {
         return this.database.lowlevel().rehersal_participants.get(this.id())?.get(tgid) || 0;
+    }
+
+    // Returns tgids of choristers with positive presence minutes.
+    public present_participants(): string[] {
+        const participants = this.database.lowlevel().rehersal_participants.get(this.id());
+        if (!participants) {
+            return [];
+        }
+        const result: string[] = [];
+        for (const [tgid, minutes] of participants) {
+            if (minutes > 0) {
+                result.push(tgid);
+            }
+        }
+        return result;
     }
 
     public songs(): { name: string, minutes: number }[] {
@@ -286,11 +307,16 @@ export class Database {
 
         const chorister = this.data.users.get(tgid);
         const rehersal_data = this.data.rehersals.get(rehersal.id());
-        if (chorister && rehersal_data) {
-            const voice = chorister.voice;
-            const duration_minutes = rehersal_data.duration_minutes.get(voice);
-            if (duration_minutes == undefined || duration_minutes < minutes) {
-                rehersal_data.duration_minutes.set(voice, minutes);
+        if (chorister) {
+            if (chorister.join_date == undefined || chorister.join_date > rehersal.when()) {
+                chorister.join_date = rehersal.when();
+            }
+            if (rehersal_data) {
+                const voice = chorister.voice;
+                const duration_minutes = rehersal_data.duration_minutes.get(voice);
+                if (duration_minutes == undefined || duration_minutes < minutes) {
+                    rehersal_data.duration_minutes.set(voice, minutes);
+                }
             }
         }
         return Expected.ok(undefined);
