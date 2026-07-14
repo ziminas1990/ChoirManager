@@ -9,8 +9,6 @@ import { UserLogic } from "./logic/user.js";
 import { pack_map, return_exception, unpack_map } from "./utils.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Proceeder } from "./logic/abstracts.js";
-import { DocumentsFetcher } from "./fetchers/document_fetcher.js";
-import { ChoristerAssistant } from "./ai_assistants/chorister_assistant.js";
 import { UsersFetcher } from "./fetchers/users_fetcher.js";
 import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
 import { Journal } from "./journal.js";
@@ -115,7 +113,6 @@ export class Runtime {
     private update_interval_sec: number = 0;
     private users_fetcher?: UsersFetcher;
     private deposits_fetcher?: DepositsFetcher;
-    private documents_fetcher?: DocumentsFetcher;
     private scores_fetcher?: ScoresFetcher;
     private new_records_fetcher?: NewRecordsFetcher;
     private feedback_storage?: IFeedbackStorage;
@@ -183,6 +180,7 @@ export class Runtime {
                 this.tg_adapter = new TgAdapter(this.config.tg_adapter, {
                     deposit_tracking: this.config.deposit_tracking,
                     runtime: this.config.runtime,
+                    assistant: this.config.assistant,
                 }, this.journal);
             }
             const status = await this.tg_adapter.init();
@@ -198,20 +196,6 @@ export class Runtime {
             if (!deposits_status.ok) {
                 return deposits_status.wrap_error("Failed to start deposits fetcher");
             }
-        }
-
-        if (this.config.assistant) {
-            this.journal.log().info("Starting AI assistant");
-            this.documents_fetcher = new DocumentsFetcher(this.config.assistant);
-            const documents_status = await this.documents_fetcher.start();
-            if (!documents_status.ok) {
-                return documents_status.wrap_error("Failed to start documents fetcher");
-            }
-            ChoristerAssistant.init(
-                this.config.assistant,
-                this.documents_fetcher,
-                this.journal.child("assistant")
-            );
         }
 
         if (this.config.scores_fetcher) {
@@ -690,6 +674,7 @@ export class Runtime {
                 {
                     deposit_tracking: config.deposit_tracking,
                     runtime: config.runtime,
+                    assistant: config.assistant,
                 },
                 packed.tg_adapter,
                 journal,

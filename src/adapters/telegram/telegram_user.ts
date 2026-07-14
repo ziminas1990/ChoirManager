@@ -14,11 +14,13 @@ import { ChoristerDialog } from "./dialogs/chorister_dialog.js";
 import { GuestDialog } from "./dialogs/guest_dialog.js";
 import { AdminDialog } from "./dialogs/admin_dialog.js";
 import { DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
+import { AssistantConfig } from "@src/fetchers/document_fetcher.js";
 import { RuntimeConfig } from "@src/runtime.js";
 
 type TelegramUserDependencies = {
     deposit_tracking?: DepositTrackingConfig;
     runtime: RuntimeConfig;
+    assistant?: AssistantConfig;
 }
 
 export class TelegramUser implements IUserAgent {
@@ -92,7 +94,12 @@ export class TelegramUser implements IUserAgent {
     // From IUserAgent
     as_chorister(): IChorister {
         if (!this.chorister_dialog) {
-            this.chorister_dialog = new ChoristerDialog(this, this.dependencies.runtime, this.journal);
+            this.chorister_dialog = new ChoristerDialog(
+                this,
+                this.dependencies.runtime,
+                this.journal,
+                this.dependencies.assistant,
+            );
         }
         return this.chorister_dialog;
     }
@@ -308,7 +315,12 @@ export class TelegramUser implements IUserAgent {
             return this.guest_dialog;
         } else if (this.user_info.is(Role.Chorister)) {
             if (!this.chorister_dialog) {
-                this.chorister_dialog = new ChoristerDialog(this, this.dependencies.runtime, this.journal);
+                this.chorister_dialog = new ChoristerDialog(
+                    this,
+                    this.dependencies.runtime,
+                    this.journal,
+                    this.dependencies.assistant,
+                );
             }
             return this.chorister_dialog;
         }

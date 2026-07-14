@@ -23,6 +23,7 @@ import { MessangerTools } from "@src/components/ai/tools/messanger_tools.js";
 import { ScoresTools } from "@src/components/ai/tools/scores_tools.js";
 import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 import { RuntimeConfig } from "@src/runtime.js";
+import { AssistantConfig } from "@src/fetchers/document_fetcher.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -31,11 +32,13 @@ export class ChoristerDialog implements IChorister {
 
     private widgets: AbstractWidget[] = [];
     private assistant_tools?: IToolchain;
+    private assistant?: ChoristerAssistant;
 
     constructor(
         private user: TelegramUser,
         private readonly runtime_config: RuntimeConfig,
         parent_journal: Journal,
+        private readonly assistant_config?: AssistantConfig,
     )
     {
         this.journal = parent_journal.child("chorister_dialog");
@@ -187,24 +190,14 @@ export class ChoristerDialog implements IChorister {
     }
 
     private async dialog_with_assistant(message: string): Promise<Status> {
-        if (!ChoristerAssistant.is_available()) {
+        if (!this.assistant_config) {
             return Expected.ok(undefined);
         }
-
-        const assistant = ChoristerAssistant.get_instance();
-        const username = this.user.info().tgid;
-
-        const send_status = await assistant.send_message(
-            username,
-            message,
-            this.get_assistant_tools(),
+        this.assistant ??= new ChoristerAssistant(
+            this.assistant_config,
+            this.journal.child("assistant"),
         );
-        if (!send_status.ok) {
-            return send_status.wrap_error(`assistant failure`);
-        }
-
-        this.journal.log().info(`assistant completed`);
-        return Expected.ok(undefined);
+        return this.assistant.send_message(message, this.get_assistant_tools());
     }
 
     private get_assistant_tools(): IToolchain {

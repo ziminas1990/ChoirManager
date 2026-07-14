@@ -1,5 +1,4 @@
 import { Expected, Status } from "@src/utils/expected.js";
-import { DocumentsFetcher } from "@src/fetchers/document_fetcher.js";
 import { OpenaiAPI } from "@src/api/openai.js";
 import { AssistantConfig } from "@src/fetchers/document_fetcher.js";
 import { Journal } from "@src/journal.js";
@@ -71,42 +70,19 @@ Politely refuse to answer any other questions.
 `
 
 export class ChoristerAssistant {
-    private static instance: ChoristerAssistant;
-
-    static init(config: AssistantConfig, documents_fetcher: DocumentsFetcher, journal: Journal) {
-        if (!ChoristerAssistant.instance) {
-            ChoristerAssistant.instance = new ChoristerAssistant(config, documents_fetcher, journal);
-        }
-    }
-
-    static get_instance(): ChoristerAssistant {
-        if (!ChoristerAssistant.instance) {
-            throw new Error("ChoristerAssistant is not initialized");
-        }
-        return ChoristerAssistant.instance;
-    }
-
-    static is_available(): boolean {
-        return this.instance != undefined;
-    }
-
-    private users: Map<string, Agent> = new Map();
+    private agent?: Agent;
 
     constructor(
         private readonly config: AssistantConfig,
-        private documents_fetcher: DocumentsFetcher,
-        private readonly journal: Journal)
-    {
-        void this.documents_fetcher
-    }
+        private readonly journal: Journal,
+    ) {}
 
     public async send_message(
-        username: string,
         message: string,
         tools: IToolchain,
     ): Promise<Status> {
         try {
-            const agent = this.get_or_create_agent(username, tools);
+            const agent = this.get_or_create_agent(tools);
             agent.add_user_messages([
                 { role: "user", content: message },
             ]);
@@ -128,22 +104,20 @@ export class ChoristerAssistant {
         }
     }
 
-    public async add_response(username: string, message: string): Promise<Status> {
-        const agent = this.users.get(username);
-        if (!agent) {
+    public async add_response(message: string): Promise<Status> {
+        if (!this.agent) {
             return Expected.ok(undefined);
         }
-        agent.add_assistant_message(`[bot to user]\n${message}`);
+        this.agent.add_assistant_message(`[bot to user]\n${message}`);
         return Expected.ok(undefined);
     }
 
-    private get_or_create_agent(username: string, tools: IToolchain): Agent {
-        let agent = this.users.get(username);
-        if (agent) {
-            return agent;
+    private get_or_create_agent(tools: IToolchain): Agent {
+        if (this.agent) {
+            return this.agent;
         }
 
-        agent = new Agent(
+        this.agent = new Agent(
             {
                 instruction: this.get_instructions(),
                 ttl_ms: 30 * 60 * 1000,
@@ -152,19 +126,13 @@ export class ChoristerAssistant {
                 output_format: "json",
             },
             OpenaiAPI.get_llm(this.config.model),
-            this.journal.child(username),
+            this.journal,
             tools,
         );
-        this.users.set(username, agent);
-        return agent;
+        return this.agent;
     }
 
     private get_instructions(): string {
-        //const faq = this.documents_fetcher.get_faq_document();
-        // const message = faq.ok
-        //     ? [instruction, "## FAQ", faq.value].join("\n\n")
-        //     : fails_instruction;
-
         this.journal.log().debug("assistant instructions:\n", instruction);
         return instruction;
     }
