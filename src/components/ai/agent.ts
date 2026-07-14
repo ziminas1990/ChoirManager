@@ -120,7 +120,6 @@ export class Agent {
         }
     }
 
-
     private async generate_response_impl(): Promise<Expected<string>> {
         this.cleanup_context();
         this.last_activity = new Date();

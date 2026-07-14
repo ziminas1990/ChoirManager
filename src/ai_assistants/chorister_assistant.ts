@@ -49,7 +49,7 @@ If user asks for scores without a specific title:
 - just call scores_display_list
 
 If user asks for a specific scores by title or author, do the follow:
-- immediately call scores_send_message to send a message that says that you are looking for the score
+- immediately call messanger_send_message to send a message that says that you are looking for the score
 - call scores_get_list to get a list of scores
 - look through the list and choose the best match
 - call scores_send_to_user to send the selected score to the user
@@ -69,13 +69,6 @@ If user asks you something, you are allowed to:
 
 Politely refuse to answer any other questions.
 `
-
-interface IAssistant {
-    send_message(message: string): Promise<Status>;
-
-    // Add a message to the context as a response or notification previously sent to the user.
-    add_response(message: string): Promise<Status>;
-}
 
 export class ChoristerAssistant {
     private static instance: ChoristerAssistant;
@@ -97,7 +90,7 @@ export class ChoristerAssistant {
         return this.instance != undefined;
     }
 
-    private users: Map<string, IAssistant> = new Map();
+    private users: Map<string, Agent> = new Map();
 
     constructor(
         private readonly config: AssistantConfig,
@@ -113,40 +106,44 @@ export class ChoristerAssistant {
         tools: IToolchain,
     ): Promise<Status> {
         try {
-            const status = await this.get_or_create_api(username, tools);
-            if (!status.ok) {
-                return status.add_context("can't get api for user").wrap_error("can't get api for user");
+            const agent = this.get_or_create_agent(username, tools);
+            agent.add_user_messages([
+                { role: "user", content: message },
+            ]);
+            const response = await agent.generate_response();
+            if (!response.ok) {
+                return Expected.err("agent failed to send message", response);
             }
-            return (await status.value.send_message(message)).as_status();
+
+            const parsed = parse_agent_response_status(response.value);
+            if (!parsed.ok) {
+                return parsed.add_context("agent returned invalid status").wrap_error("agent returned invalid status");
+            }
+            if (parsed.value.status === "error") {
+                return Expected.err(parsed.value.description);
+            }
+            return Expected.ok(undefined);
         } catch (e) {
             return Expected.exception("can't send message", e);
         }
     }
 
     public async add_response(username: string, message: string): Promise<Status> {
-        const assistant = this.users.get(username);
-        if (!assistant) {
+        const agent = this.users.get(username);
+        if (!agent) {
             return Expected.ok(undefined);
         }
-        return assistant.add_response(message);
+        agent.add_assistant_message(`[bot to user]\n${message}`);
+        return Expected.ok(undefined);
     }
 
-    private async get_or_create_api(
-        username: string,
-        tools: IToolchain,
-    ): Promise<Expected<IAssistant>> {
-        let user = this.users.get(username);
-        if (user) {
-            return Expected.ok(user);
+    private get_or_create_agent(username: string, tools: IToolchain): Agent {
+        let agent = this.users.get(username);
+        if (agent) {
+            return agent;
         }
 
-        user = this.create_agent_assistant(username, tools);
-        this.users.set(username, user);
-        return Expected.ok(user);
-    }
-
-    private create_agent_assistant(username: string, tools: IToolchain): IAssistant {
-        const agent = new Agent(
+        agent = new Agent(
             {
                 instruction: this.get_instructions(),
                 ttl_ms: 30 * 60 * 1000,
@@ -158,8 +155,8 @@ export class ChoristerAssistant {
             this.journal.child(username),
             tools,
         );
-
-        return new AgentAssistant(agent);
+        this.users.set(username, agent);
+        return agent;
     }
 
     private get_instructions(): string {
@@ -170,35 +167,6 @@ export class ChoristerAssistant {
 
         this.journal.log().debug("assistant instructions:\n", instruction);
         return instruction;
-    }
-}
-
-class AgentAssistant implements IAssistant {
-
-    constructor(private agent: Agent) {}
-
-    public async send_message(message: string): Promise<Status> {
-        this.agent.add_user_messages([
-            { role: "user", content: message },
-        ]);
-        const response = await this.agent.generate_response();
-        if (!response.ok) {
-            return Expected.err("agent failed to send message", response);
-        }
-
-        const parsed = parse_agent_response_status(response.value);
-        if (!parsed.ok) {
-            return parsed.add_context("agent returned invalid status").wrap_error("agent returned invalid status");
-        }
-        if (parsed.value.status === "error") {
-            return Expected.err(parsed.value.description);
-        }
-        return Expected.ok(undefined);
-    }
-
-    public async add_response(message: string): Promise<Status> {
-        this.agent.add_assistant_message(`[bot to user]\n${message}`);
-        return Expected.ok(undefined);
     }
 }
 

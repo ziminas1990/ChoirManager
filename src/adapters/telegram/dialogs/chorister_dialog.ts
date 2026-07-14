@@ -24,6 +24,7 @@ import { ScoresTools } from "@src/components/ai/tools/scores_tools.js";
 import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 import { RuntimeConfig } from "@src/runtime.js";
 
+
 export class ChoristerDialog implements IChorister {
     private last_welcome: Date = new Date(0);
     private journal: Journal;
