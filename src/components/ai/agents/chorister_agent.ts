@@ -69,7 +69,7 @@ If user asks you something, you are allowed to:
 Politely refuse to answer any other questions.
 `
 
-export class ChoristerAssistant {
+export class ChoristerAgent {
     private agent?: Agent;
 
     constructor(

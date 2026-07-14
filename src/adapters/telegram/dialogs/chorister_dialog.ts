@@ -9,7 +9,7 @@ import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { AdminActions } from "@src/use_cases/admin_actions.js";
 import { GlobalFormatter, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
-import { ChoristerAssistant } from "@src/ai_assistants/chorister_assistant.js";
+import { ChoristerAgent } from "@src/components/ai/agents/chorister_agent.js";
 import { Language, Scores } from "@src/database.js";
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity.js";
@@ -32,7 +32,7 @@ export class ChoristerDialog implements IChorister {
 
     private widgets: AbstractWidget[] = [];
     private assistant_tools?: IToolchain;
-    private assistant?: ChoristerAssistant;
+    private assistant?: ChoristerAgent;
 
     constructor(
         private user: TelegramUser,
@@ -193,7 +193,7 @@ export class ChoristerDialog implements IChorister {
         if (!this.assistant_config) {
             return Expected.ok(undefined);
         }
-        this.assistant ??= new ChoristerAssistant(
+        this.assistant ??= new ChoristerAgent(
             this.assistant_config,
             this.journal.child("assistant"),
         );
