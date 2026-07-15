@@ -57,6 +57,8 @@ export interface IToolchain {
 
     get_readme(): string;
 
+    get_use_cases(): string;
+
     get_tools(): Map<string, Tool>;
 
     call_tool(name: string, parameters: Record<string, unknown>): Promise<Expected<string>>;

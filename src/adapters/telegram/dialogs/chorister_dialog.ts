@@ -19,11 +19,11 @@ import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/choris
 import { IToolchain } from "@src/interfaces/llm.js";
 import { DepositManagerTools } from "@src/components/ai/tools/deposit_manager_tools.js";
 import { FeedbackTools } from "@src/components/ai/tools/feedback_tools.js";
-import { MessangerTools } from "@src/components/ai/tools/messanger_tools.js";
+import { MessengerTools } from "@src/components/ai/tools/messenger_tools.js";
 import { ScoresTools } from "@src/components/ai/tools/scores_tools.js";
 import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 import { RuntimeConfig } from "@src/runtime.js";
-import { AssistantConfig } from "@src/fetchers/document_fetcher.js";
+import { AssistantConfig } from "@src/config.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -207,9 +207,9 @@ export class ChoristerDialog implements IChorister {
 
         const tools = new ToolsMultiplexer(this.journal.child("tools"));
         const statuses = [
-            tools.add_tool(new MessangerTools(
-                async (message: string) => this.send_assistant_message(message),
-            )),
+            tools.add_tool(new MessengerTools({
+                send_message: async (message: string) => this.send_assistant_message(message),
+            })),
             tools.add_tool(new ScoresTools(this.user, this.journal)),
             tools.add_tool(new DepositManagerTools(this.user, this.journal)),
             tools.add_tool(new FeedbackTools(

@@ -131,6 +131,10 @@ export class TaskTrackerTools implements IToolchain {
         ].join("\n");
     }
 
+    get_use_cases(): string {
+        return "";
+    }
+
     get_tools(): Map<string, Tool> {
         return new Map([
             ["get_tasks", tool_from_schema(

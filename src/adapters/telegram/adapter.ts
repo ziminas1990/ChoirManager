@@ -19,7 +19,7 @@ import { ManagersChat } from "@src/use_cases/managers_chat";
 import { GroupChatMessage } from "@src/logic/group_chat";
 import { AnnouncesChat } from "@src/use_cases/announces_chat";
 import { DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
-import { AssistantConfig } from "@src/fetchers/document_fetcher.js";
+import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
 
 export type Config = {

@@ -2,7 +2,7 @@ import fs from "fs";
 
 import { OpenaiAPI } from "@src/api/openai.js";
 import { Agent } from "@src/components/ai/agent.js";
-import { ManagersMessengerTools } from "@src/components/ai/tools/managers_messenger_tools.js";
+import { MessengerTools } from "@src/components/ai/tools/messenger_tools.js";
 import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 import { ManagersChatAgentConfig } from "@src/config.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
@@ -87,9 +87,9 @@ export class ManagersAgent {
         }
 
         const tools = new ToolsMultiplexer(this.journal.child("tools"));
-        let status = tools.add_tool(new ManagersMessengerTools(
-            (html_text) => this.publish_message(html_text),
-        ));
+        let status = tools.add_tool(new MessengerTools({
+            send_message: async (html_text) => (await this.publish_message(html_text)).as_status(),
+        }));
         if (!status.ok) {
             return status.wrap_error("failed to register managers messenger tools");
         }

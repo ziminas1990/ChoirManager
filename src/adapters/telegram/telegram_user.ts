@@ -14,7 +14,7 @@ import { ChoristerDialog } from "./dialogs/chorister_dialog.js";
 import { GuestDialog } from "./dialogs/guest_dialog.js";
 import { AdminDialog } from "./dialogs/admin_dialog.js";
 import { DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
-import { AssistantConfig } from "@src/fetchers/document_fetcher.js";
+import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
 
 type TelegramUserDependencies = {

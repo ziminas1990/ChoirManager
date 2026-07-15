@@ -9,6 +9,11 @@ const feedback_start_schema = z.object({
     details: z.string().optional().describe("Optional feedback text already provided by the user."),
 }).strict();
 
+const FEEDBACK_USE_CASES = `
+If user wants to leave feedback, complaint, or message for the org group:
+- just call feedback_start
+`.trim();
+
 export class FeedbackTools implements IToolchain {
     constructor(
         private start_feedback: (details?: string) => Promise<Status>,
@@ -23,6 +28,10 @@ export class FeedbackTools implements IToolchain {
             "Tools for collecting user feedback and complaints for the org group.",
             "Use feedback_start to open the feedback flow.",
         ].join("\n");
+    }
+
+    get_use_cases(): string {
+        return FEEDBACK_USE_CASES;
     }
 
     get_tools(): Map<string, Tool> {

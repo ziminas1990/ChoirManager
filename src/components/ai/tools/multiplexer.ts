@@ -74,6 +74,39 @@ export class ToolsMultiplexer implements IToolchain {
         return readme.join("\n");
     }
 
+    get_use_cases(): string {
+        const all = Array.from(this.name2toolchain.values())
+            .sort((a, b) => a.get_name().localeCompare(b.get_name()));
+
+        const use_cases = all
+            .map((toolchain) => ({
+                name: toolchain.get_name(),
+                content: toolchain.get_use_cases().trim(),
+            }))
+            .filter((item) => item.content !== "");
+
+        if (use_cases.length === 0) {
+            return "";
+        }
+
+        const lines = [
+            "## Use cases",
+            "",
+            "Use cases provide a precise and clear set of instructions for the assistant and assistant MUST follow them strictly.",
+            "",
+            "IMPORTANT RULES:",
+            "- If the use case does not explicitly say to send a message, do NOT send a custom message.",
+            "- Do NOT add any extra steps that are not written in that use case.",
+            "- Do NOT send acknowledgements, progress updates, introductions, or summaries when the required tool already handles the user-facing response.",
+        ];
+
+        for (const item of use_cases) {
+            lines.push("", `### ${item.name}`, "", item.content);
+        }
+
+        return lines.join("\n");
+    }
+
     get_tools(): Map<string, Tool> {
         if (this.get_tools_cache !== undefined) {
             return this.get_tools_cache;

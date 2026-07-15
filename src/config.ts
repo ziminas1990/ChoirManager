@@ -5,7 +5,6 @@ import { MessagesStorageConfig, MessagesStorageFactory } from "@src/adapters/mes
 import { RehersalsStorageConfig, RehersalsStorageFactory } from "@src/adapters/rehersals_storage/factory.js";
 import { TaskTrackerDatabaseConfig, TaskTrackerFactory } from "@src/adapters/task_tracker/factory.js";
 import { TransactionStorageConfig } from "@src/adapters/transactions_storage/factory.js";
-import { AssistantConfig, AssistantConfigJson } from "@src/fetchers/document_fetcher.js";
 import { DepositTrackingConfig, DepositTrackingConfigJson } from "@src/fetchers/deposits_fetcher.js";
 import { ScoresFetcherConfig, ScoresFetcherConfigJson } from "@src/fetchers/scores_fetcher.js";
 import { UsersFetcherConfig, UsersFetcherConfigJson } from "@src/fetchers/users_fetcher.js";
@@ -103,6 +102,37 @@ export class NewRecordsTrackerConfig {
 
 export type ChatConfigJson = {
     backlog?: MessagesStorageConfig;
+}
+
+const DEFAULT_CHORISTER_PROMPT_FILE = "./config/prompts/chorister_agent.md";
+
+export type AssistantConfigJson = {
+    model: string;
+    prompt_file?: string;
+}
+
+export class AssistantConfig {
+    constructor(private readonly json: AssistantConfigJson) {}
+
+    get model(): string {
+        return this.json.model;
+    }
+
+    get prompt_file(): string {
+        return this.json.prompt_file ?? DEFAULT_CHORISTER_PROMPT_FILE;
+    }
+
+    verify(): Status {
+        const fail_prefix = "assistant misconfiguration";
+
+        if (!this.json.model) {
+            return Expected.err(`${fail_prefix}: 'model' MUST be specified`);
+        }
+        if (!fs.existsSync(this.prompt_file)) {
+            return Expected.err(`${fail_prefix}: 'prompt_file' does not exist: ${this.prompt_file}`);
+        }
+        return Expected.ok(undefined);
+    }
 }
 
 export type ManagersChatAgentConfigJson = {

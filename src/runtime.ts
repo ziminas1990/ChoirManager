@@ -31,7 +31,7 @@ import { TransactionStorageFactory } from "./adapters/transactions_storage/facto
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
 import { AttendanceTracker } from "./logic/attendance_tracker.js";
 import { TaskTracker, TaskTrackerEvent } from "./logic/task_tracker.js";
-import { ManagersAgent } from "./logic/managers_agent.js";
+import { ManagersAgent } from "./components/ai/agents/managers_agent.js";
 import { TaskTrackerTools } from "./components/ai/tools/task_tracker_tools.js";
 
 export type RuntimeConfigJson = {

@@ -29,6 +29,18 @@ function add_toolchain_to_context(context: ContextItem[], tools: IToolchain): vo
         retention: "persistent",
     });
 
+    const use_cases = tools.get_use_cases().trim();
+    if (use_cases !== "") {
+        context.push({
+            time: new Date(),
+            message: {
+                role: "system",
+                content: use_cases,
+            },
+            retention: "persistent",
+        });
+    }
+
     const tools_list: string[] = ["## Available tools"];
     for (const tool of tools.get_tools().values()) {
         tools_list.push([

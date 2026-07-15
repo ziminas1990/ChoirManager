@@ -12,6 +12,17 @@ const scores_send_to_user_schema = z.object({
     query: z.string().trim().min(1).describe("Selected score title or filename."),
 }).strict();
 
+const SCORES_USE_CASES = `
+If user asks for scores without a specific title:
+- just call scores_display_list
+
+If user asks for a specific scores by title or author, do the follow:
+- immediately send a message that says that you are looking for the score
+- call scores_get_list to get a list of available scores
+- look through the list and choose the best match
+- call scores_send_to_user to send the selected score to the user
+`.trim();
+
 export class ScoresTools implements IToolchain {
     constructor(
         private user: TelegramUser,
@@ -29,6 +40,10 @@ export class ScoresTools implements IToolchain {
             "Use scores_get_list when you need to inspect the catalog yourself and choose the best match.",
             "Use scores_send_to_user after you selected the exact score from the list.",
         ].join("\n");
+    }
+
+    get_use_cases(): string {
+        return SCORES_USE_CASES;
     }
 
     get_tools(): Map<string, Tool> {

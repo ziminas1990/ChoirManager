@@ -17,6 +17,20 @@ const deposit_manager_send_transactions_schema = z.object({
     limit: z.number().optional().describe("Optional max number of transactions to show."),
 }).strict();
 
+const DEPOSIT_MANAGER_USE_CASES = `
+If user asks about deposit, membership fee, balance, or money info:
+- just call deposit_manager_send_deposit_info
+
+If user says they already paid but does not specify a new amount/date:
+- just call deposit_manager_already_paid
+
+If user says they deposited money:
+- just call deposit_manager_top_up
+
+If user asks for transaction history:
+- just call deposit_manager_send_transactions
+`.trim();
+
 export class DepositManagerTools implements IToolchain {
     constructor(
         private user: TelegramUser,
@@ -30,9 +44,13 @@ export class DepositManagerTools implements IToolchain {
     get_readme(): string {
         return [
             "Tools for deposit and membership fee operations.",
-            "Use deposit_manager_top_up when user reports a new deposit with amount.",
-            "Use deposit_manager_already_paid only when user says they already paid and does not provide a new amount/date.",
+            "Call deposit_manager_top_up when user reports a new deposit with amount.",
+            "Call deposit_manager_already_paid only when user says they already paid and does not provide a new amount/date.",
         ].join("\n");
+    }
+
+    get_use_cases(): string {
+        return DEPOSIT_MANAGER_USE_CASES;
     }
 
     get_tools(): Map<string, Tool> {

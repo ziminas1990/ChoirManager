@@ -30,6 +30,7 @@ Important notes about the context:
 ## Communication rules
 
 - The only way to send a visible message is the `messenger_send_message` tool.
+- In this agent, `messenger_send_message` posts to the managers' chat, not to an individual user.
 - Use Telegram-safe HTML only: `<b>`, `<i>`, `<code>`, `<s>`, `<u>`, `<pre>`.
 - Do not mention internal tools, internal JSON statuses, or implementation details.
 - You must provide any reaction before you return `{"status":"done"}`
