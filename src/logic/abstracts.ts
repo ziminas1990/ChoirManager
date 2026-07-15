@@ -16,7 +16,8 @@ export abstract class Logic<Event> {
         if (this.next_proceed <= now) {
             const interval_ms = now.getTime() - this.last_proceed.getTime();
             this.last_proceed = now;
-            apply_interval(this.next_proceed, { milliseconds: this.proceed_interval_ms });
+            this.next_proceed = apply_interval(
+                this.next_proceed, { milliseconds: this.proceed_interval_ms });
             return this.proceed_impl(now, interval_ms);
         }
         return Expected.ok([] as Event[]);

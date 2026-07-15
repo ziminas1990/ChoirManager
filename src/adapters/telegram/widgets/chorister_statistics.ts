@@ -135,7 +135,7 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
 
         const end = new Date();
         const begin = period_days
-            ? apply_interval(new Date(), { days: -period_days })
+            ? apply_interval(end, { days: -period_days })
             : new Date(0);
         const statistic = Analytic.chorister_statistic_request(
             Runtime.get_instance().get_database(),

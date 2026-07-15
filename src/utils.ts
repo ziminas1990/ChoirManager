@@ -17,8 +17,7 @@ export function seconds_since(date: Date): number {
     return (new Date().getTime() - date.getTime()) / 1000;
 }
 
-// Applies the specified 'interval' to the specified 'date' inplace(!). Return 'date'
-// object.
+// Returns a new Date with the specified interval applied to 'date'.
 export function apply_interval(
     date: Date,
     interval: {
@@ -28,23 +27,25 @@ export function apply_interval(
         seconds?: number;
     }
 ): Date {
+    const result = new Date(date.getTime());
+
     if (interval.months) {
-        date.setMonth(date.getMonth() + interval.months);
+        result.setMonth(result.getMonth() + interval.months);
     }
 
     if (interval.days) {
-        date.setDate(date.getDate() + interval.days);
+        result.setDate(result.getDate() + interval.days);
     }
 
     if (interval.seconds) {
-        date.setSeconds(date.getSeconds() + interval.seconds);
+        result.setSeconds(result.getSeconds() + interval.seconds);
     }
 
     if (interval.milliseconds) {
-        date.setMilliseconds(date.getMilliseconds() + interval.milliseconds);
+        result.setMilliseconds(result.getMilliseconds() + interval.milliseconds);
     }
 
-    return date;
+    return result;
 }
 
 export function split_to_columns<T>(list: T[], columns: number): T[][] {
