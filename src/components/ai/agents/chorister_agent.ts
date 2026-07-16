@@ -8,23 +8,44 @@ import { Agent } from "@src/components/ai/agent.js";
 import { IToolchain } from "@src/interfaces/llm.js";
 
 export class ChoristerAgent {
-    private agent?: Agent;
 
-    constructor(
-        private readonly config: AssistantConfig,
-        private readonly journal: Journal,
+    private constructor(
+        private readonly agent: Agent,
     ) {}
 
-    public async send_message(
-        message: string,
+    public static create(
+        config: AssistantConfig,
+        journal: Journal,
         tools: IToolchain,
-    ): Promise<Status> {
+    ): Expected<ChoristerAgent> {
         try {
-            const agent = this.get_or_create_agent(tools);
-            agent.add_user_messages([
+            const instruction = fs.readFileSync(config.prompt_file, "utf-8").trim();
+            journal.log().debug("assistant instructions:\n", instruction);
+
+            const agent = new Agent(
+                {
+                    instruction,
+                    ttl_ms: 30 * 60 * 1000,
+                    inactivity_timeout_ms: 6 * 60 * 60 * 1000,
+                    tool_calls_limit: 5,
+                    output_format: "json",
+                },
+                OpenaiAPI.get_llm(config.model),
+                journal,
+                tools,
+            );
+            return Expected.ok(new ChoristerAgent(agent));
+        } catch (e) {
+            return Expected.exception("failed to create chorister agent", e);
+        }
+    }
+
+    public async send_message(message: string): Promise<Status> {
+        try {
+            this.agent.add_user_messages([
                 { role: "user", content: message },
             ]);
-            const response = await agent.generate_response();
+            const response = await this.agent.generate_response();
             if (!response.ok) {
                 return Expected.err("agent failed to send message", response);
             }
@@ -43,37 +64,8 @@ export class ChoristerAgent {
     }
 
     public async add_response(message: string): Promise<Status> {
-        if (!this.agent) {
-            return Expected.ok(undefined);
-        }
         this.agent.add_assistant_message(`[bot to user]\n${message}`);
         return Expected.ok(undefined);
-    }
-
-    private get_or_create_agent(tools: IToolchain): Agent {
-        if (this.agent) {
-            return this.agent;
-        }
-
-        this.agent = new Agent(
-            {
-                instruction: this.get_instructions(),
-                ttl_ms: 30 * 60 * 1000,
-                inactivity_timeout_ms: 6 * 60 * 60 * 1000,
-                tool_calls_limit: 5,
-                output_format: "json",
-            },
-            OpenaiAPI.get_llm(this.config.model),
-            this.journal,
-            tools,
-        );
-        return this.agent;
-    }
-
-    private get_instructions(): string {
-        const instruction = fs.readFileSync(this.config.prompt_file, "utf-8").trim();
-        this.journal.log().debug("assistant instructions:\n", instruction);
-        return instruction;
     }
 }
 

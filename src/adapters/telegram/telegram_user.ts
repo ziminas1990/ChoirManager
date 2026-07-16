@@ -93,15 +93,11 @@ export class TelegramUser implements IUserAgent {
 
     // From IUserAgent
     as_chorister(): IChorister {
-        if (!this.chorister_dialog) {
-            this.chorister_dialog = new ChoristerDialog(
-                this,
-                this.dependencies.runtime,
-                this.journal,
-                this.dependencies.assistant,
-            );
+        const dialog = this.get_or_create_chorister_dialog();
+        if (!dialog.ok) {
+            throw new Error(dialog.error);
         }
-        return this.chorister_dialog;
+        return dialog.value;
     }
 
     // From IUserAgent
@@ -307,6 +303,23 @@ export class TelegramUser implements IUserAgent {
         }
     }
 
+    private get_or_create_chorister_dialog(): Expected<ChoristerDialog> {
+        if (this.chorister_dialog) {
+            return Expected.ok(this.chorister_dialog);
+        }
+        const created = ChoristerDialog.create(
+            this,
+            this.dependencies.runtime,
+            this.journal,
+            this.dependencies.assistant,
+        );
+        if (!created.ok) {
+            return created.wrap_error("failed to create chorister dialog");
+        }
+        this.chorister_dialog = created.value;
+        return created;
+    }
+
     private get_main_dialog(): ChoristerDialog | GuestDialog | undefined {
         if (this.user_info.is(Role.Guest)) {
             if (!this.guest_dialog) {
@@ -314,15 +327,12 @@ export class TelegramUser implements IUserAgent {
             }
             return this.guest_dialog;
         } else if (this.user_info.is(Role.Chorister)) {
-            if (!this.chorister_dialog) {
-                this.chorister_dialog = new ChoristerDialog(
-                    this,
-                    this.dependencies.runtime,
-                    this.journal,
-                    this.dependencies.assistant,
-                );
+            const dialog = this.get_or_create_chorister_dialog();
+            if (!dialog.ok) {
+                this.journal.log().error(`Failed to create chorister dialog: ${dialog.error}`);
+                return undefined;
             }
-            return this.chorister_dialog;
+            return dialog.value;
         }
         return undefined;
     }

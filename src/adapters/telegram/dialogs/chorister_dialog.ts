@@ -31,17 +31,72 @@ export class ChoristerDialog implements IChorister {
     private journal: Journal;
 
     private widgets: AbstractWidget[] = [];
-    private assistant_tools?: IToolchain;
-    private assistant?: ChoristerAgent;
+
+    static create(
+        user: TelegramUser,
+        runtime_config: RuntimeConfig,
+        parent_journal: Journal,
+        assistant_config?: AssistantConfig,
+    ): Expected<ChoristerDialog> {
+        const journal = parent_journal.child("chorister_dialog");
+        let dialog!: ChoristerDialog;
+
+        let assistant: ChoristerAgent | undefined;
+        if (assistant_config) {
+            const tools = ChoristerDialog.create_assistant_tools(user, journal, {
+                send_message: async (message: string) => dialog.send_assistant_message(message),
+                start_feedback: async (details?: string) => dialog.start_feedback_activity(details),
+            });
+            if (!tools.ok) {
+                return tools.wrap_error("failed to create assistant tools");
+            }
+            const created = ChoristerAgent.create(
+                assistant_config,
+                journal.child("assistant"),
+                tools.value,
+            );
+            if (!created.ok) {
+                return created.wrap_error("failed to create chorister assistant");
+            }
+            assistant = created.value;
+        }
+
+        dialog = new ChoristerDialog(user, runtime_config, journal, assistant);
+        return Expected.ok(dialog);
+    }
+
+    private static create_assistant_tools(
+        user: TelegramUser,
+        journal: Journal,
+        callbacks: {
+            send_message: (message: string) => Promise<Status>;
+            start_feedback: (details?: string) => Promise<Status>;
+        },
+    ): Expected<IToolchain> {
+        const tools = new ToolsMultiplexer(journal.child("tools"));
+        const statuses = [
+            tools.add_tool(new MessengerTools({
+                send_message: callbacks.send_message,
+            })),
+            tools.add_tool(new ScoresTools(user, journal)),
+            tools.add_tool(new DepositManagerTools(user, journal)),
+            tools.add_tool(new FeedbackTools(callbacks.start_feedback)),
+        ];
+        const failed = statuses.find(status => !status.ok);
+        if (failed) {
+            return failed.wrap_error("failed to register assistant tool");
+        }
+        return Expected.ok(tools);
+    }
 
     constructor(
         private user: TelegramUser,
         private readonly runtime_config: RuntimeConfig,
-        parent_journal: Journal,
-        private readonly assistant_config?: AssistantConfig,
+        journal: Journal,
+        private readonly assistant?: ChoristerAgent,
     )
     {
-        this.journal = parent_journal.child("chorister_dialog");
+        this.journal = journal;
     }
 
     base(): IUserAgent {
@@ -190,39 +245,10 @@ export class ChoristerDialog implements IChorister {
     }
 
     private async dialog_with_assistant(message: string): Promise<Status> {
-        if (!this.assistant_config) {
+        if (!this.assistant) {
             return Expected.ok(undefined);
         }
-        this.assistant ??= new ChoristerAgent(
-            this.assistant_config,
-            this.journal.child("assistant"),
-        );
-        return this.assistant.send_message(message, this.get_assistant_tools());
-    }
-
-    private get_assistant_tools(): IToolchain {
-        if (this.assistant_tools) {
-            return this.assistant_tools;
-        }
-
-        const tools = new ToolsMultiplexer(this.journal.child("tools"));
-        const statuses = [
-            tools.add_tool(new MessengerTools({
-                send_message: async (message: string) => this.send_assistant_message(message),
-            })),
-            tools.add_tool(new ScoresTools(this.user, this.journal)),
-            tools.add_tool(new DepositManagerTools(this.user, this.journal)),
-            tools.add_tool(new FeedbackTools(
-                async (details?: string) => this.start_feedback_activity(details),
-            )),
-        ];
-        const failed = statuses.find(status => !status.ok);
-        if (failed) {
-            throw new Error(failed.error);
-        }
-
-        this.assistant_tools = tools;
-        return tools;
+        return this.assistant.send_message(message);
     }
 
     private async on_service_message(text: string): Promise<Status> {
