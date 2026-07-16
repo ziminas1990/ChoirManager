@@ -21,7 +21,6 @@ import { AnnouncesChat } from "@src/use_cases/announces_chat";
 import { DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
 import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
-import { TaskTracker } from "@src/logic/task_tracker.js";
 
 export type Config = {
     token_file: string;
@@ -42,7 +41,6 @@ type TgAdapterDependencies = {
     deposit_tracking?: DepositTrackingConfig;
     runtime: RuntimeConfig;
     assistant?: AssistantConfig;
-    get_task_tracker?: () => TaskTracker | undefined;
 }
 
 export class TgAdapter extends Logic<void> implements IAdapter {

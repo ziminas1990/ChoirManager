@@ -16,13 +16,11 @@ import { AdminDialog } from "./dialogs/admin_dialog.js";
 import { DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
 import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
-import { TaskTracker } from "@src/logic/task_tracker.js";
 
 type TelegramUserDependencies = {
     deposit_tracking?: DepositTrackingConfig;
     runtime: RuntimeConfig;
     assistant?: AssistantConfig;
-    get_task_tracker?: () => TaskTracker | undefined;
 }
 
 export class TelegramUser implements IUserAgent {
@@ -314,7 +312,6 @@ export class TelegramUser implements IUserAgent {
             this.dependencies.runtime,
             this.journal,
             this.dependencies.assistant,
-            this.dependencies.get_task_tracker?.(),
         );
         if (!created.ok) {
             return created.wrap_error("failed to create chorister dialog");

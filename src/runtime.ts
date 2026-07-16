@@ -30,7 +30,8 @@ import { ITransactionsStorage } from "./interfaces/transactions_storage.js";
 import { TransactionStorageFactory } from "./adapters/transactions_storage/factory.js";
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
 import { AttendanceTracker } from "./logic/attendance_tracker.js";
-import { TaskTracker, TaskTrackerEvent } from "./logic/task_tracker.js";
+import { TaskTracker } from "./logic/task_tracker.js";
+import { TaskTrackerEvent, TaskTrackerInstance } from "./interfaces/task_tracker.js";
 import { ManagersAgent } from "./components/ai/agents/managers_agent.js";
 import { TaskTrackerTools } from "./components/ai/tools/task_tracker_tools.js";
 
@@ -181,7 +182,6 @@ export class Runtime {
                     deposit_tracking: this.config.deposit_tracking,
                     runtime: this.config.runtime,
                     assistant: this.config.assistant,
-                    get_task_tracker: () => this.task_tracker,
                 }, this.journal);
             }
             const status = await this.tg_adapter.init();
@@ -329,6 +329,7 @@ export class Runtime {
             if (!init_status.ok) {
                 return init_status.wrap_error("Failed to initialize task tracker");
             }
+            TaskTrackerInstance.set_instance(this.task_tracker);
         }
 
         if (this.config.json.managers_chat) {
@@ -349,13 +350,8 @@ export class Runtime {
 
         if (this.config.managers_chat_agent && this.managers_chat) {
             this.journal.log().info("Initializing managers chat agent...");
-            const task_tracker_tools = this.task_tracker
-                ? new TaskTrackerTools(
-                    (filter) => this.task_tracker!.get_tasks(filter),
-                    (task) => this.task_tracker!.create_task(task),
-                    (task) => this.task_tracker!.update_task(task),
-                    (task) => this.task_tracker!.delete_task(task),
-                )
+            const task_tracker_tools = TaskTrackerInstance.has_instance()
+                ? new TaskTrackerTools(TaskTrackerInstance.get_instance())
                 : undefined;
             this.managers_agent = new ManagersAgent(
                 this.config.managers_chat_agent,
@@ -435,10 +431,6 @@ export class Runtime {
 
     get_managers_agent(): ManagersAgent | undefined {
         return this.managers_agent;
-    }
-
-    get_task_tracker(): TaskTracker | undefined {
-        return this.task_tracker;
     }
 
     get_announce_chat(): GroupChat | undefined {
@@ -680,7 +672,6 @@ export class Runtime {
                     deposit_tracking: config.deposit_tracking,
                     runtime: config.runtime,
                     assistant: config.assistant,
-                    get_task_tracker: () => runtime.get_task_tracker(),
                 },
                 packed.tg_adapter,
                 journal,

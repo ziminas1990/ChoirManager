@@ -8,7 +8,7 @@ import {
     get_task_id,
 } from "@src/entities/task.js";
 import { IBroadcaster } from "@src/interfaces/message_queue.js";
-import { ITaskTracker } from "@src/interfaces/task_tracker.js";
+import { ITaskTracker, TaskTrackerEvent } from "@src/interfaces/task_tracker.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -41,21 +41,7 @@ function is_deadline_notification_day(deadline: Date, now: Date): boolean {
     return days >= 0 && (DEADLINE_NOTIFICATION_DAYS as readonly number[]).includes(days);
 }
 
-export type TaskTrackerEvent = {
-    what: "new_task",
-    task: TaskData,
-} | {
-    what: "task_updated",
-    update: TaskUpdate[],
-} | {
-    what: "task_deleted",
-    task: TaskData,
-} | {
-    what: "deadline_notification",
-    tasks: TaskData[],
-}
-
-export class TaskTracker extends Logic<void> {
+export class TaskTracker extends Logic<void> implements ITaskTracker {
     private readonly journal: Journal;
 
     private tasks: Map<string, TaskData> = new Map();
@@ -71,11 +57,11 @@ export class TaskTracker extends Logic<void> {
         this.journal = parent_journal.child("task_tracker_logic");
     }
 
-    get_tasks(filter?: TaskFilter): TaskData[] {
-        return filter_tasks(Array.from(this.tasks.values()), filter);
+    async fetch(filter?: TaskFilter): Promise<Expected<TaskData[]>> {
+        return Expected.ok(filter_tasks(Array.from(this.tasks.values()), filter));
     }
 
-    async create_task(task: NewTaskData): Promise<Expected<TaskData>> {
+    async create(task: NewTaskData): Promise<Expected<TaskData>> {
         const created_status = await this.adapter.create(task);
         if (!created_status.ok) {
             return created_status.wrap_error("failed to create task");
@@ -95,7 +81,7 @@ export class TaskTracker extends Logic<void> {
         return Expected.ok(created);
     }
 
-    async update_task(task: TaskData): Promise<Expected<TaskUpdate>> {
+    async update(task: TaskData): Promise<Expected<TaskUpdate>> {
         if (!this.tasks.has(get_task_id(task))) {
             return Expected.err("task not found in local snapshot");
         }
@@ -120,7 +106,7 @@ export class TaskTracker extends Logic<void> {
         return update_status;
     }
 
-    async delete_task(task: TaskData): Promise<Expected<TaskData>> {
+    async delete(task: TaskData): Promise<Expected<TaskData>> {
         if (!this.tasks.has(get_task_id(task))) {
             return Expected.err("task not found in local snapshot");
         }
@@ -160,7 +146,13 @@ export class TaskTracker extends Logic<void> {
     }
 
     protected async proceed_impl(now: Date, _interval_ms: number): Promise<Expected<void[]>> {
-        const deadline_status = await this.maybe_send_deadline_notification(now, this.get_tasks());
+        const tasks_status = await this.fetch();
+        if (!tasks_status.ok) {
+            this.journal.log().warn(`Failed to fetch tasks for deadline notifications: ${tasks_status.error}`);
+            return Expected.ok([]);
+        }
+
+        const deadline_status = await this.maybe_send_deadline_notification(now, tasks_status.value);
         if (!deadline_status.ok) {
             this.journal.log().warn(`Failed to send deadline notifications: ${deadline_status.error}`);
         }

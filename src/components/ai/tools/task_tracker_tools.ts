@@ -1,10 +1,14 @@
 import { z } from "zod";
 
-import { NewTaskData, TaskData, TaskFilter, TaskStatus, TaskUpdate, get_task_id } from "@src/entities/task.js";
+import { TaskData, TaskFilter, TaskStatus, TaskUpdate, get_task_id } from "@src/entities/task.js";
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
+import { ITaskTracker } from "@src/interfaces/task_tracker.js";
 import { parse_optional_datetime } from "@src/utils/common_parsers.js";
 import { Expected } from "@src/utils/expected.js";
-import { parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
+import { empty_parameters_schema, parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
+
+const OPEN_TASK_STATUSES: TaskStatus[] = ["pending", "in_progress"];
+const GET_ALL_TASKS_LIMIT = 50;
 
 const task_status_schema = z.enum([
     "pending",
@@ -13,12 +17,6 @@ const task_status_schema = z.enum([
     "cancelled",
 ] satisfies [TaskStatus, ...TaskStatus[]]);
 
-const get_tasks_schema = z.object({
-    status: z.array(task_status_schema)
-        .optional()
-        .describe("Optional list of task statuses to include."),
-}).strict();
-
 const task_datetime_schema = z.string()
     .trim()
     .min(1)
@@ -26,6 +24,12 @@ const task_datetime_schema = z.string()
 
 const nullable_text_schema = z.union([z.string().trim().min(1), z.null()]);
 const nullable_datetime_schema = z.union([task_datetime_schema, z.null()]);
+
+const get_all_tasks_schema = z.object({
+    status: z.array(task_status_schema)
+        .optional()
+        .describe("Optional list of task statuses to include."),
+}).strict();
 
 const create_task_schema = z.object({
     title: z.string().trim().min(1).describe("Task title."),
@@ -42,7 +46,7 @@ const create_task_schema = z.object({
 }).strict();
 
 const update_task_schema = z.object({
-    task_id: z.string().trim().min(1).describe("Task id returned by get_tasks."),
+    task_id: z.string().trim().min(1).describe("Task id returned by get_opened_tasks or get_all_tasks."),
     author: z.string().trim().min(1).optional().describe("New task author."),
     title: z.string().trim().min(1).optional().describe("New task title."),
     comment: nullable_text_schema.optional().describe("Set to a string to update comment, or null to clear it."),
@@ -53,7 +57,7 @@ const update_task_schema = z.object({
 }).strict();
 
 const delete_task_schema = z.object({
-    task_id: z.string().trim().min(1).describe("Task id returned by get_tasks."),
+    task_id: z.string().trim().min(1).describe("Task id returned by get_opened_tasks or get_all_tasks."),
 }).strict();
 
 type SerializableTaskData = Omit<TaskData, "created_at" | "deadline"> & {
@@ -108,12 +112,45 @@ function has_task_changes(parameters: z.infer<typeof update_task_schema>): boole
     return UPDATEABLE_FIELDS.some(field => Object.prototype.hasOwnProperty.call(parameters, field));
 }
 
+const TASK_TRACKER_USE_CASES = `
+If user asks to list, show, or inspect tasks without explicitly asking to include (completed/cancelled) tasks:
+- call get_opened_tasks
+- send a message with the relevant tasks from the result
+
+If user explicitly asks to list, show, or inspect tasks including completed/cancelled tasks:
+- call get_all_tasks, optionally with a status filter
+- if the tool fails because too many tasks match, ask the user to narrow by status, then retry with a status filter
+- send a message with the relevant tasks from the result
+
+If user explicitly asks to create a new task:
+- just call create_task with the provided fields
+- do not send a confirmation message; the task tracker event will appear in the chat automatically
+
+If user asks to update, reassign, reschedule, complete, cancel, or otherwise edit a task:
+- call get_opened_tasks first to find a target open task
+- if the target may be a completed/cancelled task, call get_all_tasks with an appropriate status filter
+- if more than one task matches or the target is ambiguous, ask a clarifying question instead of guessing
+- once the task is identified unambiguously, call update_task with only the fields that should change
+- if the result has changed=true, do not send a confirmation message; the task tracker event will appear in the chat automatically
+- if the result has changed=false, send a short message explaining that nothing changed
+
+If user explicitly asks to delete a task:
+- call get_opened_tasks first to find a target open task
+- if the target may be a completed/cancelled task, call get_all_tasks with an appropriate status filter
+- if more than one task matches or the target is ambiguous, ask a clarifying question instead of guessing
+- once the task is identified unambiguously, call delete_task
+- do not send a confirmation message; the task tracker event will appear in the chat automatically
+
+If any task tracker tool call fails:
+- send a short message that the request could not be completed and include the error reason
+
+General rules:
+- Never show task_id to the user unless the user explicitly asked for it
+`.trim();
+
 export class TaskTrackerTools implements IToolchain {
     constructor(
-        private readonly get_tasks: (filter?: TaskFilter) => TaskData[],
-        private readonly create_task: (task: NewTaskData) => Promise<Expected<TaskData>>,
-        private readonly update_task: (task: TaskData) => Promise<Expected<TaskUpdate>>,
-        private readonly delete_task: (task: TaskData) => Promise<Expected<TaskData>>,
+        private readonly task_tracker: ITaskTracker,
     ) {}
 
     get_name(): string {
@@ -123,7 +160,10 @@ export class TaskTrackerTools implements IToolchain {
     get_readme(): string {
         return [
             "Tools for querying and mutating tasks from the task tracker database.",
-            "Use get_tasks to inspect tasks and obtain their task_id values before updating or deleting.",
+            "Use get_opened_tasks by default to inspect open tasks (pending, in_progress).",
+            "Use get_all_tasks only when the user explicitly asks to include closed tasks, or asks about tasks that were changed/worked on.",
+            "get_all_tasks accepts an optional status filter and rejects result sets larger than 50 tasks.",
+            "Never show task_id to the user unless the user explicitly asked for it; use it only as an internal identifier for update_task and delete_task.",
             "Use create_task only for explicit requests to create a task.",
             "Use update_task only when the target task is identified unambiguously by task_id.",
             "Use delete_task only for explicit deletion requests and only after identifying the task by task_id.",
@@ -132,20 +172,32 @@ export class TaskTrackerTools implements IToolchain {
     }
 
     get_use_cases(): string {
-        return "";
+        return TASK_TRACKER_USE_CASES;
     }
 
     get_tools(): Map<string, Tool> {
         return new Map([
-            ["get_tasks", tool_from_schema(
-                "get_tasks",
+            ["get_opened_tasks", tool_from_schema(
+                "get_opened_tasks",
                 [
-                    "Fetch tasks from the task tracker database.",
+                    "Fetch open tasks from the task tracker database.",
+                    "Returns only pending and in_progress tasks.",
                     "Returns a JSON object with a 'tasks' array.",
                     "Each task includes a stable task_id.",
-                    "Optional status filter accepts: pending, in_progress, completed, cancelled.",
                 ].join("\n"),
-                get_tasks_schema,
+                empty_parameters_schema,
+            )],
+            ["get_all_tasks", tool_from_schema(
+                "get_all_tasks",
+                [
+                    "Fetch tasks from the task tracker database, including closed ones when no status filter is set.",
+                    "Prefer get_opened_tasks unless the user explicitly asks to include completed/cancelled tasks or asks about changed/worked-on tasks.",
+                    "Optional filter: status.",
+                    `Rejects the request if more than ${GET_ALL_TASKS_LIMIT} tasks match; narrow by status and retry.`,
+                    "Returns a JSON object with a 'tasks' array.",
+                    "Each task includes a stable task_id.",
+                ].join("\n"),
+                get_all_tasks_schema,
             )],
             ["create_task", tool_from_schema(
                 "create_task",
@@ -170,7 +222,6 @@ export class TaskTrackerTools implements IToolchain {
                 "delete_task",
                 [
                     "Delete an existing task identified by task_id.",
-                    "Use get_tasks first if you need to locate the right task.",
                 ].join("\n"),
                 delete_task_schema,
             )],
@@ -179,8 +230,21 @@ export class TaskTrackerTools implements IToolchain {
 
     async call_tool(name: string, parameters: Record<string, unknown>): Promise<Expected<string>> {
         try {
-            if (name === "get_tasks") {
-                const parsed = parse_tool_parameters(get_tasks_schema, parameters);
+            if (name === "get_opened_tasks") {
+                const parsed = parse_tool_parameters(empty_parameters_schema, parameters);
+                if (!parsed.ok) {
+                    return Expected.err(parsed.error);
+                }
+
+                const fetched = await this.task_tracker.fetch({ status: OPEN_TASK_STATUSES });
+                if (!fetched.ok) {
+                    return Expected.err(fetched.error);
+                }
+                return Expected.ok(return_tasks(fetched.value));
+            }
+
+            if (name === "get_all_tasks") {
+                const parsed = parse_tool_parameters(get_all_tasks_schema, parameters);
                 if (!parsed.ok) {
                     return Expected.err(parsed.error);
                 }
@@ -188,8 +252,18 @@ export class TaskTrackerTools implements IToolchain {
                 const filter: TaskFilter | undefined = parsed.value.status === undefined
                     ? undefined
                     : { status: parsed.value.status };
+                const fetched = await this.task_tracker.fetch(filter);
+                if (!fetched.ok) {
+                    return Expected.err(fetched.error);
+                }
+                if (fetched.value.length > GET_ALL_TASKS_LIMIT) {
+                    return Expected.err(
+                        `too many tasks match the query (${fetched.value.length} > ${GET_ALL_TASKS_LIMIT}); `
+                        + "narrow the query by status",
+                    );
+                }
 
-                return Expected.ok(return_tasks(this.get_tasks(filter)));
+                return Expected.ok(return_tasks(fetched.value));
             }
 
             if (name === "create_task") {
@@ -203,7 +277,7 @@ export class TaskTrackerTools implements IToolchain {
                     return Expected.err(deadline_status.error);
                 }
 
-                const created = await this.create_task({
+                const created = await this.task_tracker.create({
                     author: parsed.value.author ?? DEFAULT_AUTHOR,
                     title: parsed.value.title,
                     comment: parsed.value.comment,
@@ -226,7 +300,11 @@ export class TaskTrackerTools implements IToolchain {
                     return Expected.err("at least one task field must be provided for update");
                 }
 
-                const existing = this.get_tasks().find(task => get_task_id(task) === parsed.value.task_id);
+                const fetched = await this.task_tracker.fetch();
+                if (!fetched.ok) {
+                    return Expected.err(fetched.error);
+                }
+                const existing = fetched.value.find(task => get_task_id(task) === parsed.value.task_id);
                 if (!existing) {
                     return Expected.err(`task with id '${parsed.value.task_id}' not found`);
                 }
@@ -259,7 +337,7 @@ export class TaskTrackerTools implements IToolchain {
                     next.assignee = parsed.value.assignee ?? undefined;
                 }
 
-                const updated = await this.update_task(next);
+                const updated = await this.task_tracker.update(next);
                 return updated.ok
                     ? Expected.ok(return_updated_task(updated.value.next, updated.value))
                     : Expected.err(updated.error);
@@ -271,12 +349,16 @@ export class TaskTrackerTools implements IToolchain {
                     return Expected.err(parsed.error);
                 }
 
-                const existing = this.get_tasks().find(task => get_task_id(task) === parsed.value.task_id);
+                const fetched = await this.task_tracker.fetch();
+                if (!fetched.ok) {
+                    return Expected.err(fetched.error);
+                }
+                const existing = fetched.value.find(task => get_task_id(task) === parsed.value.task_id);
                 if (!existing) {
                     return Expected.err(`task with id '${parsed.value.task_id}' not found`);
                 }
 
-                const deleted = await this.delete_task(existing);
+                const deleted = await this.task_tracker.delete(existing);
                 return deleted.ok
                     ? Expected.ok(return_deleted_task(deleted.value))
                     : Expected.err(deleted.error);

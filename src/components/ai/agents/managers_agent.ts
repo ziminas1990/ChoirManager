@@ -11,8 +11,8 @@ import { IBroadcaster, ISubscription } from "@src/interfaces/message_queue.js";
 import { Journal } from "@src/journal.js";
 import { render_task_tracker_event } from "@src/utils/string_engine/task_tracker.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { GroupChat, GroupChatMessage } from "../../../logic/group_chat.js";
-import { TaskTrackerEvent } from "../../../logic/task_tracker.js";
+import { GroupChat, GroupChatMessage } from "@src/logic/group_chat.js";
+import { TaskTrackerEvent } from "@src/interfaces/task_tracker.js";
 
 type AgentResponse = {
     status: "done";

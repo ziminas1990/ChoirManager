@@ -35,36 +35,40 @@ Status is one of: `pending`, `in_progress`, `completed`, `cancelled`.
 
 Tasks can be filtered by status. A task update records the previous and next task state and lists only the fields that actually changed.
 
-## `ITaskTracker` adapter API
+## `ITaskTracker` API
 
-The adapter exposes four operations:
+`ITaskTracker` exposes four operations:
 
-- **fetch** — read all task documents from Firestore, normalize them, and return the result, optionally filtered by status.
-- **create** — generate `id`, `schema`, and `created_at`, write the document to Firestore, read it back, and return the persisted task.
-- **update** — read the stored task by `id`, persist changes to Firestore, read the stored document back, and return a diff with only changed fields. If nothing changed, return without writing to Firestore.
-- **delete** — read the stored task by `id`, delete the Firestore document, and return the deleted task snapshot.
+- **fetch** — return tasks, optionally filtered by status.
+- **create** — create a task and return the persisted result.
+- **update** — persist task changes and return a diff with only changed fields. If nothing changed, return without writing.
+- **delete** — delete a task and return the deleted task snapshot.
+
+The Firestore adapter implements this interface against the database. `TaskTracker` logic also implements the same interface as a facade over its in-memory snapshot and the adapter.
+
+Consumers access the runtime tracker through `TaskTrackerInstance`. Runtime registers the logic instance with `TaskTrackerInstance.set_instance(...)` after a successful `init()`. Call sites use `TaskTrackerInstance.has_instance()` / `TaskTrackerInstance.get_instance()` instead of receiving the tracker through dependency injection.
 
 ## `TaskTracker` logic
 
-`TaskTracker` is a `Logic` component that:
+`TaskTracker` is a `Logic` component that implements `ITaskTracker` and:
 
 1. hydrates its in-memory snapshot from the adapter on startup;
 2. keeps the snapshot keyed by `id` as the authoritative runtime cache;
-3. serves `get_tasks()` from that snapshot without calling the adapter;
-4. exposes imperative write methods that delegate to the adapter;
+3. serves `fetch()` from that snapshot without calling the adapter;
+4. implements `create`, `update`, and `delete` by delegating to the adapter;
 5. broadcasts events immediately after successful writes.
 
 `TaskTracker` does not poll the database for external changes.
 
 ### Startup
 
-On `init()`, `TaskTracker` calls `adapter.fetch()` to load the initial snapshot and may emit a `deadline_notification` on the same schedule as during normal operation.
+On `init()`, `TaskTracker` calls `adapter.fetch()` to load the initial snapshot and may emit a `deadline_notification` on the same schedule as during normal operation. After init succeeds, Runtime registers the tracker in `TaskTrackerInstance`.
 
 ### Imperative methods
 
-`TaskTracker` exposes `create_task`, `update_task`, and `delete_task`. Each method calls the adapter, updates the local snapshot only after a successful response, and broadcasts an event immediately.
+`TaskTracker` exposes `create`, `update`, and `delete` from `ITaskTracker`. Each method calls the adapter, updates the local snapshot only after a successful response, and broadcasts an event immediately.
 
-`update_task` broadcasts only when at least one field changed. `update_task` and `delete_task` require the task to exist in the local snapshot.
+`update` broadcasts only when at least one field changed. `update` and `delete` require the task to exist in the local snapshot.
 
 ### Periodic processing
 
@@ -85,7 +89,7 @@ On each `proceed()` cycle, `TaskTracker` checks whether a `deadline_notification
 
 ## `GoogleFirestoreTaskTracker`
 
-The only `ITaskTracker` implementation stores each task as a separate Firestore document.
+The Firestore adapter is the persistence `ITaskTracker` implementation. It stores each task as a separate Firestore document.
 
 ### Firestore layout
 
@@ -147,7 +151,10 @@ When both `managers_chat_agent` and `task_tracker` are configured, `ManagersAgen
 
 It exposes:
 
-- `get_tasks` — returns tasks as JSON, optionally filtered by status. Each task also includes a tool-facing `task_id` equal to the task `id`.
-- `create_task` — creates a task through `TaskTracker.create_task(...)`.
-- `update_task` — applies a partial patch to a task identified by `task_id`, then delegates to `TaskTracker.update_task(...)`.
-- `delete_task` — deletes a task identified by `task_id` through `TaskTracker.delete_task(...)`.
+- `get_opened_tasks` — returns open tasks (`pending`, `in_progress`) as JSON. Each task also includes a tool-facing `task_id` equal to the task `id`. This is the default listing tool, including when the user says "show all tasks".
+- `get_all_tasks` — returns tasks including closed ones when no status filter is set. Accepts an optional `status` filter. Rejects the request if more than 50 tasks match. Used when the user explicitly asks to include completed/cancelled tasks, or asks about tasks that were changed or worked on.
+- `create_task` — creates a task through `TaskTracker.create(...)`.
+- `update_task` — applies a partial patch to a task identified by `task_id`, then delegates to `TaskTracker.update(...)`.
+- `delete_task` — deletes a task identified by `task_id` through `TaskTracker.delete(...)`.
+
+`task_id` is for tool use only. The agent must not show it to the user unless the user explicitly asked for task ids.
