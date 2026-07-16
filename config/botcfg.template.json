@@ -47,8 +47,7 @@
     },
     "assistant": {
         "model": "gpt-5.4",
-        "fetch_interval_sec": 600,
-        "faq_document_id": ""
+        "prompt_file": "./config/prompts/chorister_agent.md"
     },
     "feedback_storage": {
         "type": "google_spreadsheet",

@@ -181,6 +181,7 @@ export class Runtime {
                     deposit_tracking: this.config.deposit_tracking,
                     runtime: this.config.runtime,
                     assistant: this.config.assistant,
+                    get_task_tracker: () => this.task_tracker,
                 }, this.journal);
             }
             const status = await this.tg_adapter.init();
@@ -436,6 +437,10 @@ export class Runtime {
         return this.managers_agent;
     }
 
+    get_task_tracker(): TaskTracker | undefined {
+        return this.task_tracker;
+    }
+
     get_announce_chat(): GroupChat | undefined {
         return this.announce_chat;
     }
@@ -675,6 +680,7 @@ export class Runtime {
                     deposit_tracking: config.deposit_tracking,
                     runtime: config.runtime,
                     assistant: config.assistant,
+                    get_task_tracker: () => runtime.get_task_tracker(),
                 },
                 packed.tg_adapter,
                 journal,

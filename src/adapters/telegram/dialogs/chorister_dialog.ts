@@ -19,6 +19,7 @@ import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/choris
 import { build_user_assistant_tools } from "@src/components/ai/user_agent_tools_factory.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { AssistantConfig } from "@src/config.js";
+import { TaskTracker } from "@src/logic/task_tracker.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -32,16 +33,23 @@ export class ChoristerDialog implements IChorister {
         runtime_config: RuntimeConfig,
         parent_journal: Journal,
         assistant_config?: AssistantConfig,
+        task_tracker?: TaskTracker,
     ): Expected<ChoristerDialog> {
         const journal = parent_journal.child("chorister_dialog");
         let dialog!: ChoristerDialog;
 
         let assistant: ChoristerAgent | undefined;
         if (assistant_config) {
-            const tools = build_user_assistant_tools(user, journal, {
-                send_message: async (message: string) => dialog.send_assistant_message(message),
-                start_feedback: async (details?: string) => dialog.start_feedback_activity(details),
-            });
+            const tools = build_user_assistant_tools(
+                user,
+                user.info(),
+                journal,
+                {
+                    send_message: async (message: string) => dialog.send_assistant_message(message),
+                    start_feedback: async (details?: string) => dialog.start_feedback_activity(details),
+                },
+                task_tracker,
+            );
             if (!tools.ok) {
                 return tools.wrap_error("failed to create assistant tools");
             }
