@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
+import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Journal } from "@src/journal.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { Expected } from "@src/utils/expected.js";
@@ -33,7 +33,7 @@ If user asks for transaction history:
 
 export class DepositManagerTools implements IToolchain {
     constructor(
-        private user: TelegramUser,
+        private user: IUserAgent,
         private journal: Journal,
     ) {}
 

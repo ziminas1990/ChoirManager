@@ -16,12 +16,7 @@ import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity
 import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
 import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/chorister_statistics.js";
-import { IToolchain } from "@src/interfaces/llm.js";
-import { DepositManagerTools } from "@src/components/ai/tools/deposit_manager_tools.js";
-import { FeedbackTools } from "@src/components/ai/tools/feedback_tools.js";
-import { MessengerTools } from "@src/components/ai/tools/messenger_tools.js";
-import { ScoresTools } from "@src/components/ai/tools/scores_tools.js";
-import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
+import { build_user_assistant_tools } from "@src/components/ai/user_agent_tools_factory.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { AssistantConfig } from "@src/config.js";
 
@@ -43,7 +38,7 @@ export class ChoristerDialog implements IChorister {
 
         let assistant: ChoristerAgent | undefined;
         if (assistant_config) {
-            const tools = ChoristerDialog.create_assistant_tools(user, journal, {
+            const tools = build_user_assistant_tools(user, journal, {
                 send_message: async (message: string) => dialog.send_assistant_message(message),
                 start_feedback: async (details?: string) => dialog.start_feedback_activity(details),
             });
@@ -63,30 +58,6 @@ export class ChoristerDialog implements IChorister {
 
         dialog = new ChoristerDialog(user, runtime_config, journal, assistant);
         return Expected.ok(dialog);
-    }
-
-    private static create_assistant_tools(
-        user: TelegramUser,
-        journal: Journal,
-        callbacks: {
-            send_message: (message: string) => Promise<Status>;
-            start_feedback: (details?: string) => Promise<Status>;
-        },
-    ): Expected<IToolchain> {
-        const tools = new ToolsMultiplexer(journal.child("tools"));
-        const statuses = [
-            tools.add_tool(new MessengerTools({
-                send_message: callbacks.send_message,
-            })),
-            tools.add_tool(new ScoresTools(user, journal)),
-            tools.add_tool(new DepositManagerTools(user, journal)),
-            tools.add_tool(new FeedbackTools(callbacks.start_feedback)),
-        ];
-        const failed = statuses.find(status => !status.ok);
-        if (failed) {
-            return failed.wrap_error("failed to register assistant tool");
-        }
-        return Expected.ok(tools);
     }
 
     constructor(
