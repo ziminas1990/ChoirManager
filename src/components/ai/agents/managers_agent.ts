@@ -3,7 +3,6 @@ import fs from "fs";
 import { OpenaiAPI } from "@src/api/openai.js";
 import { Agent } from "@src/components/ai/agent.js";
 import { MessengerTools } from "@src/components/ai/tools/messenger_tools.js";
-import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 import { ManagersChatAgentConfig } from "@src/config.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
 import { IToolchain, Message } from "@src/interfaces/llm.js";
@@ -86,20 +85,6 @@ export class ManagersAgent {
             return instruction_status.wrap_error("failed to read managers agent prompt");
         }
 
-        const tools = new ToolsMultiplexer(this.journal.child("tools"));
-        let status = tools.add_tool(new MessengerTools({
-            send_message: async (html_text) => (await this.publish_message(html_text)).as_status(),
-        }));
-        if (!status.ok) {
-            return status.wrap_error("failed to register managers messenger tools");
-        }
-        if (this.extra_tools) {
-            status = tools.add_tool(this.extra_tools);
-            if (!status.ok) {
-                return status.wrap_error("failed to register extra managers agent tools");
-            }
-        }
-
         this.agent = new Agent(
             {
                 instruction: instruction_status.value,
@@ -110,8 +95,20 @@ export class ManagersAgent {
             },
             OpenaiAPI.get_llm(this.config.model),
             this.journal,
-            tools,
         );
+
+        let status = this.agent.add_tool(new MessengerTools({
+            send_message: async (html_text) => (await this.publish_message(html_text)).as_status(),
+        }));
+        if (!status.ok) {
+            return status.wrap_error("failed to register managers messenger tools");
+        }
+        if (this.extra_tools) {
+            status = this.agent.add_tool(this.extra_tools);
+            if (!status.ok) {
+                return status.wrap_error("failed to register extra managers agent tools");
+            }
+        }
 
         const now = new Date();
         const from = new Date(now.getTime() - this.config.context_days * 24 * 60 * 60 * 1000);

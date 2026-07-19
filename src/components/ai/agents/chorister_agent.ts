@@ -8,36 +8,29 @@ import { Agent } from "@src/components/ai/agent.js";
 import { IToolchain } from "@src/interfaces/llm.js";
 
 export class ChoristerAgent {
+    private readonly agent: Agent;
 
-    private constructor(
-        private readonly agent: Agent,
-    ) {}
-
-    public static create(
+    constructor(
         config: AssistantConfig,
         journal: Journal,
-        tools: IToolchain,
-    ): Expected<ChoristerAgent> {
-        try {
-            const instruction = fs.readFileSync(config.prompt_file, "utf-8").trim();
-            journal.log().debug("assistant instructions:\n", instruction);
+    ) {
+        const instruction = fs.readFileSync(config.prompt_file, "utf-8").trim();
 
-            const agent = new Agent(
-                {
-                    instruction,
-                    ttl_ms: 30 * 60 * 1000,
-                    inactivity_timeout_ms: 6 * 60 * 60 * 1000,
-                    tool_calls_limit: 5,
-                    output_format: "json",
-                },
-                OpenaiAPI.get_llm(config.model),
-                journal,
-                tools,
-            );
-            return Expected.ok(new ChoristerAgent(agent));
-        } catch (e) {
-            return Expected.exception("failed to create chorister agent", e);
-        }
+        this.agent = new Agent(
+            {
+                instruction,
+                ttl_ms: 30 * 60 * 1000,
+                inactivity_timeout_ms: 6 * 60 * 60 * 1000,
+                tool_calls_limit: 5,
+                output_format: "json",
+            },
+            OpenaiAPI.get_llm(config.model),
+            journal,
+        );
+    }
+
+    public add_tool(toolchain: IToolchain): Status {
+        return this.agent.add_tool(toolchain);
     }
 
     public async send_message(message: string): Promise<Status> {

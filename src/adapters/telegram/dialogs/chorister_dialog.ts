@@ -16,9 +16,10 @@ import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity
 import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
 import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/chorister_statistics.js";
-import { build_user_assistant_tools } from "@src/components/ai/user_agent_tools_factory.js";
+import { register_user_assistant_tools } from "@src/components/ai/user_agent_tools_factory.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { AssistantConfig } from "@src/config.js";
+import { TaskTrackerInstance } from "@src/interfaces/task_tracker.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -38,7 +39,17 @@ export class ChoristerDialog implements IChorister {
 
         let assistant: ChoristerAgent | undefined;
         if (assistant_config) {
-            const tools = build_user_assistant_tools(
+            try {
+                assistant = new ChoristerAgent(
+                    assistant_config,
+                    journal.child("assistant"),
+                );
+            } catch (e) {
+                return Expected.exception("failed to create chorister assistant", e);
+            }
+
+            const tools_status = register_user_assistant_tools(
+                assistant,
                 user,
                 user.info(),
                 journal,
@@ -46,19 +57,13 @@ export class ChoristerDialog implements IChorister {
                     send_message: async (message: string) => dialog.send_assistant_message(message),
                     start_feedback: async (details?: string) => dialog.start_feedback_activity(details),
                 },
+                {
+                    task_tracker: TaskTrackerInstance.get_instance(),
+                },
             );
-            if (!tools.ok) {
-                return tools.wrap_error("failed to create assistant tools");
+            if (!tools_status.ok) {
+                return tools_status.wrap_error("failed to create assistant tools");
             }
-            const created = ChoristerAgent.create(
-                assistant_config,
-                journal.child("assistant"),
-                tools.value,
-            );
-            if (!created.ok) {
-                return created.wrap_error("failed to create chorister assistant");
-            }
-            assistant = created.value;
         }
 
         dialog = new ChoristerDialog(user, runtime_config, journal, assistant);

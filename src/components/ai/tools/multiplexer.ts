@@ -54,6 +54,21 @@ export class ToolsMultiplexer implements IToolchain {
         return Expected.ok(undefined);
     }
 
+    remove_tool(toolchain: IToolchain): Status {
+        const name = toolchain.get_name();
+        const registered = this.name2toolchain.get(name);
+        if (registered === undefined) {
+            return Expected.err(`Toolchain '${name}' is not registered`);
+        }
+
+        for (const tool of registered.get_tools().values()) {
+            this.function2toolchain.delete(tool.name);
+        }
+        this.name2toolchain.delete(name);
+        this.get_tools_cache = undefined;
+        return Expected.ok(undefined);
+    }
+
     get_name(): string {
         return "Tools_Multiplexer";
     }

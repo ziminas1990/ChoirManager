@@ -1,6 +1,7 @@
 import { ILLM, IToolchain, Message, ToolsOption } from "@src/interfaces/llm.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
+import { ToolsMultiplexer } from "./tools/multiplexer.js";
 
 type ContextItem = {
     time: Date;
@@ -19,8 +20,14 @@ export type AgentCfg = {
 const TOOLS_LIMIT_REACHED_MESSAGE =
     "Tools usage limit is reached, provide a response based on what you have.";
 
-function add_toolchain_to_context(context: ContextItem[], tools: IToolchain): void {
-    context.push({
+function build_tools_context(tools: IToolchain): ContextItem[] {
+    if (tools.get_tools().size === 0) {
+        return [];
+    }
+
+    const tools_context: ContextItem[] = [];
+
+    tools_context.push({
         time: new Date(),
         message: {
             role: "system",
@@ -31,7 +38,7 @@ function add_toolchain_to_context(context: ContextItem[], tools: IToolchain): vo
 
     const use_cases = tools.get_use_cases().trim();
     if (use_cases !== "") {
-        context.push({
+        tools_context.push({
             time: new Date(),
             message: {
                 role: "system",
@@ -49,7 +56,7 @@ function add_toolchain_to_context(context: ContextItem[], tools: IToolchain): vo
         ].join("\n"));
     }
 
-    context.push({
+    tools_context.push({
         time: new Date(),
         message: {
             role: "system",
@@ -57,6 +64,8 @@ function add_toolchain_to_context(context: ContextItem[], tools: IToolchain): vo
         },
         retention: "persistent",
     });
+
+    return tools_context;
 }
 
 export class Agent {
@@ -64,6 +73,8 @@ export class Agent {
 
     private journal: Journal;
     private context: ContextItem[] = [];
+    private tools_context: ContextItem[] = [];
+    private tools: ToolsMultiplexer;
     private last_activity?: Date;
 
     private busy: boolean = false;
@@ -73,10 +84,9 @@ export class Agent {
     }
 
     constructor(
-        cfg: AgentCfg,
+        private cfg: AgentCfg,
         private llm: ILLM,
         parent_journal: Journal,
-        private tools?: IToolchain
     ) {
         if (cfg.tool_calls_limit <= 0) {
             throw new Error("tool_calls_limit must be positive");
@@ -84,7 +94,7 @@ export class Agent {
 
         const agent_id = Agent.get_next_agent_id();
         this.journal = parent_journal.child(`agent.${agent_id}`);
-        this.cfg = cfg;
+        this.tools = new ToolsMultiplexer(this.journal.child("mux"));
 
         this.context.push({
             time: new Date(),
@@ -94,13 +104,25 @@ export class Agent {
             },
             retention: "persistent",
         });
-
-        if (tools !== undefined) {
-            add_toolchain_to_context(this.context, tools);
-        }
     }
 
-    private cfg: AgentCfg;
+    add_tool(toolchain: IToolchain): Status {
+        const status = this.tools.add_tool(toolchain);
+        if (!status.ok) {
+            return status;
+        }
+        this.tools_context = build_tools_context(this.tools);
+        return Expected.ok(undefined);
+    }
+
+    remove_tool(toolchain: IToolchain): Status {
+        const status = this.tools.remove_tool(toolchain);
+        if (!status.ok) {
+            return status;
+        }
+        this.tools_context = build_tools_context(this.tools);
+        return Expected.ok(undefined);
+    }
 
     add_user_messages(messages: Message[], time?: Date): void {
         for (const message of messages) {
@@ -150,7 +172,8 @@ export class Agent {
                 });
             }
 
-            const tools_option = this.tools !== undefined
+            const has_tools = this.tools.get_tools().size > 0;
+            const tools_option = has_tools
                 ? {
                     toolchain: this.tools,
                     choice: tools_limit_reached ? "none" : "auto",
@@ -184,7 +207,10 @@ export class Agent {
     }
 
     private get_context_messages(): Message[] {
-        return this.context.map(item => item.message);
+        return [
+            ...this.tools_context.map(item => item.message),
+            ...this.context.map(item => item.message),
+        ];
     }
 
     private async handle_llm_response(messages: Message[]): Promise<Status> {
@@ -209,7 +235,7 @@ export class Agent {
             let result_text: string;
 
             try {
-                if (this.tools === undefined) {
+                if (this.tools.get_tools().size === 0) {
                     result_text = "Tool execution has failed! Reason: no tools are available.";
                     this.journal.log().error({ tool: call.name, parameters: call.parameters }, result_text);
                 } else {
