@@ -1,0 +1,28 @@
+---
+description: Prefer // comments; never use block JSDoc /** */
+alwaysApply: true
+---
+
+# Comment style
+
+Never use block comments of the form `/** ... */` or `/* ... */`.
+
+Always use line comments with `//`.
+
+```typescript
+// BAD
+/** Stores a memory fact. */
+export function remember() {}
+
+/* multi-line
+   block comment */
+
+// GOOD
+// Stores a memory fact.
+export function remember() {}
+
+// Multi-line comments use
+// consecutive // lines.
+```
+
+This applies to TypeScript, JavaScript, and similar languages in this repo.

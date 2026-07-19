@@ -3,6 +3,7 @@ import fs from "fs";
 import { OpenaiAPI } from "@src/api/openai.js";
 import { Agent } from "@src/components/ai/agent.js";
 import { MessengerTools } from "@src/components/ai/tools/messenger_tools.js";
+import { SimpleMemoryTools } from "@src/components/ai/tools/simple_memory_tools.js";
 import { ManagersChatAgentConfig } from "@src/config.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
 import { IToolchain, Message } from "@src/interfaces/llm.js";
@@ -73,6 +74,7 @@ export class ManagersAgent {
         task_tracker_events: IBroadcaster<TaskTrackerEvent>,
         private readonly dependencies: ManagersAgentDependencies,
         private readonly extra_tools: IToolchain | undefined,
+        private readonly simple_memory_tools: SimpleMemoryTools | undefined,
         parent_journal: Journal,
     ) {
         this.journal = parent_journal.child("managers_agent");
@@ -107,6 +109,12 @@ export class ManagersAgent {
             status = this.agent.add_tool(this.extra_tools);
             if (!status.ok) {
                 return status.wrap_error("failed to register extra managers agent tools");
+            }
+        }
+        if (this.simple_memory_tools) {
+            status = this.agent.add_tool(this.simple_memory_tools);
+            if (!status.ok) {
+                return status.wrap_error("failed to register simple memory tools");
             }
         }
 

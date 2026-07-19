@@ -106,6 +106,16 @@
         "enable_notifications": true,
         "notification_time_utc": "08:00"
     },
+    "simple_memory": {
+        "database": {
+            "type": "google_firestore",
+            "database_id": "",
+            "collection_name": "memories"
+        },
+        "model": "gpt-5.6-luna",
+        "search_prompt_file": "./config/memory_service_search_prompt.md",
+        "ask_prompt_file": "./config/memory_service_ask_prompt.md"
+    },
     "attendance_tracker": {
         "skipped_rehersals_in_row": 3,
         "schedule_utc": [
