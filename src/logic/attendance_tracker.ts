@@ -5,6 +5,7 @@ import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IMessagesProvider } from "@src/interfaces/messages_provider.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
+import { AdminActions } from "@src/use_cases/admin_actions.js";
 import { Analytic } from "@src/use_cases/analytic.js";
 import { ChoristerAttendanceStat } from "@src/entities/statistics.js";
 import { apply_interval } from "@src/utils.js";
@@ -152,7 +153,6 @@ export class AttendanceTracker extends Logic<void> {
         const end = now;
         const begin = apply_interval(now, { days: -60 });
 
-        const managers_chat = await this.get_managers_chat();
         const chorister_stats = this.collect_chorister_stats(choristers, begin, end);
 
         const notified_choristers: User[] = [];
@@ -188,16 +188,8 @@ export class AttendanceTracker extends Logic<void> {
                         `Attendance reminder sent to ${chorister.name} (@${chorister.tgid})`);
                     notified_choristers.push(chorister);
 
-                    if (managers_chat) {
-                        const admin_message = `Notification to @${chorister.tgid} sent:\n\n${message}`;
-                        const admin_sent = await managers_chat.send_message(admin_message);
-                        if (!admin_sent.ok) {
-                            this.journal.log().warn({
-                                tgid: chorister.tgid,
-                                error: admin_sent.error,
-                            }, "Failed to send attendance reminder copy to managers chat");
-                        }
-                    }
+                    const admin_message = `Notification to @${chorister.tgid} sent:\n\n${message}`;
+                    await AdminActions.notify_all_admins(admin_message, this.journal);
                 } else {
                     this.journal.log().warn({
                         tgid: chorister.tgid,
