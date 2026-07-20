@@ -27,6 +27,11 @@ export interface ISimpleMemoryService {
     // Returns the removed fact, or an error if missing / not visible.
     forget(id: string, access: MemoryAccessContext): Promise<Expected<MemoryFact>>;
 
+    // Update the content of a fact if the caller may access it.
+    // Visibility and author are unchanged.
+    // Returns the updated fact, or an error if missing / not visible.
+    update(id: string, content: string, access: MemoryAccessContext): Promise<Expected<MemoryFact>>;
+
     // List facts visible to the caller under `access`.
     list(access: MemoryAccessContext): Promise<Expected<MemoryFact[]>>;
 

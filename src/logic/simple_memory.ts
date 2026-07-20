@@ -64,6 +64,35 @@ export class SimpleMemoryService implements ISimpleMemoryService {
         return Expected.ok(deleted.value);
     }
 
+    async update(
+        id: string,
+        content: string,
+        access: MemoryAccessContext,
+    ): Promise<Expected<MemoryFact>> {
+        const trimmed = content.trim();
+        if (trimmed.length === 0) {
+            return Expected.err("updated content must be non-empty");
+        }
+
+        const existing = this.get_visible(id, access);
+        if (!existing.ok) {
+            return existing;
+        }
+
+        const updated_fact: MemoryFact = {
+            ...existing.value,
+            content: trimmed,
+        };
+
+        const stored = await this.storage.update(updated_fact);
+        if (!stored.ok) {
+            return stored.wrap_error("failed to update fact");
+        }
+
+        this.facts.set(stored.value.id, stored.value);
+        return Expected.ok(stored.value);
+    }
+
     async list(access: MemoryAccessContext): Promise<Expected<MemoryFact[]>> {
         const visible = Array.from(this.facts.values())
             .filter((fact) => this.is_fact_visible(fact, access));

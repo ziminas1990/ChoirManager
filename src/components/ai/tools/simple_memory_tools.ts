@@ -27,6 +27,13 @@ const get_schema = z.object({
         .describe("Fact id returned by search or remember."),
 }).strict();
 
+const update_schema = z.object({
+    fact_id: z.string().trim().min(1)
+        .describe("Fact id of the fact to update."),
+    content: z.string().trim().min(1)
+        .describe("New fact text. Visibility and author are unchanged."),
+}).strict();
+
 const ask_schema = z.object({
     question: z.string().trim().min(1)
         .describe(
@@ -99,6 +106,7 @@ export class SimpleMemoryTools implements IToolchain {
             "Use ask when the user needs an answer based on remembered facts.",
             "Use remember when you need to remember some fact for future use.",
             "Use search + get when you need to find matching fact records.",
+            "Use update to modify the content of an existing fact.",
         ].join("\n");
     }
 
@@ -130,6 +138,15 @@ export class SimpleMemoryTools implements IToolchain {
                 "get",
                 "Get one memory fact by fact_id.",
                 get_schema,
+            )],
+            ["update", tool_from_schema(
+                "update",
+                [
+                    "Update the content of an existing memory fact by fact_id.",
+                    "Visibility and author are unchanged.",
+                    "Returns the updated fact.",
+                ].join("\n"),
+                update_schema,
             )],
             ["ask", tool_from_schema(
                 "ask",
@@ -187,6 +204,23 @@ export class SimpleMemoryTools implements IToolchain {
                     return Expected.err(fact.error);
                 }
                 return Expected.ok(JSON.stringify({ fact: serialize_fact(fact.value) }));
+            }
+
+            if (name === "update") {
+                const parsed = parse_tool_parameters(update_schema, parameters);
+                if (!parsed.ok) {
+                    return Expected.err(parsed.error);
+                }
+
+                const updated = await this.memory.update(
+                    parsed.value.fact_id,
+                    parsed.value.content,
+                    this.access,
+                );
+                if (!updated.ok) {
+                    return Expected.err(updated.error);
+                }
+                return Expected.ok(JSON.stringify({ fact: serialize_fact(updated.value) }));
             }
 
             if (name === "ask") {
