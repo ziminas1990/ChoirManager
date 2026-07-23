@@ -120,8 +120,8 @@
     "attendance_tracker": {
         "skipped_rehersals_in_row": 3,
         "schedule_utc": [
-            { "day_of_week_utc": 3, "time_utc": "12:00" },
-            { "day_of_week_utc": 0, "time_utc": "15:00" }
+            { "day_of_week_utc": 6, "time_utc": "15:00" },
+            { "day_of_week_utc": 2, "time_utc": "10:00" }
         ]
     }
 }
