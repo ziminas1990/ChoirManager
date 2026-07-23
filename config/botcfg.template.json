@@ -104,7 +104,8 @@
             "collection_name": "tasks"
         },
         "enable_notifications": true,
-        "notification_time_utc": "08:00"
+        "notification_time_utc": "08:00",
+        "deadline_notification_days": [3, 1]
     },
     "simple_memory": {
         "database": {
@@ -113,8 +114,8 @@
             "collection_name": "memories"
         },
         "model": "gpt-5.6-luna",
-        "search_prompt_file": "./config/memory_service_search_prompt.md",
-        "ask_prompt_file": "./config/memory_service_ask_prompt.md"
+        "search_prompt_file": "./config/prompts/memory_service_search_prompt.md",
+        "ask_prompt_file": "./config/prompts/memory_service_ask_prompt.md"
     },
     "attendance_tracker": {
         "skipped_rehersals_in_row": 3,

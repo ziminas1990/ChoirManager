@@ -21,6 +21,7 @@ export type UserAgentToolsDependencies = {
 export type Services = {
     task_tracker?: ITaskTracker;
     simple_memory?: ISimpleMemoryService;
+    resolve_user: (user_id: string) => User | undefined;
 }
 
 type ToolsHost = {
@@ -60,6 +61,7 @@ export function register_user_assistant_tools(
                 kind: "specific_group",
                 group_id: MANAGERS_MEMORY_GROUP_ID,
             },
+            services.resolve_user,
         )));
     }
 

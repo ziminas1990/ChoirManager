@@ -15,7 +15,7 @@ export class ManagersChat {
 
         const managers_agent = runtime.get_managers_agent();
         if (managers_agent) {
-            return await managers_agent.on_new_message(message);
+            managers_agent.on_new_message(message);
         }
         return Expected.ok(undefined);
     }

@@ -17,7 +17,7 @@ import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
 import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/chorister_statistics.js";
 import { register_user_assistant_tools } from "@src/components/ai/user_agent_tools_factory.js";
-import { RuntimeConfig } from "@src/runtime.js";
+import { Runtime, RuntimeConfig } from "@src/runtime.js";
 import { AssistantConfig } from "@src/config.js";
 import { TaskTrackerInstance } from "@src/interfaces/task_tracker.js";
 import { SimpleMemoryInstance } from "@src/interfaces/simple_memory.js";
@@ -63,6 +63,7 @@ export class ChoristerDialog implements IChorister {
                         ? TaskTrackerInstance.get_instance()
                         : undefined,
                     simple_memory: SimpleMemoryInstance.get_instance(),
+                    resolve_user: (user_id) => Runtime.get_instance().get_user(user_id)?.data,
                 },
             );
             if (!tools_status.ok) {

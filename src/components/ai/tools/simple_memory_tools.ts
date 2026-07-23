@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { User } from "@src/database.js";
 import {
     MemoryAccessContext,
     MemoryFact,
@@ -11,10 +12,13 @@ import { Expected } from "@src/utils/expected.js";
 import { parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
 
 const remember_schema = z.object({
-    author: z.string().trim().min(1)
-        .describe("Author of the message that initiated this call."),
+    author_user_id: z.string().trim().min(1).optional()
+        .describe("Telegram user_id (username without @) of who asked to remember the fact."),
     content: z.string().trim().min(1)
-        .describe("Fact text to store in memory."),
+        .describe(
+            "Normalized self-contained fact statement to store. "
+            + "Not a verbatim user quote: rewrite with enough context to stand alone.",
+        ),
 }).strict();
 
 const search_schema = z.object({
@@ -51,17 +55,17 @@ type SerializableMemoryFact = {
 };
 
 const MEMORY_USE_CASES = `
-If the user asks something that is clearly not available in the current conversation context,
-or explicitly asks to recall / look up a remembered answer:
+If the user asks something that is clearly not available in the current conversation context you MUST:
 - call ask with a self-contained question
 - the memory sub-agent has NO dialog context, so question must include every detail needed
   to understand and answer (names, dates, what was meant, constraints)
 - send a message based on the answer provided by the tool
 
 If the user explicitly asks to remember a new fact:
-- call remember only when the user clearly requested remembering (do not infer)
-- pass the author of the message that initiated the call
-- pass content as the fact text
+- call remember tool
+- normalize content before storing: do NOT save the user's words verbatim
+- rewrite as a self-contained statement that keeps its meaning without the surrounding chat
+  (resolve pronouns, fill in implied subjects/objects, include needed context)
 - after success, send a confirmation message along with the added fact
 
 If the user explicitly asks to find / show matching memory records (a list of facts, not an answer):
@@ -80,20 +84,12 @@ General rules:
 - Never show fact_id to the user unless the user explicitly asked for it. Use it only as an internal identifier between search/remember and get.
 `.trim();
 
-function serialize_fact(fact: MemoryFact): SerializableMemoryFact {
-    return {
-        fact_id: fact.id,
-        created_at: fact.created_at.toISOString(),
-        author: fact.author_name,
-        content: fact.content,
-    };
-}
-
 export class SimpleMemoryTools implements IToolchain {
     constructor(
         private readonly memory: ISimpleMemoryService,
         private readonly access: MemoryAccessContext,
         private readonly default_visibility: MemoryVisibility,
+        private readonly resolve_user: (user_id: string) => User | undefined,
     ) {}
 
     get_name(): string {
@@ -103,7 +99,8 @@ export class SimpleMemoryTools implements IToolchain {
     get_readme(): string {
         return [
             "Tools for storing and consulting durable memory facts.",
-            "Use ask when the user needs an answer based on remembered facts.",
+            "Use ask whenever a factual answer is missing from the current conversation context.",
+            "Never claim ignorance about a remembered fact without calling ask first.",
             "Use remember when you need to remember some fact for future use.",
             "Use search + get when you need to find matching fact records.",
             "Use update to modify the content of an existing fact.",
@@ -122,6 +119,7 @@ export class SimpleMemoryTools implements IToolchain {
                     "Store a new fact in memory.",
                     "Returns fact_id of the created fact.",
                     "Call only when the user explicitly asked to remember something.",
+                    "Pass content as a normalized self-contained statement, not a verbatim quote.",
                 ].join("\n"),
                 remember_schema,
             )],
@@ -168,9 +166,13 @@ export class SimpleMemoryTools implements IToolchain {
                     return Expected.err(parsed.error);
                 }
 
+                const author_user_id = this.resolve_author_user_id(parsed.value.author_user_id);
+                if (!author_user_id.ok) {
+                    return author_user_id.wrap_error("failed to resolve author user id");
+                }
+
                 const created = await this.memory.remember({
-                    author_user_id: this.access.user_id ?? "",
-                    author_name: parsed.value.author,
+                    author_user_id: author_user_id.value,
                     content: parsed.value.content,
                     visibility: this.default_visibility,
                 });
@@ -203,7 +205,7 @@ export class SimpleMemoryTools implements IToolchain {
                 if (!fact.ok) {
                     return Expected.err(fact.error);
                 }
-                return Expected.ok(JSON.stringify({ fact: serialize_fact(fact.value) }));
+                return Expected.ok(JSON.stringify({ fact: this.serialize_fact(fact.value) }));
             }
 
             if (name === "update") {
@@ -220,7 +222,7 @@ export class SimpleMemoryTools implements IToolchain {
                 if (!updated.ok) {
                     return Expected.err(updated.error);
                 }
-                return Expected.ok(JSON.stringify({ fact: serialize_fact(updated.value) }));
+                return Expected.ok(JSON.stringify({ fact: this.serialize_fact(updated.value) }));
             }
 
             if (name === "ask") {
@@ -240,5 +242,38 @@ export class SimpleMemoryTools implements IToolchain {
         } catch (e) {
             return Expected.exception(`simple_memory tool '${name}' failed`, e);
         }
+    }
+
+    // Prefer access.user_id (private chat). Otherwise require agent-provided user_id and resolve it.
+    private resolve_author_user_id(agent_author_user_id: string | undefined): Expected<string> {
+        if (this.access.user_id) {
+            return Expected.ok(this.access.user_id);
+        }
+
+        if (!agent_author_user_id) {
+            return Expected.err(
+                "author_user_id is required. Pass the Telegram username of the requester.",
+            );
+        }
+
+        const user = this.resolve_user(agent_author_user_id);
+        if (!user) {
+            return Expected.err(
+                `User '${agent_author_user_id}' not found. `
+                + "You must pass a valid Telegram user_id (username without @) as author_user_id.",
+            );
+        }
+
+        return Expected.ok(user.tgid);
+    }
+
+    private serialize_fact(fact: MemoryFact): SerializableMemoryFact {
+        const user = this.resolve_user(fact.author_user_id);
+        return {
+            fact_id: fact.id,
+            created_at: fact.created_at.toISOString(),
+            author: `@${user?.tgid ?? fact.author_user_id}`,
+            content: fact.content,
+        };
     }
 }

@@ -85,7 +85,7 @@ On each `proceed()` cycle, `TaskTracker` checks whether a `deadline_notification
 
 `TaskTracker` does not render or deliver messages. Consumers subscribe to the event broadcaster and handle presentation separately.
 
-`deadline_notification` is emitted only when `enable_notifications` is `true`. Once per UTC day, at `notification_time_utc`, `TaskTracker` collects active tasks (not completed or cancelled) whose deadline is exactly 7, 3, or 1 whole days away, sorted by deadline ascending. If the list is non-empty, it emits `deadline_notification`.
+`deadline_notification` is emitted only when `enable_notifications` is `true`. Once per UTC day, at `notification_time_utc`, `TaskTracker` collects active tasks (not completed or cancelled) whose deadline is exactly N whole days away for any N in `deadline_notification_days`, sorted by deadline ascending. If the list is non-empty, it emits `deadline_notification`.
 
 ## `GoogleFirestoreTaskTracker`
 
@@ -141,7 +141,8 @@ The task tracker is optional and is enabled only when configured:
         "collection_name": "tasks"
     },
     "enable_notifications": true,
-    "notification_time_utc": "HH:MM"
+    "notification_time_utc": "HH:MM",
+    "deadline_notification_days": [3, 1]
 }
 ```
 

@@ -27,7 +27,7 @@ type SerializableMemoryFact = {
 function serialize_fact(fact: MemoryFact): SerializableMemoryFact {
     return {
         id: fact.id,
-        author: fact.author_name,
+        author: `@${fact.author_user_id}`,
         created_at: fact.created_at.toISOString(),
         content: fact.content,
     };

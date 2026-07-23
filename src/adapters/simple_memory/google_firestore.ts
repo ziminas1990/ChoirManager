@@ -91,11 +91,6 @@ function try_parse_document(doc_id: string, data: Record<string, unknown>): Expe
         return Expected.err(`memory '${id}' is missing author_user_id`);
     }
 
-    const author_name = get_required_string(data.author_name);
-    if (!author_name) {
-        return Expected.err(`memory '${id}' is missing author_name`);
-    }
-
     const content = get_required_string(data.content);
     if (!content) {
         return Expected.err(`memory '${id}' is missing content`);
@@ -116,7 +111,6 @@ function try_parse_document(doc_id: string, data: Record<string, unknown>): Expe
         id,
         created_at,
         author_user_id,
-        author_name,
         content,
         visibility: visibility.value,
     };

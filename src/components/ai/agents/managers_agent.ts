@@ -5,6 +5,7 @@ import { Agent } from "@src/components/ai/agent.js";
 import { MessengerTools } from "@src/components/ai/tools/messenger_tools.js";
 import { SimpleMemoryTools } from "@src/components/ai/tools/simple_memory_tools.js";
 import { ManagersChatAgentConfig } from "@src/config.js";
+import { User } from "@src/database.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
 import { IToolchain, Message } from "@src/interfaces/llm.js";
 import { IBroadcaster, ISubscription } from "@src/interfaces/message_queue.js";
@@ -23,7 +24,7 @@ type AgentResponse = {
 
 type ManagersAgentDependencies = {
     get_managers_chat: () => Promise<IManagersChat | undefined>;
-    resolve_author: (user_id: string) => string;
+    resolve_author: (user_id: string) => User | undefined;
     bot_id: string;
 }
 
@@ -67,6 +68,9 @@ export class ManagersAgent {
     private readonly journal: Journal;
     private readonly task_tracker_subscription: ISubscription<TaskTrackerEvent>;
     private agent?: Agent;
+
+    // Queue of incoming messages, processed in proceed()
+    private new_messages_queue: GroupChatMessage[] = [];
 
     constructor(
         private readonly config: ManagersChatAgentConfig,
@@ -132,8 +136,40 @@ export class ManagersAgent {
         return Expected.ok(undefined);
     }
 
-    async on_new_message(message: GroupChatMessage): Promise<Status> {
+    // Queue message for processing in proceed()
+    // NOTE: this function must NOT be async, it should return immediately
+    on_new_message(message: GroupChatMessage): void {
         this.journal.log().info(`new managers chat message: ${message.text}`);
+        this.new_messages_queue.push(message);
+    }
+
+    async proceed(): Promise<Status> {
+        const messages = this.new_messages_queue;
+        this.new_messages_queue = [];
+        for (const message of messages) {
+            const status = await this.handle_message(message);
+            if (!status.ok) {
+                this.journal.log().error(`Failed to handle managers chat message: ${status.error}`);
+            }
+        }
+
+        while (true) {
+            const event = await this.task_tracker_subscription.poll();
+            if (!event.ok) {
+                return event.wrap_error("failed to poll task tracker events").as_status();
+            }
+            if (!event.value) {
+                return Expected.ok(undefined);
+            }
+
+            const status = await this.on_task_tracker_event(event.value);
+            if (!status.ok) {
+                return status.wrap_error("failed to handle task tracker event");
+            }
+        }
+    }
+
+    private async handle_message(message: GroupChatMessage): Promise<Status> {
         if (!this.agent) {
             return Expected.err("ManagersAgent is not initialized");
         }
@@ -163,23 +199,6 @@ export class ManagersAgent {
         });
     }
 
-    async proceed(): Promise<Status> {
-        while (true) {
-            const event = await this.task_tracker_subscription.poll();
-            if (!event.ok) {
-                return event.wrap_error("failed to poll task tracker events").as_status();
-            }
-            if (!event.value) {
-                return Expected.ok(undefined);
-            }
-
-            const status = await this.on_task_tracker_event(event.value);
-            if (!status.ok) {
-                return status.wrap_error("failed to handle task tracker event");
-            }
-        }
-    }
-
     private read_instruction(): Expected<string> {
         try {
             return Expected.ok(fs.readFileSync(this.config.prompt_file, "utf-8").trim());
@@ -206,20 +225,33 @@ export class ManagersAgent {
     }
 
     private to_context_message(message: GroupChatMessage): Message {
-        const author = this.is_bot_message(message)
-            ? "Ursa Major Bot"
-            : this.dependencies.resolve_author(message.user_id);
-
         return {
             role: this.is_bot_message(message) ? "assistant" : "user",
             content: [
                 `id: ${message.message_id}`,
                 `time: ${format_message_time(message.time)}`,
-                `author: ${author}`,
+                `user_id: ${message.user_id}`,
+                `name: ${this.format_author(message)}`,
                 "text:",
                 message.text,
             ].join("\n"),
         };
+    }
+
+    private format_author(message: GroupChatMessage): string {
+        if (this.is_bot_message(message)) {
+            return "Ursa Major Bot";
+        }
+
+        const user = this.dependencies.resolve_author(message.user_id);
+        if (!user) {
+            return `@${message.user_id}`;
+        }
+
+        const name = [user.name, user.surname]
+            .filter(part => part.length > 0)
+            .join(" ");
+        return name.length > 0 ? name : "(unknown)";
     }
 
     private is_bot_message(message: GroupChatMessage): boolean {

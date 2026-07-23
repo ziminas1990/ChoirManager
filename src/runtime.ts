@@ -386,6 +386,7 @@ export class Runtime {
                     kind: "specific_group",
                     group_id: MANAGERS_MEMORY_GROUP_ID,
                 },
+                (user_id) => this.get_user(user_id)?.data,
             );
             this.managers_agent = new ManagersAgent(
                 this.config.managers_chat_agent,
@@ -395,20 +396,7 @@ export class Runtime {
                     get_managers_chat: async () => {
                         return await this.tg_adapter?.get_managers_chat();
                     },
-                    resolve_author: (user_id) => {
-                        if (user_id === this.config.tg_adapter?.bot_id) {
-                            return "Ursa Major Bot";
-                        }
-                        const user = this.get_user(user_id);
-                        if (!user) {
-                            return `@${user_id}`;
-                        }
-                        const name = [user.data.name, user.data.surname]
-                            .filter(part => part.length > 0)
-                            .join(" ");
-                        const username = user.data.tgid ? ` (@${user.data.tgid})` : "";
-                        return `${name.length > 0 ? name : user_id}${username}`;
-                    },
+                    resolve_author: (user_id) => this.get_user(user_id)?.data,
                     bot_id: this.config.tg_adapter!.bot_id!,
                 },
                 task_tracker_tools,

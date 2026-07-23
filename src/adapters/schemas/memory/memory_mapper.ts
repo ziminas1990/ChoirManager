@@ -9,7 +9,6 @@ export function to_record(source: MemoryFact): MemoryFactRecord {
         id: source.id,
         created_at: source.created_at,
         author_user_id: source.author_user_id,
-        author_name: source.author_name,
         content: source.content,
         visibility: source.visibility,
     };
@@ -23,7 +22,6 @@ export function to_entity(record: MemoryFactRecord): MemoryFact {
         id: latest.id,
         created_at: latest.created_at,
         author_user_id: latest.author_user_id,
-        author_name: latest.author_name,
         content: latest.content,
         visibility: latest.visibility,
     };

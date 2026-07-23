@@ -25,10 +25,8 @@ export type MemoryFact = {
     // Internal id in format `DDMM_HHMM_XXXX`.
     id: string;
     created_at: Date;
-    // Telegram user id of who asked to remember the fact.
+    // Telegram user id (username) of who asked to remember the fact.
     author_user_id: string;
-    // Human-readable author label for prompts / listing.
-    author_name: string;
     // Fact text stored in memory.
     content: string;
     visibility: MemoryVisibility;

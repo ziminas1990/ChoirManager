@@ -30,15 +30,17 @@ function utc_day_key(now: Date): string {
     ].join("-");
 }
 
-const DEADLINE_NOTIFICATION_DAYS = [7, 3, 1] as const;
-
 function days_until_deadline(deadline: Date, now: Date): number {
     return Math.ceil((deadline.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
 }
 
-function is_deadline_notification_day(deadline: Date, now: Date): boolean {
+function is_deadline_notification_day(
+    deadline: Date,
+    now: Date,
+    notification_days: readonly number[],
+): boolean {
     const days = days_until_deadline(deadline, now);
-    return days >= 0 && (DEADLINE_NOTIFICATION_DAYS as readonly number[]).includes(days);
+    return days >= 0 && notification_days.includes(days);
 }
 
 export class TaskTracker extends Logic<void> implements ITaskTracker {
@@ -189,7 +191,11 @@ export class TaskTracker extends Logic<void> implements ITaskTracker {
 
         const deadline_tasks = tasks
             .filter(task => is_active(task) && task.deadline != undefined)
-            .filter(task => is_deadline_notification_day(task.deadline!, now))
+            .filter(task => is_deadline_notification_day(
+                task.deadline!,
+                now,
+                this.config.deadline_notification_days,
+            ))
             .sort((left, right) => left.deadline!.getTime() - right.deadline!.getTime());
 
         if (deadline_tasks.length === 0) {
