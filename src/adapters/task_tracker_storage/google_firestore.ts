@@ -4,14 +4,12 @@ import { GoogleAuth } from "@src/api/google_auth.js";
 import {
     NewTaskData,
     TaskData,
-    TaskFilter,
     TaskStatus,
     TaskUpdate,
     create_task_update,
-    filter_tasks,
 } from "@src/entities/task.js";
 import { generate_task_id } from "@src/utils/misc.js";
-import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
+import { ITaskTrackerStorage } from "@src/interfaces/storage/task_tracker_storage.js";
 import { Journal } from "@src/journal.js";
 import { Expected } from "@src/utils/expected.js";
 import { TokenBucket } from "@src/utils/token_bucket.js";
@@ -130,7 +128,7 @@ function is_already_exists_error(error: unknown): boolean {
     return message.includes("ALREADY_EXISTS") || message.includes("already exists");
 }
 
-export class GoogleFirestoreTaskTrackerService implements ITaskTrackerService {
+export class GoogleFirestoreTaskTrackerStorage implements ITaskTrackerStorage {
     private readonly db: Firestore;
     private readonly collection: CollectionReference;
     private readonly journal: Journal;
@@ -142,19 +140,11 @@ export class GoogleFirestoreTaskTrackerService implements ITaskTrackerService {
     ) {
         this.db = GoogleAuth.get_firestore(this.config.database_id);
         this.collection = this.db.collection(this.config.collection_name);
-        this.journal = parent_journal.child("task_tracker");
+        this.journal = parent_journal.child("task_tracker_storage");
         this.api_tokens = new TokenBucket({
             max_tokens: 20,
             refill_rate: 5,
         });
-    }
-
-    async fetch(filter?: TaskFilter): Promise<Expected<TaskData[]>> {
-        const tasks_status = await this.fetch_all();
-        if (!tasks_status.ok) {
-            return tasks_status;
-        }
-        return Expected.ok(filter_tasks(tasks_status.value, filter));
     }
 
     async create(task: NewTaskData): Promise<Expected<TaskData>> {
@@ -234,7 +224,7 @@ export class GoogleFirestoreTaskTrackerService implements ITaskTrackerService {
         return Expected.ok(previous_status.value);
     }
 
-    private async fetch_all(): Promise<Expected<TaskData[]>> {
+    async fetch_all(): Promise<Expected<TaskData[]>> {
         try {
             await this.api_tokens.wait_tokens(1);
             const snapshot = await this.collection.get();

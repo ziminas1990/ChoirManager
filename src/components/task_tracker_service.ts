@@ -1,4 +1,3 @@
-import { TaskTrackerConfig } from "@src/config.js";
 import {
     NewTaskData,
     TaskData,
@@ -8,6 +7,7 @@ import {
     get_task_id,
 } from "@src/entities/task.js";
 import { IBroadcaster } from "@src/interfaces/message_queue.js";
+import { ITaskTrackerStorage } from "@src/interfaces/storage/task_tracker_storage.js";
 import { ITaskTrackerService, TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
@@ -50,8 +50,10 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
     private last_deadline_notification_day?: string;
 
     constructor(
-        private readonly config: TaskTrackerConfig,
-        private readonly adapter: ITaskTrackerService,
+        private readonly enable_notifications: boolean,
+        private readonly notification_time_utc: { hours: number; minutes: number },
+        private readonly deadline_notification_days: readonly number[],
+        private readonly storage: ITaskTrackerStorage,
         private readonly broadcaster: IBroadcaster<TaskTrackerEvent>,
         parent_journal: Journal,
     ) {
@@ -64,7 +66,7 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
     }
 
     async create(task: NewTaskData): Promise<Expected<TaskData>> {
-        const created_status = await this.adapter.create(task);
+        const created_status = await this.storage.create(task);
         if (!created_status.ok) {
             return created_status.wrap_error("failed to create task");
         }
@@ -88,7 +90,7 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
             return Expected.err("task not found in local snapshot");
         }
 
-        const update_status = await this.adapter.update(task);
+        const update_status = await this.storage.update(task);
         if (!update_status.ok) {
             return update_status.wrap_error("failed to update task");
         }
@@ -113,7 +115,7 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
             return Expected.err("task not found in local snapshot");
         }
 
-        const deleted_status = await this.adapter.delete(task);
+        const deleted_status = await this.storage.delete(task);
         if (!deleted_status.ok) {
             return deleted_status.wrap_error("failed to delete task");
         }
@@ -132,7 +134,7 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
     }
 
     async init(now: Date = new Date()): Promise<Status> {
-        const tasks_status = await this.adapter.fetch();
+        const tasks_status = await this.storage.fetch_all();
         if (!tasks_status.ok) {
             return tasks_status.wrap_error("failed to fetch tasks");
         }
@@ -166,7 +168,7 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
     }
 
     private async maybe_send_deadline_notification(now: Date, tasks: TaskData[]): Promise<Status> {
-        if (!this.config.enable_notifications) {
+        if (!this.enable_notifications) {
             return Expected.ok(undefined);
         }
 
@@ -180,7 +182,7 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
             return Expected.ok(undefined);
         }
 
-        const notification_time = this.config.notification_time_utc;
+        const notification_time = this.notification_time_utc;
         if (now.getUTCHours() !== notification_time.hours ||
             now.getUTCMinutes() < notification_time.minutes)
         {
@@ -194,7 +196,7 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
             .filter(task => is_deadline_notification_day(
                 task.deadline!,
                 now,
-                this.config.deadline_notification_days,
+                this.deadline_notification_days,
             ))
             .sort((left, right) => left.deadline!.getTime() - right.deadline!.getTime());
 

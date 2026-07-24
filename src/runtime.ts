@@ -18,7 +18,7 @@ import { AdminActions } from "./use_cases/admin_actions.js";
 import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
 import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
-import { TaskTrackerFactory } from "./adapters/task_tracker/factory.js";
+import { TaskTrackerServiceFactory } from "./adapters/task_tracker_service/factory.js";
 import { SimpleMemoryServiceFactory } from "./adapters/simple_memory_service/factory.js";
 import { update_v2_v3 } from "./configuration/update_v2_v3.js";
 import { IAdapter } from "./interfaces/adapter.js";
@@ -319,19 +319,15 @@ export class Runtime {
 
         if (this.config.task_tracker) {
             this.journal.log().info("Initializing task tracker...");
-            const create_status = TaskTrackerFactory.create(
-                this.config.task_tracker.database,
-                this.journal,
-            );
-            if (!create_status.ok) {
-                return create_status.wrap_error("Failed to create task tracker");
-            }
-            this.task_tracker = new TaskTrackerService(
+            const create_status = TaskTrackerServiceFactory.create(
                 this.config.task_tracker,
-                create_status.value,
                 this.task_tracker_broadcaster,
                 this.journal,
             );
+            if (!create_status.ok) {
+                return create_status.wrap_error("Failed to create task tracker service");
+            }
+            this.task_tracker = create_status.value;
             const init_status = await this.task_tracker.init();
             if (!init_status.ok) {
                 return init_status.wrap_error("Failed to initialize task tracker");

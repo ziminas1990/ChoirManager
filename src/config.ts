@@ -3,7 +3,10 @@ import fs from "fs";
 import { FeedbackStorageConfig, FeedbackStorageFactory } from "@src/adapters/feedback_storage/factory.js";
 import { MessagesStorageConfig, MessagesStorageFactory } from "@src/adapters/messages_storage/factory.js";
 import { RehersalsStorageConfig, RehersalsStorageFactory } from "@src/adapters/rehersals_storage/factory.js";
-import { TaskTrackerDatabaseConfig, TaskTrackerFactory } from "@src/adapters/task_tracker/factory.js";
+import {
+    TaskTrackerServiceConfig,
+    TaskTrackerServiceConfigJson,
+} from "@src/adapters/task_tracker_service/factory.js";
 import {
     SimpleMemoryServiceConfig,
     SimpleMemoryServiceConfigJson,
@@ -178,70 +181,6 @@ export class ManagersChatAgentConfig {
     }
 }
 
-export type TaskTrackerConfigJson = {
-    database: TaskTrackerDatabaseConfig;
-    enable_notifications: boolean;
-    notification_time_utc: string;
-    // Days before deadline when notifications are sent.
-    deadline_notification_days: number[];
-}
-
-export class TaskTrackerConfig {
-    constructor(private readonly json: TaskTrackerConfigJson) {}
-
-    get database(): TaskTrackerDatabaseConfig {
-        return this.json.database;
-    }
-
-    get enable_notifications(): boolean {
-        return this.json.enable_notifications;
-    }
-
-    get notification_time_utc(): { hours: number; minutes: number } {
-        const [hours, minutes] = this.json.notification_time_utc.split(":").map(part => parseInt(part, 10));
-        return { hours, minutes };
-    }
-
-    get deadline_notification_days(): number[] {
-        return this.json.deadline_notification_days;
-    }
-
-    verify(): Status {
-        if (!this.json.database) {
-            return Expected.err("'database' MUST be specified");
-        }
-        let status = TaskTrackerFactory.verify(this.json.database);
-        if (!status.ok) {
-            return status.wrap_error("'database' misconfiguration");
-        }
-
-        if (typeof this.json.enable_notifications !== "boolean") {
-            return Expected.err("'enable_notifications' MUST be specified");
-        }
-
-        if (!this.json.notification_time_utc) {
-            return Expected.err("'notification_time_utc' MUST be specified");
-        }
-        if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(this.json.notification_time_utc)) {
-            return Expected.err("'notification_time_utc' MUST be in HH:MM format");
-        }
-
-        if (!Array.isArray(this.json.deadline_notification_days)) {
-            return Expected.err("'deadline_notification_days' MUST be specified");
-        }
-        if (this.json.deadline_notification_days.length === 0) {
-            return Expected.err("'deadline_notification_days' MUST not be empty");
-        }
-        for (const day of this.json.deadline_notification_days) {
-            if (!Number.isInteger(day) || day < 0) {
-                return Expected.err("'deadline_notification_days' MUST contain only non-negative integers");
-            }
-        }
-
-        return Expected.ok(undefined);
-    }
-}
-
 export type MessagesProviderConfigJson = {
     sheet_id: string;
     table_name: string;
@@ -291,7 +230,7 @@ export type BotConfigJson = {
     managers_chat?: ChatConfigJson;
     managers_chat_agent?: ManagersChatAgentConfigJson;
     announce_chat?: ChatConfigJson;
-    task_tracker?: TaskTrackerConfigJson;
+    task_tracker?: TaskTrackerServiceConfigJson;
     simple_memory: SimpleMemoryServiceConfigJson;
 }
 
@@ -307,7 +246,7 @@ export class BotConfig {
     public readonly attendance_tracker?: AttendanceTrackerConfig;
     public readonly rehersals_tracker?: RehersalsTrackerConfig;
     public readonly assistant?: AssistantConfig;
-    public readonly task_tracker?: TaskTrackerConfig;
+    public readonly task_tracker?: TaskTrackerServiceConfig;
     public readonly simple_memory: SimpleMemoryServiceConfig;
     public readonly managers_chat_agent?: ManagersChatAgentConfig;
 
@@ -349,7 +288,7 @@ export class BotConfig {
             this.assistant = new AssistantConfig(json.assistant);
         }
         if (json.task_tracker != undefined) {
-            this.task_tracker = new TaskTrackerConfig(json.task_tracker);
+            this.task_tracker = new TaskTrackerServiceConfig(json.task_tracker);
         }
         this.simple_memory = new SimpleMemoryServiceConfig(json.simple_memory);
         if (json.managers_chat_agent != undefined) {

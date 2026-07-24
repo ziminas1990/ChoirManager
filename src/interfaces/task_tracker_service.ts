@@ -15,6 +15,7 @@ export type TaskTrackerEvent = {
     tasks: TaskData[],
 }
 
+// Service logic: caching, broadcasting, and deadline notifications.
 export interface ITaskTrackerService {
     fetch(filter?: TaskFilter): Promise<Expected<TaskData[]>>;
     create(task: NewTaskData): Promise<Expected<TaskData>>;

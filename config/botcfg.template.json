@@ -110,7 +110,8 @@
         ]
     },
     "task_tracker": {
-        "database": {
+        "type": "local",
+        "storage": {
             "type": "google_firestore",
             "database_id": "",
             "collection_name": "tasks"
