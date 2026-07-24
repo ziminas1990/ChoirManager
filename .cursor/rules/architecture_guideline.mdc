@@ -1,0 +1,84 @@
+---
+description: Storage + service component architecture
+alwaysApply: true
+---
+
+# Component architecture: storage + service
+
+New stateful components follow a **storage + service** split.
+Reference implementations: `user_service`, `simple_memory`, `task_tracker`.
+
+## Layers
+
+| Layer | Location | Responsibility |
+|-------|----------|----------------|
+| Storage interface | `interfaces/storage/*_storage.ts` | Pure persistence only |
+| Service interface | `interfaces/*_service.ts` | Domain API for callers |
+| Storage adapter | `adapters/*_storage/` | Concrete store + `*StorageFactory` |
+| Service factory | `adapters/*_service/` | Config + `*ServiceFactory` that wires storage into the component |
+| Component | `components/*_service.ts` | Implements the service interface |
+
+**Storage** = how data is stored. No caching, ACL, broadcasting, or notifications.
+
+**Service** = how the system behaves on top of storage (cache, access control, events, background rules).
+
+**Factory** = how the stack is assembled from config. Call sites (`app` / `runtime`) must not construct storage or glue layers by hand.
+
+## Interfaces
+
+```typescript
+// interfaces/storage/foo_storage.ts
+// Pure persistence: no caching, no access control.
+export interface IFooStorage {
+    // Required CRUD-like operations
+}
+
+// interfaces/foo_service.ts
+// Service logic: caching, access control, higher-level operations.
+export interface IFooService {
+    // domain methods for callers
+}
+```
+
+## Factories and config
+
+Storage factory: `create` / `verify` for backend types (`google_firestore`, `google_spreadsheet`, …).
+
+Service config JSON shape:
+
+```json
+{
+  "type": "local",
+  "storage": { "type": "google_firestore", "database_id": "...", "collection_name": "..." },
+  "service_specific_field": "..."
+}
+```
+
+- `type: "local"` — service runs in-process on top of `I*Storage`. Other types may be added later without changing callers.
+- Nest backend settings under `storage`, not as a sibling `database` field.
+- Put `*ServiceConfig` / `*ServiceConfigJson` / `*ServiceFactory` in `adapters/*_service/factory.ts`, not in `config.ts`.
+- `BotConfig` only wraps the service config class and calls `verify()`.
+
+Service factory creates storage via `*StorageFactory`, then constructs the component.
+
+## Component construction
+
+Pass `I*Storage` plus the needed service fields into the component constructor.
+Do **not** pass the full config class into the component (avoids import cycles with the service factory).
+
+```typescript
+// GOOD — factory extracts fields
+new FooService(config.model, storage, journal);
+
+// BAD — component imports service factory config
+new FooService(config, storage, journal);
+```
+
+## Checklist for a new component
+
+1. Add `I*Storage` and `I*Service`.
+2. Add `adapters/*_storage/` (implementation + factory).
+3. Add `adapters/*_service/factory.ts` (config + factory with `type: "local"`).
+4. Implement `components/*_service.ts` on top of storage.
+5. Register config in `BotConfig` and wire via `*ServiceFactory.create` in `app` / `runtime`.
+6. Update `botcfg.template.json` to the nested `type` + `storage` shape.
