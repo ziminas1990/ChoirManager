@@ -6,6 +6,7 @@ import { Runtime } from '@src/runtime.js';
 import { BotConfig, load_config } from '@src/config.js';
 import { OpenaiAPI } from "@src/api/openai.js";
 import { UsersFetcher } from '@src/fetchers/users_fetcher.js';
+import { UsersStorageFactory } from '@src/adapters/users_storage/factory.js';
 import { Database } from '@src/database.js';
 import { Journal } from '@src/journal.js';
 import { GlobalFormatter } from '@src/utils.js';
@@ -70,7 +71,20 @@ async function main() {
     }
 
     const database = new Database();
-    const users_fetcher = new UsersFetcher(config.users_fetcher!, database, root_logger);
+    const users_storage_status = UsersStorageFactory.create(
+        config.users_fetcher!.storage,
+        root_logger,
+    );
+    if (!users_storage_status.ok) {
+        root_logger.log().error(`Failed to create users storage: ${users_storage_status.error}`);
+        await wait_and_exit(10000, 1);
+    }
+    const users_fetcher = new UsersFetcher(
+        users_storage_status.value,
+        config.users_fetcher!.fetch_interval_sec,
+        database,
+        root_logger,
+    );
 
     root_logger.log().info("Loading database...");
     const database_status = await load_database(database, users_fetcher);

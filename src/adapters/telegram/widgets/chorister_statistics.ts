@@ -5,7 +5,7 @@ import { ChoristerAttendanceStat } from "@src/entities/statistics.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Journal } from "@src/journal.js";
-import { Language } from "@src/database.js";
+import { Language } from "@src/entities/user.js";
 import { apply_interval, GlobalFormatter, shorten } from "@src/utils.js";
 import { Analytic } from "@src/use_cases/analytic.js";
 import { Runtime } from "@src/runtime.js";

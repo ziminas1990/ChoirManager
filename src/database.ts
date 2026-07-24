@@ -1,33 +1,11 @@
+import { Language, Role, Voice } from "@src/entities/user.js";
 import { Expected, Status } from "@src/utils/expected.js";
-
-export enum Role {
-    Chorister = "chorister",
-    Conductor = "conductor",
-    Manager = "manager",
-    Admin = "admin",
-    Guest = "guest",
-    Accountant = "accountant",
-    ExChorister = "ex-chorister",
-}
-
-export enum Voice {
-    Alto = "alto",
-    Soprano = "soprano",
-    Tenor = "tenor",
-    Baritone = "baritone",
-    Unknown = "unknown",
-}
 
 export function voice_from_string(voice: string | undefined): Voice {
     if (!voice) {
         return Voice.Unknown;
     }
     return Voice[voice as keyof typeof Voice] || Voice.Unknown;
-}
-
-export enum Language {
-    RU = "ru",
-    EN = "en",
 }
 
 function find<T>(array: Iterable<T>, what: Partial<T>): T | undefined {

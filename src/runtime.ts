@@ -4,7 +4,8 @@ import path from "path";
 
 import { BotConfig } from "./config.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { Database, Language, Role, User, Voice } from "./database.js";
+import { Database, User } from "./database.js";
+import { Language, Role, Voice } from "./entities/user.js";
 import { UserLogic } from "./logic/user.js";
 import { pack_map, return_exception, unpack_map } from "./utils.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";

@@ -1,6 +1,7 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { Runtime } from "@src/runtime.js";
-import { Language, User } from "@src/database.js";
+import { User } from "@src/database.js";
+import { Language } from "@src/entities/user.js";
 import { GoogleTranslate } from "@src/api/google_translate.js";
 import { Journal } from "@src/journal.js";
 

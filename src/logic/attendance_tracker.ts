@@ -1,4 +1,5 @@
-import { Database, Language, Role, User } from "@src/database.js";
+import { Database, User } from "@src/database.js";
+import { Language, Role } from "@src/entities/user.js";
 import { UserLogic } from "@src/logic/user.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";

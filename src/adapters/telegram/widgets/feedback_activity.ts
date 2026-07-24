@@ -4,7 +4,7 @@ import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { AbstractWidget as AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { Language } from "@src/database.js";
+import { Language } from "@src/entities/user.js";
 import { GlobalFormatter, log_and_return } from "@src/utils.js";
 import { FeedbackActions } from "@src/use_cases/feedback_actions.js";
 import { Feedback } from "@src/entities/feedback.js";

@@ -4,7 +4,7 @@ import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { current_month, Formatter, GlobalFormatter } from "@src/utils.js";
 import { Status } from "@src/utils/expected.js";
-import { Language } from "@src/database.js";
+import { Language } from "@src/entities/user.js";
 import { Deposit, DepositChange, DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";

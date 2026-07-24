@@ -1,5 +1,6 @@
 import { Logic } from '@src/logic/abstracts.js';
-import { Database, Role, User } from '@src/database.js';
+import { Database, User } from '@src/database.js';
+import { Role } from '@src/entities/user.js';
 import { Expected } from "@src/utils/expected.js";
 import { DepositTrackingConfig, DepositsFetcher } from '@src/fetchers/deposits_fetcher.js';
 import { DepositsTracker } from '@src/logic/deposits_tracker.js';

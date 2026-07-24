@@ -1,4 +1,4 @@
-import { Voice } from "@src/database.js"
+import { Voice } from "@src/entities/user.js"
 
 
 export type Feedback = {

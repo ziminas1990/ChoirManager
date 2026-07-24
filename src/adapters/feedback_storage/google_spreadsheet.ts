@@ -1,5 +1,5 @@
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
-import { Voice } from "@src/database.js";
+import { Voice } from "@src/entities/user.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { IFeedbackStorage } from "@src/interfaces/feedback_storage.js";
 import { Journal } from "@src/journal.js";

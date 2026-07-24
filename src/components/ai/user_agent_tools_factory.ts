@@ -1,4 +1,5 @@
-import { Role, User } from "@src/database.js";
+import { User } from "@src/database.js";
+import { Role } from "@src/entities/user.js";
 import { MANAGERS_MEMORY_GROUP_ID } from "@src/entities/memory.js";
 import { IToolchain } from "@src/interfaces/llm.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";

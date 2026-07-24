@@ -1,7 +1,7 @@
 import mustache from "mustache";
 
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
-import { Language } from "@src/database.js";
+import { Language } from "@src/entities/user.js";
 import { IMessagesProvider } from "@src/interfaces/messages_provider.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";

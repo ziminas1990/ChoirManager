@@ -1,7 +1,8 @@
 import { Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Formatter, GlobalFormatter } from "@src/utils.js";
-import { Language, User } from "@src/database.js";
+import { User } from "@src/database.js";
+import { Language } from "@src/entities/user.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
 import { Orator } from "./deposit_owner_dialog.js";
 import { IAccounterAgent, IUserAgent } from "@src/interfaces/user_agent.js";

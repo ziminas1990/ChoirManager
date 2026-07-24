@@ -1,23 +1,20 @@
 import { Expected, Status } from "@src/utils/expected.js";
-import { GoogleSpreadsheet } from '@src/api/google_docs.js';
-import { Database, Language, Role, User, Voice } from '@src/database.js';
+import { UsersStorageConfig, UsersStorageFactory } from "@src/adapters/users_storage/factory.js";
+import { Database, User } from '@src/database.js';
+import { UserData } from '@src/entities/user.js';
+import { IUsersStorage } from '@src/interfaces/storage/users_storage.js';
 import { Journal } from '@src/journal';
 
 export type UsersFetcherConfigJson = {
-    google_sheet_id: string;
-    range: string;
+    storage: UsersStorageConfig;
     fetch_interval_sec: number;
 }
 
 export class UsersFetcherConfig {
     constructor(private readonly json: UsersFetcherConfigJson) {}
 
-    get google_sheet_id(): string {
-        return this.json.google_sheet_id;
-    }
-
-    get range(): string {
-        return this.json.range;
+    get storage(): UsersStorageConfig {
+        return this.json.storage;
     }
 
     get fetch_interval_sec(): number {
@@ -25,11 +22,12 @@ export class UsersFetcherConfig {
     }
 
     verify(): Status {
-        if (!this.json.google_sheet_id) {
-            return Expected.err("'google_sheet_id' MUST be specified");
+        if (!this.json.storage) {
+            return Expected.err("'storage' MUST be specified");
         }
-        if (!this.json.range) {
-            return Expected.err("'range' MUST be specified");
+        const storage_status = UsersStorageFactory.verify(this.json.storage);
+        if (!storage_status.ok) {
+            return storage_status.wrap_error("'storage' misconfiguration");
         }
         if (!this.json.fetch_interval_sec) {
             return Expected.err("'fetch_interval_sec' MUST be specified");
@@ -41,117 +39,27 @@ export class UsersFetcherConfig {
     }
 }
 
-type TableColumns = {
-    tgid: number,
-    name: number,
-    language: number,
-    voice: number,
-    chorister: number,
-    manager: number,
-    admin: number,
-    ex_chorister: number,
-    accountant: number,
-    conductor: number
-}
-
-function try_parse_header(header: string[]): Expected<TableColumns> {
-    try {
-        const columns = header.map(h => h.toLowerCase().trim());
-
-        const info: Partial<TableColumns> = {}
-        const names: (keyof TableColumns)[] = [
-            "tgid", "name", "language", "voice", "chorister", "manager", "admin", "ex_chorister",
-            "accountant", "conductor"];
-
-        columns.forEach((name, idx) => {
-            const column = names.find(n => n.toLowerCase() === name.toLowerCase());
-            if (column) {
-                info[column] = idx;
-            }
-        })
-
-        for (const name of names) {
-            if (info[name] === undefined) {
-                return Expected.err(`No '${name}' column found`);
-            }
-        }
-        return Expected.ok(info as TableColumns);
-    } catch (e) {
-        return Expected.exception("error", e);
-    }
-}
-
-function get_voice(voice: string): Voice {
-    switch (voice.toLowerCase()) {
-        case "alto": return Voice.Alto;
-        case "soprano": return Voice.Soprano;
-        case "tenor": return Voice.Tenor;
-        case "baritone": return Voice.Baritone;
-        default: return Voice.Unknown;
-    }
-}
-
-function get_roles(row: string[], columns: TableColumns): Role[] {
-    const roles: Role[] = [];
-    if (row[columns.chorister]?.toLowerCase() === "true") {
-        roles.push(Role.Chorister);
-    }
-    if (row[columns.manager]?.toLowerCase() === "true") {
-        roles.push(Role.Manager);
-    }
-    if (row[columns.admin]?.toLowerCase() === "true") {
-        roles.push(Role.Admin);
-    }
-    if (row[columns.ex_chorister]?.toLowerCase() === "true") {
-        roles.push(Role.ExChorister);
-    }
-    if (row[columns.accountant]?.toLowerCase() === "true") {
-        roles.push(Role.Accountant);
-    }
-    if (row[columns.conductor]?.toLowerCase() === "true") {
-        roles.push(Role.Conductor);
-    }
-    return roles;
-}
-
-function get_language(lang: string): Language {
-    switch (lang.toLowerCase()) {
-        case "ru": return Language.RU;
-        case "eng": return Language.EN;
-        default: return Language.EN;
-    }
-}
-
-function try_parse_row(row: string[], columns: TableColumns): Expected<User> {
-    try {
-        const tgid = row[columns.tgid];
-        if (!tgid || tgid.length === 0) {
-            return Expected.err("No 'tgid' column found");
-        }
-
-        const [name, surname] = row[columns.name].split(" ");
-        const lang = get_language(row[columns.language]);
-        const voice = get_voice(row[columns.voice]);
-        const roles = get_roles(row, columns);
-
-        const user = new User(tgid, name, surname, lang, voice, roles);
-        return Expected.ok(user);
-    } catch (e) {
-        return Expected.exception("error", e);
-    }
+function user_from_data(data: UserData): User {
+    return new User(
+        data.id.telegram_id,
+        data.name,
+        data.surname,
+        data.lang,
+        data.voice,
+        data.roles,
+    );
 }
 
 export class UsersFetcher {
     private last_fetch_date?: Date;
-    private sheet: GoogleSpreadsheet;
     private journal: Journal;
 
     constructor(
-        private readonly config: UsersFetcherConfig,
+        private readonly storage: IUsersStorage,
+        private readonly fetch_interval_sec: number,
         private database: Database,
         parent_journal: Journal
     ) {
-        this.sheet = new GoogleSpreadsheet(this.config.google_sheet_id);
         this.journal = parent_journal.child("users_fetcher");
     }
 
@@ -164,32 +72,16 @@ export class UsersFetcher {
             return Expected.ok(undefined);
         }
 
-        const sheet_status = await this.sheet.read(this.config.range);
-        if (!sheet_status.ok) {
-            return sheet_status.wrap_error("can't fetch sheet data");
-        }
-        const table = sheet_status.value!;
-        if (table.length < 2) {
-            return Expected.ok(undefined); // Just no any data (or header only), not an error
+        let users_data: UserData[];
+        try {
+            users_data = await this.storage.fetch_all();
+        } catch (e) {
+            return Expected.exception("can't fetch users", e);
         }
 
-        const header_status = try_parse_header(table[0]);
-        if (!header_status.ok) {
-            return header_status.wrap_error("invalid header");
+        for (const data of users_data) {
+            this.update_database(user_from_data(data));
         }
-        const columns = header_status.value!;
-
-        const users: User[] = []
-        table.slice(1).forEach((row, idx) => {
-            const status = try_parse_row(row, columns);
-            if (!status.ok) {
-                this.journal.log().error(`Error parsing user '${row[columns.tgid]}' at row ${idx}: ${status.error}`);
-            } else {
-                users.push(status.value!);
-            }
-        });
-
-        users.forEach((user) => this.update_database(user));
         return Expected.ok(undefined);
     }
 
@@ -213,7 +105,7 @@ export class UsersFetcher {
             this.last_fetch_date = new Date();
             return true;
         }
-        const fetch_interval_ms = this.config.fetch_interval_sec * 1000;
+        const fetch_interval_ms = this.fetch_interval_sec * 1000;
         const time_since_last_fetch = now_ms - this.last_fetch_date.getTime();
         if (time_since_last_fetch < fetch_interval_ms) {
             return false;

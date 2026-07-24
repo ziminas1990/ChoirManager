@@ -1,4 +1,4 @@
-import { Language } from "@src/database.js";
+import { Language } from "@src/entities/user.js";
 
 export interface IMessagesProvider {
 
