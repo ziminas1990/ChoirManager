@@ -1,5 +1,5 @@
 import { TaskData, TaskStatus, TaskUpdate } from "@src/entities/task.js";
-import { TaskTrackerEvent } from "@src/interfaces/task_tracker.js";
+import { TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
 
 type TaskField = Exclude<keyof TaskData, "id" | "schema" | "created_at">;
 

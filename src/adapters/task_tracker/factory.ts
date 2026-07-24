@@ -1,5 +1,5 @@
-import { GoogleFirestoreTaskTracker, Config as GoogleFirestoreConfig } from "@src/adapters/task_tracker/google_firestore.js";
-import { ITaskTracker } from "@src/interfaces/task_tracker.js";
+import { GoogleFirestoreTaskTrackerService, Config as GoogleFirestoreConfig } from "@src/adapters/task_tracker/google_firestore.js";
+import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
@@ -10,10 +10,10 @@ export class TaskTrackerFactory {
     static create(
         config: TaskTrackerDatabaseConfig,
         parent_journal: Journal,
-    ): Expected<ITaskTracker> {
+    ): Expected<ITaskTrackerService> {
         switch (config.type) {
             case "google_firestore":
-                return Expected.ok(new GoogleFirestoreTaskTracker(config, parent_journal));
+                return Expected.ok(new GoogleFirestoreTaskTrackerService(config, parent_journal));
         }
     }
 

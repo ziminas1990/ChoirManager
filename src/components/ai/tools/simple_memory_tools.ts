@@ -7,7 +7,7 @@ import {
     MemoryVisibility,
 } from "@src/entities/memory.js";
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
-import { ISimpleMemoryService } from "@src/interfaces/simple_memory.js";
+import { ISimpleMemoryService } from "@src/interfaces/simple_memory_service.js";
 import { Expected } from "@src/utils/expected.js";
 import { parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
 

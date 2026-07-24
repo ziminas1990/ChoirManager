@@ -3,7 +3,6 @@ import fs from "fs";
 import { OpenaiAPI } from "@src/api/openai.js";
 import { MemoryAskJob } from "@src/components/ai/jobs/memory_ask_job.js";
 import { MemorySearchJob } from "@src/components/ai/jobs/memory_search_job.js";
-import { SimpleMemoryConfig } from "@src/config.js";
 import {
     MemoryAccessContext,
     MemoryFact,
@@ -11,8 +10,8 @@ import {
 } from "@src/entities/memory.js";
 import {
     ISimpleMemoryService,
-    ISimpleMemoryStorage,
-} from "@src/interfaces/simple_memory.js";
+} from "@src/interfaces/simple_memory_service.js";
+import { ISimpleMemoryStorage } from "@src/interfaces/storage/simple_memory_storage.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
@@ -21,7 +20,9 @@ export class SimpleMemoryService implements ISimpleMemoryService {
     private facts: Map<string, MemoryFact> = new Map();
 
     constructor(
-        private readonly config: SimpleMemoryConfig,
+        private readonly model: string,
+        private readonly search_prompt_file: string,
+        private readonly ask_prompt_file: string,
         private readonly storage: ISimpleMemoryStorage,
         parent_journal: Journal,
     ) {
@@ -121,13 +122,13 @@ export class SimpleMemoryService implements ISimpleMemoryService {
 
         let prompt: string;
         try {
-            prompt = fs.readFileSync(this.config.search_prompt_file, "utf-8").trim();
+            prompt = fs.readFileSync(this.search_prompt_file, "utf-8").trim();
         } catch (e) {
             return Expected.exception("failed to read memory search prompt", e);
         }
 
         const job = new MemorySearchJob(
-            OpenaiAPI.get_llm(this.config.model),
+            OpenaiAPI.get_llm(this.model),
             prompt,
         );
         const result = await job.evaluate({ query, facts: visible });
@@ -172,13 +173,13 @@ export class SimpleMemoryService implements ISimpleMemoryService {
 
         let prompt: string;
         try {
-            prompt = fs.readFileSync(this.config.ask_prompt_file, "utf-8").trim();
+            prompt = fs.readFileSync(this.ask_prompt_file, "utf-8").trim();
         } catch (e) {
             return Expected.exception("failed to read memory ask prompt", e);
         }
 
         const job = new MemoryAskJob(
-            OpenaiAPI.get_llm(this.config.model),
+            OpenaiAPI.get_llm(this.model),
             prompt,
         );
         const result = await job.evaluate({ question: query, facts });

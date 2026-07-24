@@ -20,8 +20,7 @@ import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/choris
 import { register_user_assistant_tools } from "@src/components/ai/user_agent_tools_factory.js";
 import { Runtime, RuntimeConfig } from "@src/runtime.js";
 import { AssistantConfig } from "@src/config.js";
-import { TaskTrackerInstance } from "@src/interfaces/task_tracker.js";
-import { SimpleMemoryInstance } from "@src/interfaces/simple_memory.js";
+import { Environment } from "@src/components/environment.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -60,11 +59,8 @@ export class ChoristerDialog implements IChorister {
                     start_feedback: async (details?: string) => dialog.start_feedback_activity(details),
                 },
                 {
-                    task_tracker: TaskTrackerInstance.has_instance()
-                        ? TaskTrackerInstance.get_instance()
-                        : undefined,
-                    simple_memory: SimpleMemoryInstance.get_instance(),
-                    resolve_user: (user_id) => Runtime.get_instance().get_user(user_id)?.data,
+                    task_tracker: Environment.global.maybe_task_tracker_service,
+                    simple_memory: Environment.global.simple_memory_service,                    resolve_user: (user_id) => Runtime.get_instance().get_user(user_id)?.data,
                 },
             );
             if (!tools_status.ok) {

@@ -8,7 +8,7 @@ import {
     MemoryVisibility,
     NewMemoryFact,
 } from "@src/entities/memory.js";
-import { ISimpleMemoryStorage } from "@src/interfaces/simple_memory.js";
+import { ISimpleMemoryStorage } from "@src/interfaces/storage/simple_memory_storage.js";
 import { Journal } from "@src/journal.js";
 import { Expected } from "@src/utils/expected.js";
 import { generate_memory_id } from "@src/utils/misc.js";

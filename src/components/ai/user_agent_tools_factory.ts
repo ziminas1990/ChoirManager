@@ -3,8 +3,8 @@ import { Role } from "@src/entities/user.js";
 import { MANAGERS_MEMORY_GROUP_ID } from "@src/entities/memory.js";
 import { IToolchain } from "@src/interfaces/llm.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
-import { ISimpleMemoryService } from "@src/interfaces/simple_memory.js";
-import { ITaskTracker } from "@src/interfaces/task_tracker.js";
+import { ISimpleMemoryService } from "@src/interfaces/simple_memory_service.js";
+import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { DepositManagerTools } from "./tools/deposit_manager_tools.js";
@@ -20,7 +20,7 @@ export type UserAgentToolsDependencies = {
 };
 
 export type Services = {
-    task_tracker?: ITaskTracker;
+    task_tracker?: ITaskTrackerService;
     simple_memory?: ISimpleMemoryService;
     resolve_user: (user_id: string) => User | undefined;
 }

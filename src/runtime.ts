@@ -19,8 +19,7 @@ import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
 import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
 import { TaskTrackerFactory } from "./adapters/task_tracker/factory.js";
-import { SimpleMemoryFactory } from "./adapters/simple_memory/factory.js";
-import { SimpleMemoryService } from "./logic/simple_memory.js";
+import { SimpleMemoryServiceFactory } from "./adapters/simple_memory_service/factory.js";
 import { update_v2_v3 } from "./configuration/update_v2_v3.js";
 import { IAdapter } from "./interfaces/adapter.js";
 import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
@@ -34,9 +33,9 @@ import { ITransactionsStorage } from "./interfaces/transactions_storage.js";
 import { TransactionStorageFactory } from "./adapters/transactions_storage/factory.js";
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
 import { AttendanceTracker } from "./logic/attendance_tracker.js";
-import { TaskTracker } from "./logic/task_tracker.js";
-import { TaskTrackerEvent, TaskTrackerInstance } from "./interfaces/task_tracker.js";
-import { SimpleMemoryInstance } from "./interfaces/simple_memory.js";
+import { TaskTrackerService } from "./components/task_tracker_service.js";
+import { TaskTrackerEvent } from "./interfaces/task_tracker_service.js";
+import { Environment } from "./components/environment.js";
 import { MANAGERS_MEMORY_GROUP_ID } from "./entities/memory.js";
 import { ManagersAgent } from "./components/ai/agents/managers_agent.js";
 import { TaskTrackerTools } from "./components/ai/tools/task_tracker_tools.js";
@@ -136,7 +135,7 @@ export class Runtime {
     private messages_provider?: GoogleSpreadsheetMessagesProvider;
     private attendance_tracker?: AttendanceTracker;
     private rehersals_tracker?: RehersalsTracker;
-    private task_tracker?: TaskTracker;
+    private task_tracker?: TaskTrackerService;
 
     private tg_adapter?: TgAdapter;
 
@@ -327,7 +326,7 @@ export class Runtime {
             if (!create_status.ok) {
                 return create_status.wrap_error("Failed to create task tracker");
             }
-            this.task_tracker = new TaskTracker(
+            this.task_tracker = new TaskTrackerService(
                 this.config.task_tracker,
                 create_status.value,
                 this.task_tracker_broadcaster,
@@ -337,27 +336,23 @@ export class Runtime {
             if (!init_status.ok) {
                 return init_status.wrap_error("Failed to initialize task tracker");
             }
-            TaskTrackerInstance.set_instance(this.task_tracker);
+            Environment.setup.task_tracker_service = this.task_tracker;
         }
 
         this.journal.log().info("Initializing simple memory...");
-        const create_status = SimpleMemoryFactory.create(
-            this.config.simple_memory.database,
+        const create_status = SimpleMemoryServiceFactory.create(
+            this.config.simple_memory,
             this.journal,
         );
         if (!create_status.ok) {
-            return create_status.wrap_error("Failed to create simple memory storage");
+            return create_status.wrap_error("Failed to create simple memory service");
         }
-        const simple_memory = new SimpleMemoryService(
-            this.config.simple_memory,
-            create_status.value,
-            this.journal,
-        );
+        const simple_memory = create_status.value;
         const init_status = await simple_memory.init();
         if (!init_status.ok) {
             return init_status.wrap_error("Failed to initialize simple memory");
         }
-        SimpleMemoryInstance.set_instance(simple_memory);
+        Environment.setup.simple_memory_service = simple_memory;
 
         if (this.config.json.managers_chat) {
             this.journal.log().info("Initializing managers chat...");
@@ -377,11 +372,11 @@ export class Runtime {
 
         if (this.config.managers_chat_agent && this.managers_chat) {
             this.journal.log().info("Initializing managers chat agent...");
-            const task_tracker_tools = TaskTrackerInstance.has_instance()
-                ? new TaskTrackerTools(TaskTrackerInstance.get_instance())
+            const task_tracker_tools = Environment.global.maybe_task_tracker_service
+                ? new TaskTrackerTools(Environment.global.task_tracker_service)
                 : undefined;
             const simple_memory_tools = new SimpleMemoryTools(
-                SimpleMemoryInstance.get_instance(),
+                Environment.global.simple_memory_service,
                 {
                     group_ids: [MANAGERS_MEMORY_GROUP_ID],
                 },
@@ -531,7 +526,7 @@ export class Runtime {
         }
 
         if (this.user_service) {
-            const user_service_status = await this.user_service.proceed();
+            const user_service_status = await this.user_service.proceed(now);
             if (!user_service_status.ok) {
                 this.journal.log().error(`User service proceed failed: ${user_service_status.error}`);
             }

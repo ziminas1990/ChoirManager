@@ -8,7 +8,7 @@ import {
     get_task_id,
 } from "@src/entities/task.js";
 import { IBroadcaster } from "@src/interfaces/message_queue.js";
-import { ITaskTracker, TaskTrackerEvent } from "@src/interfaces/task_tracker.js";
+import { ITaskTrackerService, TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -43,7 +43,7 @@ function is_deadline_notification_day(
     return days >= 0 && notification_days.includes(days);
 }
 
-export class TaskTracker extends Logic<void> implements ITaskTracker {
+export class TaskTrackerService extends Logic<void> implements ITaskTrackerService {
     private readonly journal: Journal;
 
     private tasks: Map<string, TaskData> = new Map();
@@ -51,12 +51,12 @@ export class TaskTracker extends Logic<void> implements ITaskTracker {
 
     constructor(
         private readonly config: TaskTrackerConfig,
-        private readonly adapter: ITaskTracker,
+        private readonly adapter: ITaskTrackerService,
         private readonly broadcaster: IBroadcaster<TaskTrackerEvent>,
         parent_journal: Journal,
     ) {
         super(5000);
-        this.journal = parent_journal.child("task_tracker_logic");
+        this.journal = parent_journal.child("task_tracker_svc");
     }
 
     async fetch(filter?: TaskFilter): Promise<Expected<TaskData[]>> {

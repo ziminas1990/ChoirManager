@@ -120,7 +120,8 @@
         "deadline_notification_days": [3, 1]
     },
     "simple_memory": {
-        "database": {
+        "type": "local",
+        "storage": {
             "type": "google_firestore",
             "database_id": "",
             "collection_name": "memories"

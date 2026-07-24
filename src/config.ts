@@ -4,7 +4,10 @@ import { FeedbackStorageConfig, FeedbackStorageFactory } from "@src/adapters/fee
 import { MessagesStorageConfig, MessagesStorageFactory } from "@src/adapters/messages_storage/factory.js";
 import { RehersalsStorageConfig, RehersalsStorageFactory } from "@src/adapters/rehersals_storage/factory.js";
 import { TaskTrackerDatabaseConfig, TaskTrackerFactory } from "@src/adapters/task_tracker/factory.js";
-import { SimpleMemoryDatabaseConfig, SimpleMemoryFactory } from "@src/adapters/simple_memory/factory.js";
+import {
+    SimpleMemoryServiceConfig,
+    SimpleMemoryServiceConfigJson,
+} from "@src/adapters/simple_memory_service/factory.js";
 import { TransactionStorageConfig } from "@src/adapters/transactions_storage/factory.js";
 import { DepositTrackingConfig, DepositTrackingConfigJson } from "@src/fetchers/deposits_fetcher.js";
 import { ScoresFetcherConfig, ScoresFetcherConfigJson } from "@src/fetchers/scores_fetcher.js";
@@ -239,59 +242,6 @@ export class TaskTrackerConfig {
     }
 }
 
-export type SimpleMemoryConfigJson = {
-    database: SimpleMemoryDatabaseConfig;
-    model: string;
-    search_prompt_file: string;
-    ask_prompt_file: string;
-}
-
-export class SimpleMemoryConfig {
-    constructor(private readonly json: SimpleMemoryConfigJson) {}
-
-    get database(): SimpleMemoryDatabaseConfig {
-        return this.json.database;
-    }
-
-    get model(): string {
-        return this.json.model;
-    }
-
-    get search_prompt_file(): string {
-        return this.json.search_prompt_file;
-    }
-
-    get ask_prompt_file(): string {
-        return this.json.ask_prompt_file;
-    }
-
-    verify(): Status {
-        if (!this.json.database) {
-            return Expected.err("'database' MUST be specified");
-        }
-        const status = SimpleMemoryFactory.verify(this.json.database);
-        if (!status.ok) {
-            return status.wrap_error("'database' misconfiguration");
-        }
-        if (!this.json.model) {
-            return Expected.err("'model' MUST be specified");
-        }
-        if (!this.json.search_prompt_file) {
-            return Expected.err("'prompt_file' MUST be specified");
-        }
-        if (!fs.existsSync(this.search_prompt_file)) {
-            return Expected.err(`'search_prompt_file' does not exist: ${this.search_prompt_file}`);
-        }
-        if (!this.json.ask_prompt_file) {
-            return Expected.err("'ask_prompt_file' MUST be specified");
-        }
-        if (!fs.existsSync(this.ask_prompt_file)) {
-            return Expected.err(`'ask_prompt_file' does not exist: ${this.ask_prompt_file}`);
-        }
-        return Expected.ok(undefined);
-    }
-}
-
 export type MessagesProviderConfigJson = {
     sheet_id: string;
     table_name: string;
@@ -342,7 +292,7 @@ export type BotConfigJson = {
     managers_chat_agent?: ManagersChatAgentConfigJson;
     announce_chat?: ChatConfigJson;
     task_tracker?: TaskTrackerConfigJson;
-    simple_memory: SimpleMemoryConfigJson;
+    simple_memory: SimpleMemoryServiceConfigJson;
 }
 
 export class BotConfig {
@@ -358,7 +308,7 @@ export class BotConfig {
     public readonly rehersals_tracker?: RehersalsTrackerConfig;
     public readonly assistant?: AssistantConfig;
     public readonly task_tracker?: TaskTrackerConfig;
-    public readonly simple_memory: SimpleMemoryConfig;
+    public readonly simple_memory: SimpleMemoryServiceConfig;
     public readonly managers_chat_agent?: ManagersChatAgentConfig;
 
     constructor(public readonly json: BotConfigJson) {
@@ -401,7 +351,7 @@ export class BotConfig {
         if (json.task_tracker != undefined) {
             this.task_tracker = new TaskTrackerConfig(json.task_tracker);
         }
-        this.simple_memory = new SimpleMemoryConfig(json.simple_memory);
+        this.simple_memory = new SimpleMemoryServiceConfig(json.simple_memory);
         if (json.managers_chat_agent != undefined) {
             this.managers_chat_agent = new ManagersChatAgentConfig(json.managers_chat_agent);
         }

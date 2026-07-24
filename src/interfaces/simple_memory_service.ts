@@ -5,15 +5,6 @@ import {
 } from "@src/entities/memory.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
-// Pure persistence: no access control, no caching.
-export interface ISimpleMemoryStorage {
-    create(fact: NewMemoryFact): Promise<Expected<MemoryFact>>;
-    update(fact: MemoryFact): Promise<Expected<MemoryFact>>;
-    delete(id: string): Promise<Expected<MemoryFact>>;
-    get(id: string): Promise<Expected<MemoryFact>>;
-    fetch_all(): Promise<Expected<MemoryFact[]>>;
-}
-
 // Service logic: access control, caching, and higher-level operations.
 export interface ISimpleMemoryService {
     init(): Promise<Status>;
@@ -46,23 +37,4 @@ export interface ISimpleMemoryService {
     // Ask the service's sub-agent to answer the request based on the memory.
     // Returns the answer.
     ask(question: string, access: MemoryAccessContext): Promise<Expected<string>>;
-}
-
-export class SimpleMemoryInstance {
-    private static instance?: ISimpleMemoryService;
-
-    static set_instance(instance: ISimpleMemoryService): void {
-        this.instance = instance;
-    }
-
-    static has_instance(): boolean {
-        return this.instance !== undefined;
-    }
-
-    static get_instance(): ISimpleMemoryService {
-        if (!this.instance) {
-            throw new Error("Simple memory instance not set");
-        }
-        return this.instance;
-    }
 }

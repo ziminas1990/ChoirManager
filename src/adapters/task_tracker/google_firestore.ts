@@ -11,7 +11,7 @@ import {
     filter_tasks,
 } from "@src/entities/task.js";
 import { generate_task_id } from "@src/utils/misc.js";
-import { ITaskTracker } from "@src/interfaces/task_tracker.js";
+import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
 import { Journal } from "@src/journal.js";
 import { Expected } from "@src/utils/expected.js";
 import { TokenBucket } from "@src/utils/token_bucket.js";
@@ -130,7 +130,7 @@ function is_already_exists_error(error: unknown): boolean {
     return message.includes("ALREADY_EXISTS") || message.includes("already exists");
 }
 
-export class GoogleFirestoreTaskTracker implements ITaskTracker {
+export class GoogleFirestoreTaskTrackerService implements ITaskTrackerService {
     private readonly db: Firestore;
     private readonly collection: CollectionReference;
     private readonly journal: Journal;

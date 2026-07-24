@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { TaskData, TaskFilter, TaskStatus, TaskUpdate, get_task_id } from "@src/entities/task.js";
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
-import { ITaskTracker } from "@src/interfaces/task_tracker.js";
+import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
 import { parse_optional_datetime } from "@src/utils/common_parsers.js";
 import { Expected } from "@src/utils/expected.js";
 import { empty_parameters_schema, parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
@@ -150,7 +150,7 @@ General rules:
 
 export class TaskTrackerTools implements IToolchain {
     constructor(
-        private readonly task_tracker: ITaskTracker,
+        private readonly task_tracker: ITaskTrackerService,
     ) {}
 
     get_name(): string {

@@ -13,6 +13,7 @@ import { Journal } from '@src/journal.js';
 import { GlobalFormatter } from '@src/utils.js';
 import { CoreAPI } from '@src/use_cases/core.js';
 import { UserService } from '@src/components/user_service.js';
+import { Environment } from '@src/components/environment.js';
 
 const root_logger = Journal.Root();
 
@@ -74,6 +75,9 @@ async function main() {
 
     GlobalFormatter.init(config.tg_adapter!.formatting);
 
+    const environment = new Environment();
+    Environment.set_global(environment);
+
     const operations_journal = root_logger.child("operations");
     CoreAPI.attach_journal(operations_journal.child("core_api"));
 
@@ -109,6 +113,7 @@ async function main() {
         await wait_and_exit(10000, 1);
     }
     const user_service = user_service_status.value!;
+    environment.user_service = user_service;
 
     root_logger.log().info("Loading database...");
     const database_status = await load_database(database, users_fetcher);

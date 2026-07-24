@@ -4,32 +4,26 @@ import { UserData, UserId } from "@src/entities/user.js";
 import { IUsersStorage } from "@src/interfaces/storage/users_storage.js";
 import { IUserService } from "@src/interfaces/user_service.js";
 import { Journal } from "@src/journal.js";
+import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 
-export class UserService implements IUserService {
+export class UserService extends Logic<void> implements IUserService {
     private readonly journal: Journal;
     // system_id -> user
     private users = new Map<string, UserData>();
     private by_telegram_id = new Map<string, UserData>();
-    private last_fetch_date?: Date;
 
     constructor(
         private readonly storage: IUsersStorage,
-        private readonly fetch_interval_sec: number,
+        fetch_interval_sec: number,
         parent_journal: Journal,
     ) {
+        super(fetch_interval_sec * 1000);
         this.journal = parent_journal.child("user_service");
     }
 
     async init(): Promise<Status> {
-        return await this.refetch();
-    }
-
-    async proceed(): Promise<Status> {
-        if (!Helpers.time_to_refetch(this.last_fetch_date, this.fetch_interval_sec)) {
-            return Expected.ok(undefined);
-        }
         return await this.refetch();
     }
 
@@ -49,6 +43,14 @@ export class UserService implements IUserService {
             return Expected.ok(this.users.get(user_id.system_id));
         }
         return Expected.ok(this.by_telegram_id.get(user_id.telegram_id!));
+    }
+
+    protected async proceed_impl(_now: Date, _interval_ms: number): Promise<Expected<void[]>> {
+        const status = await this.refetch();
+        if (!status.ok) {
+            return status.cast_error<void[]>();
+        }
+        return Expected.ok([]);
     }
 
     private async refetch(): Promise<Status> {
@@ -91,7 +93,6 @@ export class UserService implements IUserService {
 
         this.users = next_users;
         this.by_telegram_id = next_by_telegram_id;
-        this.last_fetch_date = new Date();
 
         this.journal.log().info({ users_count: this.users.size }, "Users cache refreshed");
         return Expected.ok(undefined);
@@ -101,13 +102,5 @@ export class UserService implements IUserService {
 class Helpers {
     static system_id_from_name(name: string, surname: string): string {
         return crypto.createHash("sha256").update(`${name}\0${surname}`).digest("hex");
-    }
-
-    static time_to_refetch(last_fetch_date: Date | undefined, fetch_interval_sec: number): boolean {
-        if (!last_fetch_date) {
-            return true;
-        }
-        const fetch_interval_ms = fetch_interval_sec * 1000;
-        return Date.now() - last_fetch_date.getTime() >= fetch_interval_ms;
     }
 }
