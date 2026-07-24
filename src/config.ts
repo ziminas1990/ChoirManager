@@ -11,6 +11,7 @@ import { ScoresFetcherConfig, ScoresFetcherConfigJson } from "@src/fetchers/scor
 import { UsersFetcherConfig, UsersFetcherConfigJson } from "@src/fetchers/users_fetcher.js";
 import { AttendanceTrackerConfig, AttendanceTrackerConfigJson } from "@src/logic/attendance_tracker.js";
 import { RehersalsTrackerConfig, RehersalsTrackerConfigJson } from "@src/logic/rehersals_tracker.js";
+import { UserServiceConfig, UserServiceConfigJson } from "@src/adapters/user_service/factory.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Formatting } from "@src/utils.js";
@@ -326,6 +327,7 @@ export type BotConfigJson = {
     logs_file: string;
     tg_adapter: TgAdapterConfigJson;
     users_fetcher: UsersFetcherConfigJson;
+    user_service: UserServiceConfigJson;
     messages_provider: MessagesProviderConfigJson;
     scores_fetcher?: ScoresFetcherConfigJson;
     new_records_tracker?: NewRecordsTrackerConfigJson;
@@ -347,6 +349,7 @@ export class BotConfig {
     public readonly runtime: RuntimeConfig;
     public readonly tg_adapter?: TgAdapterConfig;
     public readonly users_fetcher?: UsersFetcherConfig;
+    public readonly user_service?: UserServiceConfig;
     public readonly messages_provider?: MessagesProviderConfig;
     public readonly scores_fetcher?: ScoresFetcherConfig;
     public readonly new_records_tracker?: NewRecordsTrackerConfig;
@@ -370,6 +373,9 @@ export class BotConfig {
         }
         if (json.users_fetcher != undefined) {
             this.users_fetcher = new UsersFetcherConfig(json.users_fetcher);
+        }
+        if (json.user_service != undefined) {
+            this.user_service = new UserServiceConfig(json.user_service);
         }
         if (json.messages_provider != undefined) {
             this.messages_provider = new MessagesProviderConfig(json.messages_provider);
@@ -429,6 +435,14 @@ export class BotConfig {
         status = this.users_fetcher.verify();
         if (!status.ok) {
             return status.wrap_error("'users_fetcher' misconfiguration");
+        }
+
+        if (!this.user_service) {
+            return Expected.err("'user_service' MUST be specified");
+        }
+        status = this.user_service.verify();
+        if (!status.ok) {
+            return status.wrap_error("'user_service' misconfiguration");
         }
 
         if (!this.messages_provider) {
@@ -651,6 +665,14 @@ export class Config {
         const cfg = this.current_config().users_fetcher;
         if (!cfg) {
             throw new Error("users_fetcher is not specified!");
+        }
+        return cfg;
+    }
+
+    static UserService(): UserServiceConfig {
+        const cfg = this.current_config().user_service;
+        if (!cfg) {
+            throw new Error("user_service is not specified!");
         }
         return cfg;
     }

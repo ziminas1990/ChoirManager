@@ -39,7 +39,10 @@ export class UsersFetcherConfig {
     }
 }
 
-function user_from_data(data: UserData): User {
+function user_from_data(data: UserData): User | undefined {
+    if (!data.id.telegram_id) {
+        return undefined;
+    }
     return new User(
         data.id.telegram_id,
         data.name,
@@ -80,7 +83,10 @@ export class UsersFetcher {
         }
 
         for (const data of users_data) {
-            this.update_database(user_from_data(data));
+            const user = user_from_data(data);
+            if (user) {
+                this.update_database(user);
+            }
         }
         return Expected.ok(undefined);
     }

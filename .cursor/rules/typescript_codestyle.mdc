@@ -1,0 +1,31 @@
+---
+description: TypeScript class structure and Helpers extraction
+alwaysApply: true
+---
+
+# TypeScript class structure
+
+Inside a class, declare members in this order:
+
+1. Fields
+2. Constructor
+3. Public methods
+4. Private methods
+
+# Extract helpers
+
+Move a method into a file-local `Helpers` class when **all** of the following hold:
+
+1. It does not mutate class state
+2. It uses at most three class fields
+3. It is not trivial (not a one-liner / thin wrapper around a single built-in call)
+4. It is not the class's essential domain logic — only reusable algorithms and boilerplate
+
+`Helpers`:
+
+- Is the last class in the file
+- Is never exported
+- Exposes only `static` methods used by classes in that file
+- Must not be trivial
+- Must not implement the class's core responsibility; keep that on the class itself
+

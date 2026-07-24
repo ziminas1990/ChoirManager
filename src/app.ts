@@ -7,10 +7,12 @@ import { BotConfig, load_config } from '@src/config.js';
 import { OpenaiAPI } from "@src/api/openai.js";
 import { UsersFetcher } from '@src/fetchers/users_fetcher.js';
 import { UsersStorageFactory } from '@src/adapters/users_storage/factory.js';
+import { UserServiceFactory } from '@src/adapters/user_service/factory.js';
 import { Database } from '@src/database.js';
 import { Journal } from '@src/journal.js';
 import { GlobalFormatter } from '@src/utils.js';
 import { CoreAPI } from '@src/use_cases/core.js';
+import { UserService } from '@src/components/user_service.js';
 
 const root_logger = Journal.Root();
 
@@ -45,6 +47,20 @@ async function load_database(database: Database, users_fetcher: UsersFetcher): P
     }
 
     return Expected.ok(undefined);
+}
+
+async function load_user_service(config: BotConfig): Promise<Expected<UserService>> {
+    const create_status = UserServiceFactory.create(config.user_service!, root_logger);
+    if (!create_status.ok) {
+        return create_status.wrap_error("can't create user service");
+    }
+
+    const user_service = create_status.value;
+    const init_status = await user_service.init();
+    if (!init_status.ok) {
+        return init_status.wrap_error("can't init user service");
+    }
+    return Expected.ok(user_service);
 }
 
 async function wait_and_exit(wait_ms: number, exit_code: number) {
@@ -86,6 +102,14 @@ async function main() {
         root_logger,
     );
 
+    root_logger.log().info("Initializing user service...");
+    const user_service_status = await load_user_service(config);
+    if (!user_service_status.ok) {
+        root_logger.log().error(`Failed to load user service: ${user_service_status.error}`);
+        await wait_and_exit(10000, 1);
+    }
+    const user_service = user_service_status.value!;
+
     root_logger.log().info("Loading database...");
     const database_status = await load_database(database, users_fetcher);
     if (!database_status.ok) {
@@ -101,6 +125,7 @@ async function main() {
     }
     const runtime = runtime_status.value!;
     runtime.attach_users_fetcher(users_fetcher);
+    runtime.attach_user_service(user_service);
 
     const openai_status = init_openai_api(config);
     if (!openai_status.ok) {

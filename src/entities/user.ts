@@ -23,7 +23,7 @@ export enum Language {
 
 export type UserId = {
     system_id: string;  // internal system uuid for the user
-    telegram_id: string;  // telegram user id
+    telegram_id?: string;  // telegram user id
 }
 
 export type UserData = {

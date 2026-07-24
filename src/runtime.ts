@@ -11,6 +11,7 @@ import { pack_map, return_exception, unpack_map } from "./utils.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Proceeder } from "./logic/abstracts.js";
 import { UsersFetcher } from "./fetchers/users_fetcher.js";
+import { UserService } from "./components/user_service.js";
 import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
 import { Journal } from "./journal.js";
 import { AdminActions } from "./use_cases/admin_actions.js";
@@ -119,6 +120,7 @@ export class Runtime {
     private next_dump: Date = new Date();
     private update_interval_sec: number = 0;
     private users_fetcher?: UsersFetcher;
+    private user_service?: UserService;
     private deposits_fetcher?: DepositsFetcher;
     private scores_fetcher?: ScoresFetcher;
     private new_records_fetcher?: NewRecordsFetcher;
@@ -465,6 +467,10 @@ export class Runtime {
         this.users_fetcher = fetcher;
     }
 
+    attach_user_service(service: UserService): void {
+        this.user_service = service;
+    }
+
     get_user(tg_id: string, create_guest: boolean = false): UserLogic | undefined {
         const user = this.database.get_user(tg_id);
         if (user) {
@@ -521,6 +527,13 @@ export class Runtime {
             const users_status = await this.users_fetcher.proceed();
             if (!users_status.ok) {
                 this.journal.log().error(`Users fetcher proceed failed: ${users_status.error}`);
+            }
+        }
+
+        if (this.user_service) {
+            const user_service_status = await this.user_service.proceed();
+            if (!user_service_status.ok) {
+                this.journal.log().error(`User service proceed failed: ${user_service_status.error}`);
             }
         }
 
