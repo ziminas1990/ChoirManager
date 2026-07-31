@@ -14,7 +14,6 @@ import {
 import { TransactionStorageConfig } from "@src/adapters/transactions_storage/factory.js";
 import { DepositTrackingConfig, DepositTrackingConfigJson } from "@src/fetchers/deposits_fetcher.js";
 import { ScoresFetcherConfig, ScoresFetcherConfigJson } from "@src/fetchers/scores_fetcher.js";
-import { UsersFetcherConfig, UsersFetcherConfigJson } from "@src/fetchers/users_fetcher.js";
 import { AttendanceTrackerConfig, AttendanceTrackerConfigJson } from "@src/logic/attendance_tracker.js";
 import { RehersalsTrackerConfig, RehersalsTrackerConfigJson } from "@src/logic/rehersals_tracker.js";
 import { UserServiceConfig, UserServiceConfigJson } from "@src/adapters/user_service/factory.js";
@@ -215,7 +214,6 @@ export type BotConfigJson = {
     openai_api_key_file?: string;
     logs_file: string;
     tg_adapter: TgAdapterConfigJson;
-    users_fetcher: UsersFetcherConfigJson;
     user_service: UserServiceConfigJson;
     messages_provider: MessagesProviderConfigJson;
     scores_fetcher?: ScoresFetcherConfigJson;
@@ -237,7 +235,6 @@ export type BotConfigJson = {
 export class BotConfig {
     public readonly runtime: RuntimeConfig;
     public readonly tg_adapter?: TgAdapterConfig;
-    public readonly users_fetcher?: UsersFetcherConfig;
     public readonly user_service?: UserServiceConfig;
     public readonly messages_provider?: MessagesProviderConfig;
     public readonly scores_fetcher?: ScoresFetcherConfig;
@@ -259,9 +256,6 @@ export class BotConfig {
 
         if (json.tg_adapter != undefined) {
             this.tg_adapter = new TgAdapterConfig(json.tg_adapter);
-        }
-        if (json.users_fetcher != undefined) {
-            this.users_fetcher = new UsersFetcherConfig(json.users_fetcher);
         }
         if (json.user_service != undefined) {
             this.user_service = new UserServiceConfig(json.user_service);
@@ -316,14 +310,6 @@ export class BotConfig {
         status = this.runtime.verify();
         if (!status.ok) {
             return status.wrap_error("runtime misconfiguration");
-        }
-
-        if (!this.users_fetcher) {
-            return Expected.err("'users_fetcher' MUST be specified");
-        }
-        status = this.users_fetcher.verify();
-        if (!status.ok) {
-            return status.wrap_error("'users_fetcher' misconfiguration");
         }
 
         if (!this.user_service) {
@@ -546,14 +532,6 @@ export class Config {
         const cfg = this.current_config().tg_adapter;
         if (!cfg) {
             throw new Error("tg_adapter is not specified!");
-        }
-        return cfg;
-    }
-
-    static UsersFetcher(): UsersFetcherConfig {
-        const cfg = this.current_config().users_fetcher;
-        if (!cfg) {
-            throw new Error("users_fetcher is not specified!");
         }
         return cfg;
     }

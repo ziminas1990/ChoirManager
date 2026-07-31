@@ -5,8 +5,6 @@ import { GoogleTranslate } from '@src/api/google_translate.js';
 import { Runtime } from '@src/runtime.js';
 import { BotConfig, load_config } from '@src/config.js';
 import { OpenaiAPI } from "@src/api/openai.js";
-import { UsersFetcher } from '@src/fetchers/users_fetcher.js';
-import { UsersStorageFactory } from '@src/adapters/users_storage/factory.js';
 import { UserServiceFactory } from '@src/adapters/user_service/factory.js';
 import { Database } from '@src/database.js';
 import { Journal } from '@src/journal.js';
@@ -34,20 +32,6 @@ function init_openai_api(config: BotConfig): Status {
     }
     root_logger.log().info("Initializing OpenAI API...");
     return OpenaiAPI.init(config);
-}
-
-async function load_database(database: Database, users_fetcher: UsersFetcher): Promise<Status> {
-    const status = await users_fetcher.start();
-    if (!status.ok) {
-        return status.wrap_error("can't start users fetcher");
-    }
-
-    const verify_status = database.verify();
-    if (!verify_status.ok) {
-        return verify_status.wrap_error("can't verify database");
-    }
-
-    return Expected.ok(undefined);
 }
 
 async function load_user_service(config: BotConfig): Promise<Expected<UserService>> {
@@ -90,22 +74,6 @@ async function main() {
         }
     }
 
-    const database = new Database();
-    const users_storage_status = UsersStorageFactory.create(
-        config.users_fetcher!.storage,
-        root_logger,
-    );
-    if (!users_storage_status.ok) {
-        root_logger.log().error(`Failed to create users storage: ${users_storage_status.error}`);
-        await wait_and_exit(10000, 1);
-    }
-    const users_fetcher = new UsersFetcher(
-        users_storage_status.value,
-        config.users_fetcher!.fetch_interval_sec,
-        database,
-        root_logger,
-    );
-
     root_logger.log().info("Initializing user service...");
     const user_service_status = await load_user_service(config);
     if (!user_service_status.ok) {
@@ -115,12 +83,7 @@ async function main() {
     const user_service = user_service_status.value!;
     environment.user_service = user_service;
 
-    root_logger.log().info("Loading database...");
-    const database_status = await load_database(database, users_fetcher);
-    if (!database_status.ok) {
-        root_logger.log().error(`Failed to load database: ${database_status.error}`);
-        await wait_and_exit(10000, 1);
-    }
+    const database = new Database();
 
     root_logger.log().info("Loading runtime...");
     const runtime_status = Runtime.Load(config, database, user_service, root_logger);
@@ -129,7 +92,6 @@ async function main() {
         await wait_and_exit(10000, 1);
     }
     const runtime = runtime_status.value!;
-    runtime.attach_users_fetcher(users_fetcher);
 
     const openai_status = init_openai_api(config);
     if (!openai_status.ok) {

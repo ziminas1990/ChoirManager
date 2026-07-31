@@ -10,7 +10,6 @@ import { UserLogic } from "./logic/user.js";
 import { pack_map, return_exception, unpack_map } from "./utils.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Proceeder } from "./logic/abstracts.js";
-import { UsersFetcher } from "./fetchers/users_fetcher.js";
 import { UserService } from "./components/user_service.js";
 import { IUserServiceReplica } from "./interfaces/user_service.js";
 import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
@@ -124,7 +123,6 @@ export class Runtime {
 
     private next_dump: Date = new Date();
     private update_interval_sec: number = 0;
-    private users_fetcher?: UsersFetcher;
     private deposits_fetcher?: DepositsFetcher;
     private scores_fetcher?: ScoresFetcher;
     private new_records_fetcher?: NewRecordsFetcher;
@@ -303,6 +301,7 @@ export class Runtime {
                 this.config.rehersals_tracker!,
                 this.rehersals_storage,
                 this.database,
+                this.user_service.as_replica(),
                 this.journal
             );
             const tracker_status = await this.rehersals_tracker.init();
@@ -469,10 +468,6 @@ export class Runtime {
         return this.announce_chat;
     }
 
-    attach_users_fetcher(fetcher: UsersFetcher): void {
-        this.users_fetcher = fetcher;
-    }
-
     // Existing runtime session for this telegram id, if any.
     get_user_logic(tg_id: string): UserLogic | undefined {
         const user_logic = this.users.get(tg_id) ?? this.guest_users.get(tg_id);
@@ -538,13 +533,6 @@ export class Runtime {
             const status = await this.tg_adapter.proceed(now);
             if (!status.ok) {
                 this.journal.log().error(`Tg adapter proceed failed: ${status.error}`);
-            }
-        }
-
-        if (this.users_fetcher) {
-            const users_status = await this.users_fetcher.proceed();
-            if (!users_status.ok) {
-                this.journal.log().error(`Users fetcher proceed failed: ${users_status.error}`);
             }
         }
 

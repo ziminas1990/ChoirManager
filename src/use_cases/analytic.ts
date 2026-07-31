@@ -4,6 +4,7 @@ import {
     ChoristerActivityStat,
     ChoristerAttendanceStat,
 } from "@src/entities/statistics.js";
+import { Voice } from "@src/entities/user.js";
 import { Expected } from "@src/utils/expected.js";
 
 function accumulate_songs_stat(
@@ -105,20 +106,17 @@ export class Analytic {
     static chorister_statistic_request(
         database: Database,
         user_id: string,
+        voice: Voice,
         begin: Date,
         end: Date,
     ): Expected<ChoristerAttendanceStat>
     {
-        const user = database.get_user(user_id);
-        if (!user) {
-            return Expected.err(`User ${user_id} not found`);
-        }
-
         // Accumulating actual statistic during the whole period
         const rehersals = database.get_rehersals_in_period(begin, end);
         let actual_minutes = 0;
         let actual_rehersals = 0;
-        let first_rehersal: Date = user.join_date ?? end;
+        // Ideal stats count from the user's first presence ever (not just in period).
+        let first_rehersal: Date = database.first_presence_date(user_id) ?? end;
         const actual_songs = new Map<string, number>();
         rehersals.forEach(rehersal => {
             const minutes = rehersal.minutes_of_presence(user_id);
@@ -138,7 +136,7 @@ export class Analytic {
         const ideal_songs = new Map<string, number>();
         rehersals.forEach(rehersal => {
             if (rehersal.when() >= first_rehersal) {
-                ideal_minutes += rehersal.duration(user.voice);
+                ideal_minutes += rehersal.duration(voice);
                 ideal_rehersals++;
                 accumulate_songs_stat(rehersal.songs(), ideal_songs);
             }

@@ -140,6 +140,7 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
         const statistic = Analytic.chorister_statistic_request(
             Runtime.get_instance().get_database(),
             this.user.userid(),
+            this.user.info().voice,
             begin,
             end,
         );

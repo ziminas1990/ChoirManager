@@ -275,7 +275,7 @@ export class AttendanceTracker extends Logic<void> {
         for (const chorister of choristers) {
             const tgid = user_tgid(chorister);
             const statistic = Analytic.chorister_statistic_request(
-                this.database, tgid, begin, end);
+                this.database, tgid, chorister.voice, begin, end);
             if (!statistic.ok) {
                 this.journal.log().warn({
                     tgid,

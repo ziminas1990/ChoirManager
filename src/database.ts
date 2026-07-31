@@ -1,12 +1,5 @@
-import { Language, Role, Voice } from "@src/entities/user.js";
+import { Voice } from "@src/entities/user.js";
 import { Expected, Status } from "@src/utils/expected.js";
-
-export function voice_from_string(voice: string | undefined): Voice {
-    if (!voice) {
-        return Voice.Unknown;
-    }
-    return Voice[voice as keyof typeof Voice] || Voice.Unknown;
-}
 
 function find<T>(array: Iterable<T>, what: Partial<T>): T | undefined {
     for (const item of array) {
@@ -16,67 +9,6 @@ function find<T>(array: Iterable<T>, what: Partial<T>): T | undefined {
         }
     }
     return undefined;
-}
-
-export class User {
-    public join_date?: Date;  // the first visited rehersal
-
-    constructor(
-        public tgid: string,
-        public name: string,
-        public surname: string,
-        public lang: Language,
-        public voice: Voice,
-        public roles: Role[],
-    ) {}
-
-    public is(role: Role): boolean {
-        return this.roles.includes(role);
-    }
-
-    // Returns diffs
-    public update(user: User): string[] {
-        if (this.tgid != user.tgid) {
-            throw new Error("can't update user with different tgid");
-        }
-
-        const diffs: string[] = [];
-        if (this.name != user.name) {
-            diffs.push(`name: ${this.name} -> ${user.name}`);
-            this.name = user.name;
-        }
-        if (this.surname != user.surname) {
-            diffs.push(`surname: ${this.surname} -> ${user.surname}`);
-            this.surname = user.surname;
-        }
-        if (this.lang != user.lang) {
-            diffs.push(`lang: ${this.lang} -> ${user.lang}`);
-            this.lang = user.lang;
-        }
-        if (this.voice != user.voice) {
-            diffs.push(`voice: ${this.voice} -> ${user.voice}`);
-            this.voice = user.voice;
-        }
-        if (this.join_date == undefined && user.join_date != undefined) {
-            diffs.push(`join date: ${this.join_date} -> ${user.join_date}`);
-            this.join_date = user.join_date;
-        }
-
-        for (const granted_role of user.roles) {
-            if (!this.roles.includes(granted_role)) {
-                diffs.push(`granted role: ${granted_role}`);
-                this.roles.push(granted_role);
-            }
-        }
-
-        for (const revoked_role of this.roles) {
-            if (!user.roles.includes(revoked_role)) {
-                diffs.push(`revoked role: ${revoked_role}`);
-                this.roles = this.roles.filter(role => role != revoked_role);
-            }
-        }
-        return diffs;
-    }
 }
 
 export class Scores {
@@ -184,7 +116,6 @@ export class Rehersal {
 }
 
 export type Data = {
-    users: Map<string, User>;
     scores: Map<string, Scores>;
     songs: Map<number, Song>;
     rehersals: Map<number, RehersalData>;
@@ -198,7 +129,6 @@ export type Data = {
 
 export class Database {
     private data: Data = {
-        users: new Map(),
         scores: new Map(),
         songs: new Map(),
         rehersals: new Map(),
@@ -207,10 +137,6 @@ export class Database {
         rehersals_index: new Map(),
         songs_index: new Map()
     };
-
-    public add_user(user: User): void {
-        this.data.users.set(user.tgid, user);
-    }
 
     public add_scores(scores: Scores): void {
         this.data.scores.set(scores.get_key(), scores);
@@ -269,12 +195,15 @@ export class Database {
         return Expected.ok(undefined);
     }
 
-    public add_participant_to_rehersal(rehersal: Rehersal, tgid: string, minutes: number): Status {
+    // voice is needed to update per-part duration_minutes on the rehersal.
+    public add_participant_to_rehersal(
+        rehersal: Rehersal,
+        tgid: string,
+        minutes: number,
+        voice: Voice,
+    ): Status {
         if (!this.data.rehersals.has(rehersal.id())) {
             return Expected.err(`rehersal ${rehersal.id()} not found`);
-        }
-        if (!this.data.users.has(tgid)) {
-            return Expected.err(`user ${tgid} not found`);
         }
         let rehersal_participants = this.data.rehersal_participants.get(rehersal.id());
         if (!rehersal_participants) {
@@ -283,18 +212,11 @@ export class Database {
         }
         rehersal_participants.set(tgid, minutes);
 
-        const chorister = this.data.users.get(tgid);
         const rehersal_data = this.data.rehersals.get(rehersal.id());
-        if (chorister) {
-            if (chorister.join_date == undefined || chorister.join_date > rehersal.when()) {
-                chorister.join_date = rehersal.when();
-            }
-            if (rehersal_data) {
-                const voice = chorister.voice;
-                const duration_minutes = rehersal_data.duration_minutes.get(voice);
-                if (duration_minutes == undefined || duration_minutes < minutes) {
-                    rehersal_data.duration_minutes.set(voice, minutes);
-                }
+        if (rehersal_data) {
+            const duration_minutes = rehersal_data.duration_minutes.get(voice);
+            if (duration_minutes == undefined || duration_minutes < minutes) {
+                rehersal_data.duration_minutes.set(voice, minutes);
             }
         }
         return Expected.ok(undefined);
@@ -326,22 +248,23 @@ export class Database {
         return new Rehersal(this, rehersal_data);
     }
 
-    public get_user(tg_id: string): User | undefined {
-        return this.data.users.get(tg_id);
-    }
-
-    public create_guest_user(tg_id: string): User {
-        const guest = new User(tg_id, "", "", Language.EN, Voice.Unknown, [Role.Guest]);
-        this.data.users.set(tg_id, guest);
-        return guest;
+    // Earliest rehersal where the user had positive presence minutes.
+    public first_presence_date(tgid: string): Date | undefined {
+        let first: Date | undefined;
+        for (const rehersal of this.get_rehersals()) {
+            if (rehersal.minutes_of_presence(tgid) <= 0) {
+                continue;
+            }
+            const when = rehersal.when();
+            if (!first || when < first) {
+                first = when;
+            }
+        }
+        return first;
     }
 
     public find_scores(what: Partial<Scores>): Scores | undefined {
         return find(this.data.scores.values(), what);
-    }
-
-    public all_users(): IterableIterator<User> {
-        return this.data.users.values();
     }
 
     public all_scores(): IterableIterator<Scores> {
@@ -349,11 +272,4 @@ export class Database {
     }
 
     public lowlevel(): Data { return this.data; }
-
-    public verify(): Status {
-        if (this.data.users.size == 0) {
-            return Expected.err("no users found in database");
-        }
-        return Expected.ok(undefined);
-    }
 }

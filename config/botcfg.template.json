@@ -9,14 +9,6 @@
         "bot_id": "",
         "formatting": "html"
     },
-    "users_fetcher": {
-        "storage": {
-            "type": "google_spreadsheet",
-            "google_sheet_id": "",
-            "range": "Users!A:Z"
-        },
-        "fetch_interval_sec": 60
-    },
     "user_service": {
         "type": "local",
         "storage": {

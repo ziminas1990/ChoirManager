@@ -1,5 +1,7 @@
 import { Database } from "@src/database.js";
+import { Voice } from "@src/entities/user.js";
 import { IRehersalsStorage, RehersalInfo } from "@src/interfaces/rehersals_storage.js";
+import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
@@ -36,6 +38,7 @@ export class RehersalsTracker {
         private readonly config: RehersalsTrackerConfig,
         private rehersals_storage: IRehersalsStorage,
         private database: Database,
+        private readonly users: IUserServiceReplica,
         parent_journal: Journal)
     {
         this.next_fetch = new Date();
@@ -91,8 +94,17 @@ export class RehersalsTracker {
                 this.database.add_song_to_rehersal(rehersal, song.id, minutes);
             }
             for (const { tgid, minutes } of participants) {
-                this.database.add_participant_to_rehersal(rehersal, tgid, minutes);
+                this.database.add_participant_to_rehersal(
+                    rehersal, tgid, minutes, this.resolve_voice(tgid));
             }
         }
+    }
+
+    private resolve_voice(tgid: string): Voice {
+        const resolved = this.users.resolve_user({ telegram_id: tgid });
+        if (!resolved.ok || !resolved.value) {
+            return Voice.Unknown;
+        }
+        return resolved.value.voice;
     }
 }

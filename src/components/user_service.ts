@@ -156,7 +156,6 @@ class Helpers {
         return crypto.createHash("sha256").update(`${name}\0${surname}`).digest("hex");
     }
 
-    // Diff format mirrors Database.User.update.
     static diff_user(prev: UserData, next: UserData): string[] {
         const diffs: string[] = [];
         if (prev.name != next.name) {
