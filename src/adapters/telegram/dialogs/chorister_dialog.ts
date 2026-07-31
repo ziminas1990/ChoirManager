@@ -6,7 +6,6 @@ import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { ScoresActions } from "@src/use_cases/scores_actions.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
-import { CoreAPI } from "@src/use_cases/core.js";
 import { AdminActions } from "@src/use_cases/admin_actions.js";
 import { GlobalFormatter, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
 import { ChoristerAgent } from "@src/components/ai/agents/chorister_agent.js";
@@ -60,7 +59,8 @@ export class ChoristerDialog implements IChorister {
                 },
                 {
                     task_tracker: Environment.global.maybe_task_tracker_service,
-                    simple_memory: Environment.global.simple_memory_service,                    resolve_user: (user_id) => Runtime.get_instance().get_user(user_id)?.data,
+                    simple_memory: Environment.global.simple_memory_service,
+                    users: Runtime.get_instance().get_user_service_replica(),
                 },
             );
             if (!tools_status.ok) {
@@ -238,15 +238,12 @@ export class ChoristerDialog implements IChorister {
         const command = text.split(/\s/)[0].split("@")[0];
         this.journal.log().info(`Processing service message: ${command}`);
 
-        const user = CoreAPI.get_user_by_tg_id(this.user.userid(), false);
-        if (!user || !user.value) {
-            return Expected.err(`User ${this.user.userid()} not found`);
-        }
+        const user = this.user.info();
 
         if (command == "/backup") {
-            return AdminActions.send_runtime_backup(user.value, this.runtime_config, this.journal);
+            return AdminActions.send_runtime_backup(user, this.runtime_config, this.journal);
         } else if (command == "/get_logs") {
-            return AdminActions.send_logs(user.value, this.runtime_config, this.journal);
+            return AdminActions.send_logs(user, this.runtime_config, this.journal);
         } else if (command == "/stop") {
             return AdminActions.stop_application(this.journal);
         } else {

@@ -6,6 +6,8 @@ import { return_fail } from "@src/utils.js";
 import { UserLogic } from "@src/logic/user.js";
 import { DepositsTrackerEvent } from "@src/logic/deposits_tracker.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
+import { Role, user_has_role, user_tgid } from "@src/entities/user.js";
+import { Environment } from "@src/components/environment.js";
 
 
 export class DepositActions {
@@ -14,13 +16,18 @@ export class DepositActions {
         agent: IUserAgent,
         journal: Journal
     ): Promise<Status> {
-        const user = Runtime.get_instance().get_user(agent.userid());
-        if (!user) {
-            return return_fail(`user ${agent.userid()} not found`, journal.log());
+        const userid = agent.userid();
+        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: userid });
+        if (!resolved.ok || !resolved.value) {
+            return return_fail(`user ${userid} not found`, journal.log());
+        }
+        if (user_has_role(resolved.value, Role.Guest)) {
+            return return_fail(`user ${userid} is a guest`, journal.log());
         }
 
-        if (user.is_guest()) {
-            return return_fail(`user ${agent.userid()} is a guest`, journal.log());
+        const user = Runtime.get_instance().get_user_logic(userid);
+        if (!user) {
+            return return_fail(`user ${userid} has no runtime session`, journal.log());
         }
 
         return await agent.as_deposit_owner().send_deposit_info(
@@ -33,18 +40,19 @@ export class DepositActions {
         journal: Journal,
         limit?: number
     ): Promise<Status> {
-        const user = Runtime.get_instance().get_user(agent.userid());
-        journal.log().info(`transactions_requested by ${user?.data.tgid}`);
-        if (!user) {
-            return return_fail(`user ${agent.userid()} not found`, journal.log());
+        const userid = agent.userid();
+        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: userid });
+        journal.log().info(`transactions_requested by ${resolved.ok && resolved.value ? user_tgid(resolved.value) : undefined}`);
+        if (!resolved.ok || !resolved.value) {
+            return return_fail(`user ${userid} not found`, journal.log());
         }
-
-        if (user.is_guest()) {
-            return return_fail(`user ${agent.userid()} is a guest`, journal.log());
+        if (user_has_role(resolved.value, Role.Guest)) {
+            return return_fail(`user ${userid} is a guest`, journal.log());
         }
 
         const transactions = await Runtime.get_instance()
-            .get_transactions_storage()?.fetch_transactions(user.data.tgid, { limit });
+            .get_transactions_storage()?.fetch_transactions(
+                user_tgid(resolved.value), { limit });
         return await agent.as_deposit_owner().send_transactions_info(transactions);
     }
 
@@ -57,15 +65,14 @@ export class DepositActions {
         const user_id = agent.userid();
         journal.log().info(`top_up ${user_id} ${amount} ${original_message}`);
 
-        const runtime = Runtime.get_instance();
-        const user = runtime.get_user(user_id, false);
-        if (!user) {
+        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: user_id });
+        if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
-
-        if (user.is_guest()) {
+        if (user_has_role(resolved.value, Role.Guest)) {
             return return_fail(`user ${user_id} is a guest`, journal.log());
         }
+        const user = resolved.value;
 
         {
             const status = await agent.as_deposit_owner().send_thanks_for_information();
@@ -86,7 +93,7 @@ export class DepositActions {
             }
             for (const accounter of accounter_agents) {
                 const status = await accounter.send_top_up_notification(
-                    user.data, amount, original_message);
+                    user, amount, original_message);
                 if (!status.ok) {
                     journal.log().warn([
                         `failed to send top_up notification to ${accounter.base().userid()}`,
@@ -105,11 +112,11 @@ export class DepositActions {
         const user_id = agent.userid();
         journal.log().info(`handle already_paid by ${user_id}`);
 
-        const runtime = Runtime.get_instance();
-        const user = runtime.get_user(user_id, false);
-        if (!user) {
+        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: user_id });
+        if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
+        const user = resolved.value;
 
         {
             const status = await agent.as_deposit_owner().send_already_paid_response();
@@ -129,10 +136,10 @@ export class DepositActions {
                 continue;
             }
             for (const accounter of accounter_agents) {
-                const status = await accounter.send_already_paid_notification(user.data);
+                const status = await accounter.send_already_paid_notification(user);
                 if (!status.ok) {
                     journal.log().warn([
-                        `failed to send already_paid notification to ${user.data.tgid}`,
+                        `failed to send already_paid notification to ${user_tgid(user)}`,
                         status.error
                     ].join(":"));
                 }
@@ -148,11 +155,12 @@ export class DepositActions {
         journal: Journal,
     ): Promise<Status>
     {
-        journal.log().info(`send_deposit_update for ${user.data.tgid}`);
+        const tgid = user_tgid(user.data);
+        journal.log().info(`send_deposit_update for ${tgid}`);
 
         const deposit_owner_dialog = user.as_deposit_owner();
         if (!deposit_owner_dialog || deposit_owner_dialog.length === 0) {
-            return Expected.err(`user ${user.data.tgid} has no agents`);
+            return Expected.err(`user ${tgid} has no agents`);
         }
 
         let total = 0;
@@ -181,7 +189,7 @@ export class DepositActions {
             .get_transactions_storage()
             ?.add_transaction({
                 date: new Date(),
-                tgid: user.data.tgid,
+                tgid: tgid,
                 type: "balance",
                 before: changes.balance![0],
                 after: changes.balance![1],
@@ -194,7 +202,7 @@ export class DepositActions {
                 .get_transactions_storage()
                 ?.add_transaction({
                     date: new Date(),
-                    tgid: user.data.tgid,
+                    tgid: tgid,
                     type: "membership",
                     membership_month: month,
                     before: before,
@@ -202,7 +210,7 @@ export class DepositActions {
                 });
             }
         }
-        
+
         return Expected.ok(undefined);
     }
 
@@ -212,7 +220,7 @@ export class DepositActions {
         journal: Journal
     ): Promise<Status>
     {
-        const userid = user.data.tgid;
+        const userid = user_tgid(user.data);
         journal.log().info(`send_reminder for @${userid}`);
 
         if (amount < 10) {

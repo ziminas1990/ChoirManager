@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { User } from "@src/database.js";
+import { user_tgid } from "@src/entities/user.js";
 import {
     MemoryAccessContext,
     MemoryFact,
@@ -8,6 +8,7 @@ import {
 } from "@src/entities/memory.js";
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
 import { ISimpleMemoryService } from "@src/interfaces/simple_memory_service.js";
+import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { Expected } from "@src/utils/expected.js";
 import { parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
 
@@ -89,7 +90,7 @@ export class SimpleMemoryTools implements IToolchain {
         private readonly memory: ISimpleMemoryService,
         private readonly access: MemoryAccessContext,
         private readonly default_visibility: MemoryVisibility,
-        private readonly resolve_user: (user_id: string) => User | undefined,
+        private readonly users: IUserServiceReplica,
     ) {}
 
     get_name(): string {
@@ -245,7 +246,9 @@ export class SimpleMemoryTools implements IToolchain {
     }
 
     // Prefer access.user_id (private chat). Otherwise require agent-provided user_id and resolve it.
-    private resolve_author_user_id(agent_author_user_id: string | undefined): Expected<string> {
+    private resolve_author_user_id(
+        agent_author_user_id: string | undefined,
+    ): Expected<string> {
         if (this.access.user_id) {
             return Expected.ok(this.access.user_id);
         }
@@ -256,23 +259,30 @@ export class SimpleMemoryTools implements IToolchain {
             );
         }
 
-        const user = this.resolve_user(agent_author_user_id);
-        if (!user) {
+        const resolved = this.users.resolve_user({
+            telegram_id: agent_author_user_id,
+        });
+        if (!resolved.ok || !resolved.value) {
             return Expected.err(
                 `User '${agent_author_user_id}' not found. `
                 + "You must pass a valid Telegram user_id (username without @) as author_user_id.",
             );
         }
 
-        return Expected.ok(user.tgid);
+        return Expected.ok(user_tgid(resolved.value));
     }
 
     private serialize_fact(fact: MemoryFact): SerializableMemoryFact {
-        const user = this.resolve_user(fact.author_user_id);
+        const resolved = this.users.resolve_user({
+            telegram_id: fact.author_user_id,
+        });
+        const author = resolved.ok && resolved.value
+            ? user_tgid(resolved.value)
+            : fact.author_user_id;
         return {
             fact_id: fact.id,
             created_at: fact.created_at.toISOString(),
-            author: `@${user?.tgid ?? fact.author_user_id}`,
+            author: `@${author}`,
             content: fact.content,
         };
     }

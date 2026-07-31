@@ -85,7 +85,7 @@ export class ScoresTools implements IToolchain {
             if (!parsed.ok) {
                 return Expected.err(return_error(parsed.error));
             }
-            const scores = ScoresActions.get_available_scores(this.user, this.journal);
+            const scores = await ScoresActions.get_available_scores(this.user, this.journal);
             return Array.isArray(scores)
                 ? Expected.ok(return_success(scores))
                 : scores.cast_error<string>();

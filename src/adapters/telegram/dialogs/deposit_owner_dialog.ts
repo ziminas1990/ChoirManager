@@ -87,7 +87,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
 
         const have_paid_botton = this.user.create_keyboard_button(
             this.orator.have_paid_already(this.user.info().lang),
-            `already paid by @${this.user.info().tgid}`,
+            `already paid by @${this.user.userid()}`,
             async () => {
                 return await DepositActions.already_paid(this.user, this.journal);
             }

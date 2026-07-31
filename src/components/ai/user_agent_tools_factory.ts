@@ -1,10 +1,10 @@
-import { User } from "@src/database.js";
-import { Role } from "@src/entities/user.js";
+import { Role, UserData, user_has_role, user_tgid } from "@src/entities/user.js";
 import { MANAGERS_MEMORY_GROUP_ID } from "@src/entities/memory.js";
 import { IToolchain } from "@src/interfaces/llm.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { ISimpleMemoryService } from "@src/interfaces/simple_memory_service.js";
 import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
+import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { DepositManagerTools } from "./tools/deposit_manager_tools.js";
@@ -22,7 +22,7 @@ export type UserAgentToolsDependencies = {
 export type Services = {
     task_tracker?: ITaskTrackerService;
     simple_memory?: ISimpleMemoryService;
-    resolve_user: (user_id: string) => User | undefined;
+    users?: IUserServiceReplica;
 }
 
 type ToolsHost = {
@@ -32,7 +32,7 @@ type ToolsHost = {
 export function register_user_assistant_tools(
     host: ToolsHost,
     user_agent: IUserAgent,
-    user: User,
+    user: UserData,
     journal: Journal,
     dependencies: UserAgentToolsDependencies,
     services: Services,
@@ -47,22 +47,22 @@ export function register_user_assistant_tools(
         host.add_tool(new FeedbackTools(dependencies.start_feedback)),
     ];
 
-    if (user.is(Role.Manager) && services.task_tracker) {
+    if (user_has_role(user, Role.Manager) && services.task_tracker) {
         statuses.push(host.add_tool(new TaskTrackerTools(services.task_tracker)));
     }
 
-    if (user.is(Role.Manager) && services.simple_memory) {
+    if (user_has_role(user, Role.Manager) && services.simple_memory && services.users) {
         statuses.push(host.add_tool(new SimpleMemoryTools(
             services.simple_memory,
             {
-                user_id: user.tgid,
+                user_id: user_tgid(user),
                 group_ids: [MANAGERS_MEMORY_GROUP_ID],
             },
             {
                 kind: "specific_group",
                 group_id: MANAGERS_MEMORY_GROUP_ID,
             },
-            services.resolve_user,
+            services.users,
         )));
     }
 

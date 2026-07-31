@@ -1,6 +1,7 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
-import { Scores, User } from "@src/database.js";
+import { Scores } from "@src/database.js";
+import { UserData } from "@src/entities/user.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { Transaction } from "./transactions_storage";
 
@@ -56,13 +57,13 @@ export interface IDepositOwnerAgent {
 export interface IAccounterAgent {
     base(): IUserAgent;
 
-    send_already_paid_notification(who: User): Promise<Status>;
+    send_already_paid_notification(who: UserData): Promise<Status>;
 
-    send_top_up_notification(who: User, amount: number, original_message: string): Promise<Status>;
+    send_top_up_notification(who: UserData, amount: number, original_message: string): Promise<Status>;
 
-    mirror_deposit_changes(who: User, deposit: Deposit, changes: DepositChange): Promise<Status>;
+    mirror_deposit_changes(who: UserData, deposit: Deposit, changes: DepositChange): Promise<Status>;
 
-    mirror_reminder(who: User, amount: number): Promise<Status>;
+    mirror_reminder(who: UserData, amount: number): Promise<Status>;
 }
 
 // Someone who has admin role

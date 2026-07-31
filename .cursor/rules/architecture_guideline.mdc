@@ -26,19 +26,37 @@ Reference implementations: `user_service`, `simple_memory`, `task_tracker`.
 
 ## Interfaces
 
+Service interfaces are **asynchronous** (`Promise` / `Promise<Expected<…>>`), even when the
+current `type: "local"` implementation is in-process and could answer synchronously.
+Call sites must `await`. This keeps the API remoting-ready: a later `type: "http"` /
+RPC adapter can implement the same interface without changing callers.
+
 ```typescript
 // interfaces/storage/foo_storage.ts
 // Pure persistence: no caching, no access control.
 export interface IFooStorage {
-    // Required CRUD-like operations
+    // Required CRUD-like operations (often async I/O)
 }
 
 // interfaces/foo_service.ts
 // Service logic: caching, access control, higher-level operations.
+// Always async — designed for local or remote implementations.
 export interface IFooService {
-    // domain methods for callers
+    fetch_all(): Promise<FooData[]>;
+    get(id: string): Promise<Expected<FooData>>;
 }
 ```
+
+Do **not** expose sync methods on `I*Service` just because the local cache is sync.
+Sync helpers may exist on a concrete local component for in-process wiring only
+(e.g. Runtime session state), but they are not part of the service interface.
+
+Keep service interface methods **HTTP/RPC-mappable**: arguments and results must be
+serializable data. Do **not** put on `I*Service` calls that are hard to remoting —
+for example methods that accept a function/callback (you cannot send a function over
+the network). Prefer request/response shapes, IDs, and plain DTOs; keep callbacks,
+closures, and other in-process wiring on the concrete local component or at the
+call site.
 
 ## Factories and config
 

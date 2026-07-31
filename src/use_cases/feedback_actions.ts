@@ -3,6 +3,7 @@ import { Feedback } from "@src/entities/feedback.js";
 import { Journal } from "@src/journal.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Runtime } from "@src/runtime.js";
+import { Environment } from "@src/components/environment.js";
 
 
 export class FeedbackActions {
@@ -13,8 +14,8 @@ export class FeedbackActions {
         const runtime = Runtime.get_instance();
 
         const user_id = who.userid();
-        const user = runtime.get_user(user_id, false);
-        if (!user) {
+        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: user_id });
+        if (!resolved.ok || !resolved.value) {
             return Expected.err(`user ${user_id} not found`);
         }
 
@@ -44,7 +45,8 @@ export class FeedbackActions {
         }
 
         // Notify user that feedback was received
-        for (const chorister of user.as_chorister()) {
+        const user_logic = runtime.get_user_logic(user_id);
+        for (const chorister of user_logic?.as_chorister() ?? []) {
             const status = await chorister.on_feedback_received(feedback);
             if (!status.ok) {
                 journal.log().warn([

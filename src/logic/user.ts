@@ -1,24 +1,29 @@
 import { Logic } from '@src/logic/abstracts.js';
-import { Database, User } from '@src/database.js';
-import { Role } from '@src/entities/user.js';
+import { Role, UserData, user_has_role } from '@src/entities/user.js';
 import { Expected } from "@src/utils/expected.js";
 import { DepositTrackingConfig, DepositsFetcher } from '@src/fetchers/deposits_fetcher.js';
 import { DepositsTracker } from '@src/logic/deposits_tracker.js';
 import { Journal } from "@src/journal.js";
 import { DepositActions } from '@src/use_cases/deposit_actions.js';
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from '@src/interfaces/user_agent.js';
+import { IUserServiceReplica } from '@src/interfaces/user_service.js';
 
 export class UserLogic extends Logic<void> {
+    private static readonly USER_REFRESH_INTERVAL_MS = 10_000;
+
     private deposit_tracker: DepositsTracker;
     private journal: Journal;
 
     private agents: IUserAgent[] = [];
+    private last_user_refresh_at_ms: number | undefined;
 
     constructor(
-        public readonly data: User,
+        private readonly telegram_id: string,
+        public data: UserData,
         proceed_interval_ms: number,
         parent_journal: Journal,
         private readonly deposit_tracking: DepositTrackingConfig | undefined,
+        private readonly users: IUserServiceReplica,
     )
     {
         super(proceed_interval_ms);
@@ -28,10 +33,10 @@ export class UserLogic extends Logic<void> {
             additional_tags.role = "guest";
         }
 
-        this.journal = parent_journal.child(`@${data.tgid}`, additional_tags);
-        this.journal.log().info(`UserLogic created for ${data.tgid}`);
+        this.journal = parent_journal.child(`@${telegram_id}`, additional_tags);
+        this.journal.log().info(`UserLogic created for ${telegram_id}`);
 
-        this.deposit_tracker = new DepositsTracker(this.data.tgid, this.deposit_tracking, this.journal);
+        this.deposit_tracker = new DepositsTracker(telegram_id, this.deposit_tracking, this.journal);
     }
 
     get_journal(): Journal {
@@ -43,27 +48,27 @@ export class UserLogic extends Logic<void> {
     }
 
     is_guest(): boolean {
-        return this.data.is(Role.Guest);
+        return user_has_role(this.data, Role.Guest);
     }
 
     is_admin(): boolean {
-        return this.data.is(Role.Admin);
+        return user_has_role(this.data, Role.Admin);
     }
 
     is_accountant(): boolean {
-        return this.data.is(Role.Accountant)
+        return user_has_role(this.data, Role.Accountant);
     }
 
     is_member(): boolean {
-        return this.data.is(Role.Chorister) || this.data.is(Role.Conductor);
+        return user_has_role(this.data, Role.Chorister) || user_has_role(this.data, Role.Conductor);
     }
 
     is_chorister(): boolean {
-        return this.data.is(Role.Chorister);
+        return user_has_role(this.data, Role.Chorister);
     }
 
     is_ex_chorister(): boolean {
-        return this.data.is(Role.ExChorister);
+        return user_has_role(this.data, Role.ExChorister);
     }
 
     all_agents(): IUserAgent[] {
@@ -119,6 +124,8 @@ export class UserLogic extends Logic<void> {
     }
 
     async proceed_impl(now: Date, _interval_ms: number): Promise<Expected<void[]>> {
+        this.refresh_user_data_if_due(now);
+
         {
             const events = await this.deposit_tracker.proceed(now);
             if (!events.ok) {
@@ -138,29 +145,55 @@ export class UserLogic extends Logic<void> {
 
     static pack(user: UserLogic) {
         return {
-            "tgid": user.data.tgid,
+            "tgid": user.telegram_id,
             "deposit_tracker": DepositsTracker.pack(user.deposit_tracker)
         } as const;
     }
 
     static unpack(
-        database: Database,
+        user: UserData,
         packed: ReturnType<typeof UserLogic.pack>,
         deposit_tracking: DepositTrackingConfig | undefined,
-        parent_journal: Journal
+        parent_journal: Journal,
+        users: IUserServiceReplica,
     ): Expected<UserLogic> {
         const tgid = packed.tgid;
-
-        const user = tgid ? database.get_user(tgid) : undefined;
-        if (!user) {
-            return Expected.err(`User @${tgid} not found`);
+        if (!tgid) {
+            return Expected.err("User tgid is missing");
         }
-        const logic = new UserLogic(user, 100, parent_journal, deposit_tracking);
+
+        const logic = new UserLogic(
+            tgid,
+            user,
+            100,
+            parent_journal,
+            deposit_tracking,
+            users,
+        );
 
         if (packed.deposit_tracker) {
             logic.deposit_tracker = DepositsTracker.unpack(tgid, packed.deposit_tracker, deposit_tracking, parent_journal);
         }
 
         return Expected.ok(logic);
+    }
+
+    // Reads UserServiceReplica at most once per USER_REFRESH_INTERVAL_MS.
+    private refresh_user_data_if_due(now: Date): void {
+        const now_ms = now.getTime();
+        if (this.last_user_refresh_at_ms !== undefined
+            && now_ms - this.last_user_refresh_at_ms < UserLogic.USER_REFRESH_INTERVAL_MS)
+        {
+            return;
+        }
+
+        this.last_user_refresh_at_ms = now_ms;
+
+        const resolved = this.users.resolve_user({
+            telegram_id: this.telegram_id,
+        });
+        if (resolved.ok && resolved.value) {
+            this.data = resolved.value;
+        }
     }
 }

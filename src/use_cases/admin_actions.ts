@@ -3,7 +3,7 @@ import { Journal } from "@src/journal.js";
 import { Runtime } from "@src/runtime.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { return_fail } from "@src/utils.js";
-import { User } from "@src/database.js";
+import { Role, UserData, user_has_role, user_tgid } from "@src/entities/user.js";
 import { exit } from "process";
 
 export class AdminActions {
@@ -16,22 +16,23 @@ export class AdminActions {
             for (const agent of admin_agents ?? []) {
                 const status = await agent.send_notification(notification);
                 if (!status.ok) {
-                    journal.log().warn(`Failed to notify admin @${user.data.tgid}: ${status.error}`);
+                    journal.log().warn(`Failed to notify admin @${user_tgid(user.data)}: ${status.error}`);
                 }
             }
         }
     }
 
-    static async send_runtime_backup(user: User, config: RuntimeConfig, journal: Journal): Promise<Status> {
-        journal.log().info(`Sending runtime backup to @${user.tgid}`);
+    static async send_runtime_backup(user: UserData, config: RuntimeConfig, journal: Journal): Promise<Status> {
+        const tgid = user_tgid(user);
+        journal.log().info(`Sending runtime backup to @${tgid}`);
 
-        const user_logic = Runtime.get_instance().get_user(user.tgid);
-        if (!user_logic) {
-            return return_fail(`User ${user.tgid} not found`, journal.log());
+        if (!user_has_role(user, Role.Admin)) {
+            return return_fail(`User ${tgid} is not an admin`, journal.log());
         }
 
-        if (!user_logic.is_admin()) {
-            return return_fail(`User ${user.tgid} is not an admin`, journal.log());
+        const user_logic = Runtime.get_instance().get_user_logic(tgid);
+        if (!user_logic) {
+            return return_fail(`User ${tgid} has no runtime session`, journal.log());
         }
 
         for (const agent of user_logic.as_admin()) {
@@ -46,16 +47,17 @@ export class AdminActions {
         return Expected.ok(undefined);
     }
 
-    static async send_logs(user: User, config: RuntimeConfig, journal: Journal): Promise<Status> {
-        journal.log().info(`Sending logs to @${user.tgid}`);
+    static async send_logs(user: UserData, config: RuntimeConfig, journal: Journal): Promise<Status> {
+        const tgid = user_tgid(user);
+        journal.log().info(`Sending logs to @${tgid}`);
 
-        const user_logic = Runtime.get_instance().get_user(user.tgid);
-        if (!user_logic) {
-            return return_fail(`User ${user.tgid} not found`, journal.log());
+        if (!user_has_role(user, Role.Admin)) {
+            return return_fail(`User ${tgid} is not an admin`, journal.log());
         }
 
-        if (!user_logic.is_admin()) {
-            return return_fail(`User ${user.tgid} is not an admin`, journal.log());
+        const user_logic = Runtime.get_instance().get_user_logic(tgid);
+        if (!user_logic) {
+            return return_fail(`User ${tgid} has no runtime session`, journal.log());
         }
 
         for (const agent of user_logic.as_admin()) {
@@ -77,4 +79,3 @@ export class AdminActions {
         return Promise.resolve(Expected.ok(undefined));
     }
 }
-

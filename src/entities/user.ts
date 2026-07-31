@@ -34,3 +34,14 @@ export type UserData = {
     voice: Voice;
     roles: Role[];
 }
+
+export function user_tgid(user: UserData): string {
+    if (!user.id.telegram_id) {
+        throw new Error(`user '${user.id.system_id}' has no telegram_id`);
+    }
+    return user.id.telegram_id;
+}
+
+export function user_has_role(user: UserData, role: Role): boolean {
+    return user.roles.includes(role);
+}

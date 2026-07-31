@@ -4,14 +4,15 @@ import path from "path";
 
 import { BotConfig } from "./config.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { Database, User } from "./database.js";
-import { Language, Role, Voice } from "./entities/user.js";
+import { Database } from "./database.js";
+import { user_tgid } from "./entities/user.js";
 import { UserLogic } from "./logic/user.js";
 import { pack_map, return_exception, unpack_map } from "./utils.js";
 import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Proceeder } from "./logic/abstracts.js";
 import { UsersFetcher } from "./fetchers/users_fetcher.js";
 import { UserService } from "./components/user_service.js";
+import { IUserServiceReplica } from "./interfaces/user_service.js";
 import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
 import { Journal } from "./journal.js";
 import { AdminActions } from "./use_cases/admin_actions.js";
@@ -83,7 +84,12 @@ export class Runtime {
 
     private static instance?: Runtime;
 
-    static Load(config: BotConfig, database: Database, parent_journal: Journal): Expected<Runtime> {
+    static Load(
+        config: BotConfig,
+        database: Database,
+        user_service: UserService,
+        parent_journal: Journal,
+    ): Expected<Runtime> {
         const journal = parent_journal.child("rt");
         const runtime_cache_filename = path.resolve(config.runtime.runtime_cache_filename);
         try {
@@ -95,7 +101,7 @@ export class Runtime {
             }, "Runtime cache read");
 
             const packed = JSON.parse(packed_raw);
-            const runtime = Runtime.unpack(config, database, packed, journal);
+            const runtime = Runtime.unpack(config, database, user_service, packed, journal);
             if (!runtime.ok) {
                 journal.log().error({
                     runtime_cache_filename,
@@ -109,7 +115,7 @@ export class Runtime {
                 error: e instanceof Error ? e.message : String(e),
                 stack: e instanceof Error ? e.stack : undefined,
             }, "Failed to load runtime cache, falling back to empty runtime");
-            const empty_runtime = new Runtime(config, database, "", new Map(), journal);
+            const empty_runtime = new Runtime(config, database, user_service, "", new Map(), journal);
             return Expected.ok(empty_runtime);
         }
     }
@@ -119,7 +125,6 @@ export class Runtime {
     private next_dump: Date = new Date();
     private update_interval_sec: number = 0;
     private users_fetcher?: UsersFetcher;
-    private user_service?: UserService;
     private deposits_fetcher?: DepositsFetcher;
     private scores_fetcher?: ScoresFetcher;
     private new_records_fetcher?: NewRecordsFetcher;
@@ -159,6 +164,7 @@ export class Runtime {
     private constructor(
         private readonly config: BotConfig,
         private database: Database,
+        private user_service: UserService,
         private runtime_hash: string,
         private users: Map<string, UserLogic>,
         private journal: Journal,
@@ -185,11 +191,15 @@ export class Runtime {
         if (this.config.tg_adapter) {
             this.journal.log().info("Starting Telegram adapter");
             if (!this.tg_adapter) {
-                this.tg_adapter = new TgAdapter(this.config.tg_adapter, {
-                    deposit_tracking: this.config.deposit_tracking,
-                    runtime: this.config.runtime,
-                    assistant: this.config.assistant,
-                }, this.journal);
+                this.tg_adapter = new TgAdapter(
+                    this.config.tg_adapter,
+                    {
+                        deposit_tracking: this.config.deposit_tracking,
+                        runtime: this.config.runtime,
+                        assistant: this.config.assistant,
+                    },
+                    this.user_service.as_replica(),
+                    this.journal);
             }
             const status = await this.tg_adapter.init();
             if (!status.ok) {
@@ -306,8 +316,9 @@ export class Runtime {
             this.attendance_tracker = new AttendanceTracker(
                 this.config.attendance_tracker,
                 this.messages_provider,
+                this.user_service.as_replica(),
                 this.database,
-                (tgid) => this.get_user(tgid),
+                (tgid) => this.get_user_logic(tgid),
                 async () => await this.tg_adapter?.get_managers_chat(),
                 this.journal
             );
@@ -380,7 +391,7 @@ export class Runtime {
                     kind: "specific_group",
                     group_id: MANAGERS_MEMORY_GROUP_ID,
                 },
-                (user_id) => this.get_user(user_id)?.data,
+                this.user_service.as_replica(),
             );
             this.managers_agent = new ManagersAgent(
                 this.config.managers_chat_agent,
@@ -390,11 +401,11 @@ export class Runtime {
                     get_managers_chat: async () => {
                         return await this.tg_adapter?.get_managers_chat();
                     },
-                    resolve_author: (user_id) => this.get_user(user_id)?.data,
                     bot_id: this.config.tg_adapter!.bot_id!,
                 },
                 task_tracker_tools,
                 simple_memory_tools,
+                this.user_service.as_replica(),
                 this.journal,
             );
             const init_status = await this.managers_agent.init();
@@ -434,6 +445,10 @@ export class Runtime {
         return this.database;
     }
 
+    get_user_service_replica(): IUserServiceReplica {
+        return this.user_service.as_replica();
+    }
+
     get_feedback_storage(): IFeedbackStorage | undefined {
         return this.feedback_storage;
     }
@@ -458,40 +473,52 @@ export class Runtime {
         this.users_fetcher = fetcher;
     }
 
-    attach_user_service(service: UserService): void {
-        this.user_service = service;
+    // Existing runtime session for this telegram id, if any.
+    get_user_logic(tg_id: string): UserLogic | undefined {
+        const user_logic = this.users.get(tg_id) ?? this.guest_users.get(tg_id);
+        if (!user_logic) {
+            return undefined;
+        }
+        if (this.guest_users.has(tg_id) && !user_logic.is_guest()) {
+            this.guest_users.delete(tg_id);
+            this.users.set(tg_id, user_logic);
+        }
+        return user_logic;
     }
 
-    get_user(tg_id: string, create_guest: boolean = false): UserLogic | undefined {
-        const user = this.database.get_user(tg_id);
-        if (user) {
-            let user_logic = this.users.get(user.tgid);
-            if (!user_logic) {
-                user_logic = new UserLogic(user, 100, this.journal, this.config.deposit_tracking);
-                this.users.set(user.tgid, user_logic);
-                this.on_user_added(user_logic, false);
-            }
-            return user_logic;
+    // Create UserLogic if the user already exists in UserService (registered or guest).
+    ensure_user_logic(tg_id: string): UserLogic | undefined {
+        const existing = this.get_user_logic(tg_id);
+        if (existing) {
+            return existing;
         }
-        if (create_guest) {
-            return this.get_guest_user(tg_id);
-        }
-        return undefined;
-    }
 
-    get_guest_user(tg_id: string): UserLogic {
-        let user = this.guest_users.get(tg_id);
-        if (user == undefined) {
-            user = new UserLogic(
-                new User(tg_id, "guest", "", Language.RU, Voice.Unknown, [Role.Guest]),
-                500,
-                this.journal,
-                this.config.deposit_tracking,
-            );
-            this.guest_users.set(tg_id, user);
-            this.on_user_added(user, false);
+        const replica = this.user_service.as_replica();
+        const resolved = replica.resolve_user({ telegram_id: tg_id });
+        if (!resolved.ok) {
+            this.journal.log().error(`Failed to resolve user @${tg_id}: ${resolved.error}`);
+            return undefined;
         }
-        return user;
+        if (!resolved.value) {
+            return undefined;
+        }
+
+        const user_logic = new UserLogic(
+            tg_id,
+            resolved.value,
+            100,
+            this.journal,
+            this.config.deposit_tracking,
+            replica,
+        );
+
+        if (user_logic.is_guest()) {
+            this.guest_users.set(tg_id, user_logic);
+        } else {
+            this.users.set(tg_id, user_logic);
+        }
+        this.on_user_added(user_logic, false);
+        return user_logic;
     }
 
     all_users(): IterableIterator<UserLogic> {
@@ -666,6 +693,7 @@ export class Runtime {
     static unpack(
         config: BotConfig,
         database: Database,
+        user_service: UserService,
         packed: ReturnType<typeof Runtime.pack>,
         journal: Journal
     )
@@ -682,8 +710,17 @@ export class Runtime {
             }
         }
 
+        const replica = user_service.as_replica();
+
         const users = unpack_map(packed.users, (packed) => {
-            const status = UserLogic.unpack(database, packed, config.deposit_tracking, journal);
+            const resolved = replica.resolve_user({ telegram_id: packed.tgid });
+            if (!resolved.ok || !resolved.value) {
+                journal.log().warn(
+                    `loading users: ${resolved.ok ? `User @${packed.tgid} not found` : resolved.error}`);
+                return undefined;
+            }
+            const status = UserLogic.unpack(
+                resolved.value, packed, config.deposit_tracking, journal, replica);
             if (!status.ok) {
                 journal.log().warn(`loading users: ${status.error}`);
                 return undefined;
@@ -691,7 +728,7 @@ export class Runtime {
             return status.value;
         });
 
-        const runtime = new Runtime(config, database, runtime_hash, users, journal);
+        const runtime = new Runtime(config, database, user_service, runtime_hash, users, journal);
 
         if (packed.tg_adapter && config.tg_adapter) {
             runtime.tg_adapter = TgAdapter.unpack(
@@ -702,6 +739,7 @@ export class Runtime {
                     assistant: config.assistant,
                 },
                 packed.tg_adapter,
+                replica,
                 journal,
             );
         }
@@ -718,7 +756,7 @@ export class Runtime {
         if (!startup) {
             const name = user.data.name.length > 0 ? user.data.name : "guest";
             AdminActions.notify_all_admins(
-                `User ${name} ${user.data.surname} (@${user.data.tgid}) has joined`,
+                `User ${name} ${user.data.surname} (@${user_tgid(user.data)}) has joined`,
                 this.journal);
         }
     }

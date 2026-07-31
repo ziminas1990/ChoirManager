@@ -5,7 +5,6 @@ import { Agent } from "@src/components/ai/agent.js";
 import { MessengerTools } from "@src/components/ai/tools/messenger_tools.js";
 import { SimpleMemoryTools } from "@src/components/ai/tools/simple_memory_tools.js";
 import { ManagersChatAgentConfig } from "@src/config.js";
-import { User } from "@src/database.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
 import { IToolchain, Message } from "@src/interfaces/llm.js";
 import { IBroadcaster, ISubscription } from "@src/interfaces/message_queue.js";
@@ -14,6 +13,7 @@ import { render_task_tracker_event } from "@src/utils/string_engine/task_tracker
 import { Expected, Status } from "@src/utils/expected.js";
 import { GroupChat, GroupChatMessage } from "@src/logic/group_chat.js";
 import { TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
+import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 
 type AgentResponse = {
     status: "done";
@@ -24,7 +24,6 @@ type AgentResponse = {
 
 type ManagersAgentDependencies = {
     get_managers_chat: () => Promise<IManagersChat | undefined>;
-    resolve_author: (user_id: string) => User | undefined;
     bot_id: string;
 }
 
@@ -79,6 +78,7 @@ export class ManagersAgent {
         private readonly dependencies: ManagersAgentDependencies,
         private readonly extra_tools: IToolchain | undefined,
         private readonly simple_memory_tools: SimpleMemoryTools | undefined,
+        private readonly users: IUserServiceReplica,
         parent_journal: Journal,
     ) {
         this.journal = parent_journal.child("managers_agent");
@@ -129,9 +129,10 @@ export class ManagersAgent {
             return messages.wrap_error("failed to fetch managers chat backlog");
         }
 
-        messages.value
-            .sort((a, b) => a.time.getTime() - b.time.getTime())
-            .forEach((message) => this.add_message_to_context(message));
+        messages.value.sort((a, b) => a.time.getTime() - b.time.getTime());
+        for (const message of messages.value) {
+            await this.add_message_to_context(message);
+        }
 
         return Expected.ok(undefined);
     }
@@ -174,7 +175,7 @@ export class ManagersAgent {
             return Expected.err("ManagersAgent is not initialized");
         }
 
-        this.add_message_to_context(message);
+        await this.add_message_to_context(message);
 
         if (!this.is_bot_mentioned(message.text)) {
             return Expected.ok(undefined);
@@ -211,8 +212,9 @@ export class ManagersAgent {
         return text.includes(`@${this.dependencies.bot_id}`);
     }
 
-    private add_message_to_context(message: GroupChatMessage): void {
-        this.agent!.add_context_message(this.to_context_message(message), message.time);
+    private async add_message_to_context(message: GroupChatMessage): Promise<void> {
+        const context_message = await this.to_context_message(message);
+        this.agent!.add_context_message(context_message, message.time);
     }
 
     private async on_task_tracker_event(event: TaskTrackerEvent): Promise<Status> {
@@ -224,14 +226,15 @@ export class ManagersAgent {
         return Expected.ok(undefined);
     }
 
-    private to_context_message(message: GroupChatMessage): Message {
+    private async to_context_message(message: GroupChatMessage): Promise<Message> {
+        const author = this.format_author(message);
         return {
             role: this.is_bot_message(message) ? "assistant" : "user",
             content: [
                 `id: ${message.message_id}`,
                 `time: ${format_message_time(message.time)}`,
                 `user_id: ${message.user_id}`,
-                `name: ${this.format_author(message)}`,
+                `name: ${author}`,
                 "text:",
                 message.text,
             ].join("\n"),
@@ -243,15 +246,18 @@ export class ManagersAgent {
             return "Ursa Major Bot";
         }
 
-        const user = this.dependencies.resolve_author(message.user_id);
-        if (!user) {
+        const resolved = this.users.resolve_user({
+            telegram_id: message.user_id,
+        });
+        if (!resolved.ok || !resolved.value) {
             return `@${message.user_id}`;
         }
 
+        const user = resolved.value;
         const name = [user.name, user.surname]
             .filter(part => part.length > 0)
             .join(" ");
-        return name.length > 0 ? name : "(unknown)";
+        return name.length > 0 ? name : `(unknown)`;
     }
 
     private is_bot_message(message: GroupChatMessage): boolean {

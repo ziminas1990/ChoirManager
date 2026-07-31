@@ -3,10 +3,10 @@ import TelegramBot from "node-telegram-bot-api";
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
-import { User } from "@src/database.js";
-import { Role } from "@src/entities/user.js";
+import { Role, UserData, user_has_role, user_tgid } from "@src/entities/user.js";
 import { return_exception, return_fail } from "@src/utils.js";
 import { CoreAPI } from "@src/use_cases/core.js";
+import { Environment } from "@src/components/environment.js";
 import { IcomingItem } from "./adapter.js";
 import { TelegramCallbacks } from "./callbacks.js";
 import { DepositOwnerDialog } from "./dialogs/deposit_owner_dialog.js";
@@ -45,13 +45,13 @@ export class TelegramUser implements IUserAgent {
 
     public static pack(user: TelegramUser) {
         return {
-            tgid: user.user_info.tgid,
+            tgid: user.userid(),
             chat_id: user.chat_id,
         } as const;
     }
 
     public static unpack(
-        user_info: User,
+        user_info: UserData,
         packed: ReturnType<typeof TelegramUser.pack>,
         dependencies: TelegramUserDependencies,
         parent_journal: Journal): TelegramUser
@@ -60,12 +60,12 @@ export class TelegramUser implements IUserAgent {
     }
 
     constructor(
-        private user_info: User,
+        private user_info: UserData,
         private chat_id: number,
         private readonly dependencies: TelegramUserDependencies,
         parent_journal: Journal,
     ) {
-        this.journal = parent_journal.child(`@${this.user_info.tgid}`);
+        this.journal = parent_journal.child(`@${user_tgid(this.user_info)}`);
         this.callbacks_registry = new TelegramCallbacks(this.journal);
         this.timings = {};
     }
@@ -73,9 +73,9 @@ export class TelegramUser implements IUserAgent {
     init(bot: TelegramBot): Status {
         this.bot = bot;
 
-        const status = CoreAPI.on_new_user_agent(this.user_info.tgid, this);
+        const status = CoreAPI.on_new_user_agent(this.userid(), this);
         if (!status.ok) {
-            return status.wrap_error(`Can't register user ${this.user_info.tgid} agent`);
+            return status.wrap_error(`Can't register user ${this.userid()} agent`);
         }
 
         return Expected.ok(undefined);
@@ -90,7 +90,7 @@ export class TelegramUser implements IUserAgent {
     agent_name(): string { return "TelegramUser"; }
 
     // From IUserAgent
-    userid(): string { return this.user_info.tgid; }
+    userid(): string { return user_tgid(this.user_info); }
 
     // From IUserAgent
     as_chorister(): IChorister {
@@ -261,7 +261,7 @@ export class TelegramUser implements IUserAgent {
     }
 
     async proceed(now: Date): Promise<void> {
-        this.maybe_update_user_info(now);
+        await this.maybe_update_user_info(now);
         this.callbacks_registry.proceed(now);
 
         if (this.queue.length == 0) {
@@ -289,7 +289,7 @@ export class TelegramUser implements IUserAgent {
         this.queue = [];
     }
 
-    maybe_update_user_info(now: Date) {
+    async maybe_update_user_info(now: Date) {
         if (this.timings.next_user_info_update == undefined) {
             this.timings.next_user_info_update = now.getTime() + 10000;
             return;
@@ -298,10 +298,14 @@ export class TelegramUser implements IUserAgent {
             return;
         }
 
-        const user_info = CoreAPI.get_user_by_tg_id(this.userid(), true);
-        if (user_info.ok && user_info.value != undefined) {
-            this.user_info = user_info.value!;
+        const resolved = await Environment.global.user_service.resolve_user({
+            telegram_id: this.userid(),
+        });
+        if (!resolved.ok) {
+            return;
         }
+        this.user_info = resolved.value
+            ?? await Environment.global.user_service.create_guest(this.userid());
     }
 
     private get_or_create_chorister_dialog(): Expected<ChoristerDialog> {
@@ -322,12 +326,12 @@ export class TelegramUser implements IUserAgent {
     }
 
     private get_main_dialog(): ChoristerDialog | GuestDialog | undefined {
-        if (this.user_info.is(Role.Guest)) {
+        if (user_has_role(this.user_info, Role.Guest)) {
             if (!this.guest_dialog) {
                 this.guest_dialog = new GuestDialog(this, this.journal);
             }
             return this.guest_dialog;
-        } else if (this.user_info.is(Role.Chorister) || this.user_info.is(Role.Manager)) {
+        } else if (user_has_role(this.user_info, Role.Chorister) || user_has_role(this.user_info, Role.Manager)) {
             const dialog = this.get_or_create_chorister_dialog();
             if (!dialog.ok) {
                 this.journal.log().error(`Failed to create chorister dialog: ${dialog.error}`);
