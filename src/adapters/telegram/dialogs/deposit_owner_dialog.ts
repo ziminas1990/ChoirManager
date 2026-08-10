@@ -5,7 +5,8 @@ import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { current_month, Formatter, GlobalFormatter } from "@src/utils.js";
 import { Status } from "@src/utils/expected.js";
 import { Language } from "@src/entities/user.js";
-import { Deposit, DepositChange, DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
+import { Deposit, DepositChange } from "@src/entities/deposit.js";
+import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Transaction } from "@src/interfaces/transactions_storage.js";
@@ -18,11 +19,12 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
     constructor(
         private user: TelegramUser,
         parent_journal: Journal,
-        private readonly deposit_tracking?: DepositTrackingConfig,
+        private readonly deposit_presentation?: DepositPresentationConfig,
         formatter?: Formatter)
     {
         this.journal = parent_journal.child("dialog.deposit_owner");
-        this.orator = new Orator(formatter ?? GlobalFormatter.instance(), this.deposit_tracking);
+        this.orator = new Orator(
+            formatter ?? GlobalFormatter.instance(), this.deposit_presentation);
     }
 
     base(): IUserAgent {
@@ -137,7 +139,7 @@ export function format_date(date: Date, lang: Language): string {
 export class Orator {
     constructor(
         private formatter: Formatter,
-        private readonly deposit_tracking?: DepositTrackingConfig,
+        private readonly deposit_presentation?: DepositPresentationConfig,
     ) {}
 
     deposit_change(deposit: Deposit, change: DepositChange, lang: Language): string {
@@ -268,7 +270,7 @@ export class Orator {
     }
 
     waiting_membership(deposit: Deposit, lang: Language): string {
-        if (!this.deposit_tracking) {
+        if (!this.deposit_presentation) {
             return "";
         }
 
@@ -277,7 +279,7 @@ export class Orator {
         const paid = deposit.membership.get(this_month.getTime()) ?? 0;
 
         const total = paid + deposit.balance;
-        const membership_fee = this.deposit_tracking.membership_fee;
+        const membership_fee = this.deposit_presentation.membership_fee;
 
         if (total < membership_fee) {
             const diff = membership_fee - total;
@@ -314,7 +316,7 @@ export class Orator {
     }
 
     account_info(lang: Language): string {
-        if (!this.deposit_tracking || this.deposit_tracking.accounts.length === 0) {
+        if (!this.deposit_presentation || this.deposit_presentation.accounts.length === 0) {
             return "";
         }
 
@@ -337,7 +339,7 @@ export class Orator {
         lines.push(words.title);
         lines.push("");
 
-        for (const account of this.deposit_tracking.accounts) {
+        for (const account of this.deposit_presentation.accounts) {
             lines.push(this.formatter.bold(account.title) + ":");
             lines.push(`${words.account}: ${this.formatter.copiable(account.account)}`)
             if (account.receiver) {

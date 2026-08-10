@@ -14,12 +14,12 @@ import { AccounterDialog } from "./dialogs/accounter_dialog.js";
 import { ChoristerDialog } from "./dialogs/chorister_dialog.js";
 import { GuestDialog } from "./dialogs/guest_dialog.js";
 import { AdminDialog } from "./dialogs/admin_dialog.js";
-import { DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
+import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
 
 type TelegramUserDependencies = {
-    deposit_tracking?: DepositTrackingConfig;
+    deposit_presentation?: DepositPresentationConfig;
     runtime: RuntimeConfig;
     assistant?: AssistantConfig;
 }
@@ -104,7 +104,8 @@ export class TelegramUser implements IUserAgent {
     // From IUserAgent
     as_deposit_owner(): IDepositOwnerAgent {
         if (!this.deposit_owner_dialog) {
-            this.deposit_owner_dialog = new DepositOwnerDialog(this, this.journal, this.dependencies.deposit_tracking);
+            this.deposit_owner_dialog = new DepositOwnerDialog(
+                this, this.journal, this.dependencies.deposit_presentation);
         }
         return this.deposit_owner_dialog;
     }

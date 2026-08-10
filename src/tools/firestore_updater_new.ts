@@ -26,10 +26,10 @@ type TransformResult =
 export function loadTransactionStorageConfig(configPath: string): TransactionStorageConfig {
   const raw = fs.readFileSync(configPath, "utf8");
   const parsed = JSON.parse(raw);
-  const cfg = parsed?.transaction_storage;
+  const cfg = parsed?.deposit_service?.transactions;
 
   if (!isTransactionStorageConfig(cfg)) {
-    throw new Error("config.transaction_storage отсутствует или неверно сконфигурирован");
+    throw new Error("config.deposit_service.transactions is missing or misconfigured");
   }
   return cfg;
 }

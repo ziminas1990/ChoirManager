@@ -27,8 +27,19 @@
         "range": "Scores!A:Z",
         "fetch_interval_sec": 3600
     },
-    "deposit_tracking": {
-        "google_sheet_id": "",
+    "deposit_service": {
+        "type": "local",
+        "deposits": {
+            "type": "google_spreadsheet",
+            "google_sheet_id": "",
+            "range": "A:K"
+        },
+        "transactions": {
+            "type": "google_firestore",
+            "read_only": false,
+            "database_id": "",
+            "collection_name": "deposit_transactions"
+        },
         "fetch_interval_sec": 30,
         "collect_interval_sec": 60,
         "reminders": [
@@ -37,7 +48,7 @@
         ],
         "startup_reminders_freeze_sec": 3600,
         "reminder_cooldown_hours": 24,
-        "membership_fee": 70,
+        "membership_fee": 90,
         "accounts": [
             {
                 "title": "",
@@ -57,12 +68,6 @@
         "type": "google_spreadsheet",
         "spreadsheet_id": "",
         "sheet_name": "Feedbacks"
-    },
-    "transaction_storage": {
-        "type": "google_firestore",
-        "read_only": false,
-        "database_id": "",
-        "collection_name": "deposit_transactions"
     },
     "rehersals_storage": {
         "type": "google_spreadsheet",

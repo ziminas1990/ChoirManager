@@ -17,7 +17,7 @@ import { ManagersGroup } from "@src/adapters/telegram/dialogs/managers_group.js"
 import { ManagersChat } from "@src/use_cases/managers_chat";
 import { GroupChatMessage } from "@src/logic/group_chat";
 import { AnnouncesChat } from "@src/use_cases/announces_chat";
-import { DepositTrackingConfig } from "@src/fetchers/deposits_fetcher.js";
+import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { Environment } from "@src/components/environment.js";
@@ -37,7 +37,7 @@ export type IcomingItem = {
 }
 
 type TgAdapterDependencies = {
-    deposit_tracking?: DepositTrackingConfig;
+    deposit_presentation?: DepositPresentationConfig;
     runtime: RuntimeConfig;
     assistant?: AssistantConfig;
 }

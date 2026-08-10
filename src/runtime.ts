@@ -8,7 +8,6 @@ import { Database } from "./database.js";
 import { user_tgid } from "./entities/user.js";
 import { UserLogic } from "./logic/user.js";
 import { pack_map, return_exception, unpack_map } from "./utils.js";
-import { DepositsFetcher } from "./fetchers/deposits_fetcher.js";
 import { Proceeder } from "./logic/abstracts.js";
 import { UserService } from "./components/user_service.js";
 import { IUserServiceReplica } from "./interfaces/user_service.js";
@@ -20,6 +19,7 @@ import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
 import { TaskTrackerServiceFactory } from "./adapters/task_tracker_service/factory.js";
 import { SimpleMemoryServiceFactory } from "./adapters/simple_memory_service/factory.js";
+import { DepositServiceFactory } from "./adapters/deposit_service/factory.js";
 import { update_v2_v3 } from "./configuration/update_v2_v3.js";
 import { IAdapter } from "./interfaces/adapter.js";
 import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
@@ -29,17 +29,18 @@ import { GoogleSpreadsheetMessagesProvider } from "./adapters/messages_provider/
 import { MessagesStorageFactory } from "./adapters/messages_storage/factory.js";
 import { LocalBroadcaster } from "./adapters/local_message_queue/local_broadcaster.js";
 import { GroupChat } from "./logic/group_chat.js";
-import { ITransactionsStorage } from "./interfaces/transactions_storage.js";
-import { TransactionStorageFactory } from "./adapters/transactions_storage/factory.js";
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
 import { AttendanceTracker } from "./logic/attendance_tracker.js";
 import { TaskTrackerService } from "./components/task_tracker_service.js";
 import { TaskTrackerEvent } from "./interfaces/task_tracker_service.js";
+import { DepositService } from "./components/deposit_service.js";
+import { DepositEvent } from "./interfaces/deposit_service.js";
 import { Environment } from "./components/environment.js";
 import { MANAGERS_MEMORY_GROUP_ID } from "./entities/memory.js";
 import { ManagersAgent } from "./components/ai/agents/managers_agent.js";
 import { TaskTrackerTools } from "./components/ai/tools/task_tracker_tools.js";
 import { SimpleMemoryTools } from "./components/ai/tools/simple_memory_tools.js";
+import { DepositEventsHandler } from "./logic/deposit_events_handler.js";
 
 export type RuntimeConfigJson = {
     runtime_cache_filename: string;
@@ -123,22 +124,23 @@ export class Runtime {
 
     private next_dump: Date = new Date();
     private update_interval_sec: number = 0;
-    private deposits_fetcher?: DepositsFetcher;
     private scores_fetcher?: ScoresFetcher;
     private new_records_fetcher?: NewRecordsFetcher;
     private feedback_storage?: IFeedbackStorage;
     private rehersals_storage?: IRehersalsStorage;
-    private transactions_storage?: ITransactionsStorage;
 
     private managers_chat?: GroupChat;
     private managers_agent?: ManagersAgent;
     private announce_chat?: GroupChat;
     private readonly task_tracker_broadcaster = new LocalBroadcaster<TaskTrackerEvent>();
+    private readonly deposit_broadcaster = new LocalBroadcaster<DepositEvent>();
+    private deposit_events_handler?: DepositEventsHandler;
 
     private messages_provider?: GoogleSpreadsheetMessagesProvider;
     private attendance_tracker?: AttendanceTracker;
     private rehersals_tracker?: RehersalsTracker;
     private task_tracker?: TaskTrackerService;
+    private deposit_service?: DepositService;
 
     private tg_adapter?: TgAdapter;
 
@@ -192,7 +194,7 @@ export class Runtime {
                 this.tg_adapter = new TgAdapter(
                     this.config.tg_adapter,
                     {
-                        deposit_tracking: this.config.deposit_tracking,
+                        deposit_presentation: this.config.deposit_service,
                         runtime: this.config.runtime,
                         assistant: this.config.assistant,
                     },
@@ -202,15 +204,6 @@ export class Runtime {
             const status = await this.tg_adapter.init();
             if (!status.ok) {
                 return status.wrap_error("Failed to start Telegram adapter");
-            }
-        }
-
-        if (this.config.deposit_tracking) {
-            this.journal.log().info("Starting deposits fetcher");
-            this.deposits_fetcher = new DepositsFetcher(this.config.deposit_tracking);
-            const deposits_status = await this.deposits_fetcher.start();
-            if (!deposits_status.ok) {
-                return deposits_status.wrap_error("Failed to start deposits fetcher");
             }
         }
 
@@ -277,15 +270,6 @@ export class Runtime {
             }
         }
 
-        if (this.config.json.transaction_storage) {
-            this.journal.log().info("Initializing transaction storage...");
-            let status = TransactionStorageFactory.create(this.config.json.transaction_storage);
-            if (!status.ok) {
-                return status.wrap_error("Failed to create transaction storage");
-            }
-            this.transactions_storage = status.value;
-        }
-
         if (this.config.json.rehersals_storage) {
             this.journal.log().info("Initializing rehersals storage...");
             const create_status = RehersalsStorageFactory.create(this.config.json.rehersals_storage);
@@ -343,6 +327,29 @@ export class Runtime {
                 return init_status.wrap_error("Failed to initialize task tracker");
             }
             Environment.setup.task_tracker_service = this.task_tracker;
+        }
+
+        if (this.config.deposit_service) {
+            this.journal.log().info("Initializing deposit service...");
+            const create_status = DepositServiceFactory.create(
+                this.config.deposit_service,
+                this.deposit_broadcaster,
+                this.journal,
+            );
+            if (!create_status.ok) {
+                return create_status.wrap_error("Failed to create deposit service");
+            }
+            this.deposit_service = create_status.value;
+            const init_status = await this.deposit_service.init();
+            if (!init_status.ok) {
+                return init_status.wrap_error("Failed to initialize deposit service");
+            }
+            Environment.setup.deposit_service = this.deposit_service;
+
+            this.deposit_events_handler = new DepositEventsHandler(
+                this.deposit_broadcaster,
+                this.journal,
+            );
         }
 
         this.journal.log().info("Initializing simple memory...");
@@ -452,10 +459,6 @@ export class Runtime {
         return this.feedback_storage;
     }
 
-    get_transactions_storage(): ITransactionsStorage | undefined {
-        return this.transactions_storage;
-    }
-
     get_managers_chat(): GroupChat | undefined {
         return this.managers_chat;
     }
@@ -503,7 +506,6 @@ export class Runtime {
             resolved.value,
             100,
             this.journal,
-            this.config.deposit_tracking,
             replica,
         );
 
@@ -543,13 +545,6 @@ export class Runtime {
             }
         }
 
-        if (this.deposits_fetcher) {
-            const deposits_status = await this.deposits_fetcher.proceed();
-            if (!deposits_status.ok) {
-                this.journal.log().error(`Deposits fetcher proceed failed: ${deposits_status.error}`);
-            }
-        }
-
         if (this.rehersals_tracker) {
             const rehersals_status = await this.rehersals_tracker.proceed(now);
             if (!rehersals_status.ok) {
@@ -578,6 +573,13 @@ export class Runtime {
             }
         }
 
+        if (this.deposit_service) {
+            const deposit_status = await this.deposit_service.proceed(now);
+            if (!deposit_status.ok) {
+                this.journal.log().error(`Deposit service proceed failed: ${deposit_status.error}`);
+            }
+        }
+
         if (this.scores_fetcher) {
             const scores_status = await this.scores_fetcher.proceed();
             if (!scores_status.ok) {
@@ -603,6 +605,13 @@ export class Runtime {
             const managers_agent_status = await this.managers_agent.proceed();
             if (!managers_agent_status.ok) {
                 this.journal.log().error(`Managers agent proceed failed: ${managers_agent_status.error}`);
+            }
+        }
+
+        if (this.deposit_events_handler) {
+            const deposit_events_status = await this.deposit_events_handler.proceed();
+            if (!deposit_events_status.ok) {
+                this.journal.log().error(`Deposit events handler proceed failed: ${deposit_events_status.error}`);
             }
         }
 
@@ -708,7 +717,7 @@ export class Runtime {
                 return undefined;
             }
             const status = UserLogic.unpack(
-                resolved.value, packed, config.deposit_tracking, journal, replica);
+                resolved.value, packed, journal, replica);
             if (!status.ok) {
                 journal.log().warn(`loading users: ${status.error}`);
                 return undefined;
@@ -722,7 +731,7 @@ export class Runtime {
             runtime.tg_adapter = TgAdapter.unpack(
                 config.tg_adapter,
                 {
-                    deposit_tracking: config.deposit_tracking,
+                    deposit_presentation: config.deposit_service,
                     runtime: config.runtime,
                     assistant: config.assistant,
                 },
@@ -736,10 +745,6 @@ export class Runtime {
     }
 
     private async on_user_added(user: UserLogic, startup: boolean): Promise<void> {
-        if (this.deposits_fetcher) {
-            user.attach_deposit_fetcher(this.deposits_fetcher);
-        }
-
         // Notify admins:
         if (!startup) {
             const name = user.data.name.length > 0 ? user.data.name : "guest";

@@ -11,8 +11,10 @@ import {
     SimpleMemoryServiceConfig,
     SimpleMemoryServiceConfigJson,
 } from "@src/adapters/simple_memory_service/factory.js";
-import { TransactionStorageConfig } from "@src/adapters/transactions_storage/factory.js";
-import { DepositTrackingConfig, DepositTrackingConfigJson } from "@src/fetchers/deposits_fetcher.js";
+import {
+    DepositServiceConfig,
+    DepositServiceConfigJson,
+} from "@src/adapters/deposit_service/factory.js";
 import { ScoresFetcherConfig, ScoresFetcherConfigJson } from "@src/fetchers/scores_fetcher.js";
 import { AttendanceTrackerConfig, AttendanceTrackerConfigJson } from "@src/logic/attendance_tracker.js";
 import { RehersalsTrackerConfig, RehersalsTrackerConfigJson } from "@src/logic/rehersals_tracker.js";
@@ -218,12 +220,11 @@ export type BotConfigJson = {
     messages_provider: MessagesProviderConfigJson;
     scores_fetcher?: ScoresFetcherConfigJson;
     new_records_tracker?: NewRecordsTrackerConfigJson;
-    deposit_tracking?: DepositTrackingConfigJson;
+    deposit_service?: DepositServiceConfigJson;
     attendance_tracker?: AttendanceTrackerConfigJson;
     rehersals_tracker?: RehersalsTrackerConfigJson;
     assistant?: AssistantConfigJson;
     feedback_storage?: FeedbackStorageConfig;
-    transaction_storage?: TransactionStorageConfig;
     rehersals_storage?: RehersalsStorageConfig;
     managers_chat?: ChatConfigJson;
     managers_chat_agent?: ManagersChatAgentConfigJson;
@@ -239,7 +240,7 @@ export class BotConfig {
     public readonly messages_provider?: MessagesProviderConfig;
     public readonly scores_fetcher?: ScoresFetcherConfig;
     public readonly new_records_tracker?: NewRecordsTrackerConfig;
-    public readonly deposit_tracking?: DepositTrackingConfig;
+    public readonly deposit_service?: DepositServiceConfig;
     public readonly attendance_tracker?: AttendanceTrackerConfig;
     public readonly rehersals_tracker?: RehersalsTrackerConfig;
     public readonly assistant?: AssistantConfig;
@@ -269,8 +270,8 @@ export class BotConfig {
         if (json.new_records_tracker != undefined) {
             this.new_records_tracker = new NewRecordsTrackerConfig(json.new_records_tracker);
         }
-        if (json.deposit_tracking != undefined) {
-            this.deposit_tracking = new DepositTrackingConfig(json.deposit_tracking);
+        if (json.deposit_service != undefined) {
+            this.deposit_service = new DepositServiceConfig(json.deposit_service);
         }
         if (json.attendance_tracker != undefined) {
             this.attendance_tracker = new AttendanceTrackerConfig(json.attendance_tracker);
@@ -342,13 +343,13 @@ export class BotConfig {
             }
         }
 
-        if (this.deposit_tracking) {
-            status = this.deposit_tracking.verify();
+        if (this.deposit_service) {
+            status = this.deposit_service.verify();
             if (!status.ok) {
-                return status;
+                return status.wrap_error("'deposit_service' misconfiguration");
             }
         } else {
-            console.warn("'deposit_tracking' is not specifed, feature will be DISABLED");
+            console.warn("'deposit_service' is not specifed, feature will be DISABLED");
         }
 
         if (this.assistant) {
@@ -459,7 +460,6 @@ export class BotConfig {
             }
         }
 
-        // TODO: delegate transaction_storage validation once the factory exposes verify().
         return Expected.ok(undefined);
     }
 }
@@ -496,10 +496,6 @@ export class Config {
         return this.current_config().tg_adapter != undefined;
     }
 
-    static HasDepoditTracker(): boolean {
-        return this.current_config().deposit_tracking != undefined;
-    }
-
     static HasOpenAI(): boolean {
         return this.data.openai_api_key_file != undefined;
     }
@@ -514,18 +510,6 @@ export class Config {
 
     static HasNewRecordsTracker(): boolean {
         return this.current_config().new_records_tracker != undefined;
-    }
-
-    static HasTransactionStorage(): boolean {
-        return this.data.transaction_storage != undefined;
-    }
-
-    static DepositTracker(): DepositTrackingConfig {
-        const cfg = this.current_config().deposit_tracking;
-        if (!cfg) {
-            throw new Error("deposit_tracking is not specified!");
-        }
-        return cfg;
     }
 
     static TgAdapter(): TgAdapterConfig {

@@ -1,5 +1,5 @@
 import { Expected, Status } from "@src/utils/expected.js";
-import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
+import { Deposit, DepositChange } from "@src/entities/deposit.js";
 import { Scores } from "@src/database.js";
 import { UserData } from "@src/entities/user.js";
 import { Feedback } from "@src/entities/feedback.js";

@@ -4,8 +4,8 @@ import { Journal } from "@src/journal.js";
 import { Runtime } from "@src/runtime.js";
 import { return_fail } from "@src/utils.js";
 import { UserLogic } from "@src/logic/user.js";
-import { DepositsTrackerEvent } from "@src/logic/deposits_tracker.js";
-import { Deposit, DepositChange } from "@src/fetchers/deposits_fetcher.js";
+import { DepositEvent } from "@src/interfaces/deposit_service.js";
+import { Deposit, DepositChange } from "@src/entities/deposit.js";
 import { Role, user_has_role, user_tgid } from "@src/entities/user.js";
 import { Environment } from "@src/components/environment.js";
 
@@ -25,14 +25,17 @@ export class DepositActions {
             return return_fail(`user ${userid} is a guest`, journal.log());
         }
 
-        const user = Runtime.get_instance().get_user_logic(userid);
-        if (!user) {
-            return return_fail(`user ${userid} has no runtime session`, journal.log());
+        const deposit_service = Environment.global.maybe_deposit_service;
+        if (!deposit_service) {
+            return return_fail(`deposit service is not configured`, journal.log());
         }
 
-        return await agent.as_deposit_owner().send_deposit_info(
-            user.get_deposit_tracker().get_deposit()
-        );
+        const deposit = await deposit_service.get_deposit(userid);
+        if (!deposit.ok) {
+            return return_fail(`failed to get deposit for ${userid}: ${deposit.error}`, journal.log());
+        }
+
+        return await agent.as_deposit_owner().send_deposit_info(deposit.value);
     }
 
     static async transactions_requested(
@@ -50,9 +53,13 @@ export class DepositActions {
             return return_fail(`user ${userid} is a guest`, journal.log());
         }
 
-        const transactions = await Runtime.get_instance()
-            .get_transactions_storage()?.fetch_transactions(
-                user_tgid(resolved.value), { limit });
+        const deposit_service = Environment.global.maybe_deposit_service;
+        if (!deposit_service) {
+            return return_fail(`deposit service is not configured`, journal.log());
+        }
+
+        const transactions = await deposit_service.fetch_transactions(
+            user_tgid(resolved.value), { limit });
         return await agent.as_deposit_owner().send_transactions_info(transactions);
     }
 
@@ -184,33 +191,7 @@ export class DepositActions {
             }
         }
 
-        if (changes.balance) {
-            await Runtime.get_instance()
-            .get_transactions_storage()
-            ?.add_transaction({
-                date: new Date(),
-                tgid: tgid,
-                type: "balance",
-                before: changes.balance![0],
-                after: changes.balance![1],
-            });
-        }
-
-        if (changes.membership) {
-            for (const [month, before, after] of changes.membership) {
-                await Runtime.get_instance()
-                .get_transactions_storage()
-                ?.add_transaction({
-                    date: new Date(),
-                    tgid: tgid,
-                    type: "membership",
-                    membership_month: month,
-                    before: before,
-                    after: after,
-                });
-            }
-        }
-
+        // Transaction writes are owned by DepositService.
         return Expected.ok(undefined);
     }
 
@@ -259,12 +240,17 @@ export class DepositActions {
         return Expected.ok(undefined);
     }
 
-    static async handle_deposit_tracker_event(
-        user: UserLogic,
-        event: DepositsTrackerEvent,
+    static async handle_deposit_event(
+        event: DepositEvent,
         journal: Journal,
     ): Promise<Status> {
         journal.log().info({ event }, `got event`);
+
+        const user = Runtime.get_instance().get_user_logic(event.tgid);
+        if (!user) {
+            return Expected.err(`user ${event.tgid} has no runtime session`);
+        }
+
         switch (event.what) {
             case "update":
                 return await this.send_deposit_update(

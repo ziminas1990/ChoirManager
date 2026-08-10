@@ -1,3 +1,4 @@
+import { IDepositService } from "@src/interfaces/deposit_service.js";
 import { IEnvironment } from "@src/interfaces/environment.js";
 import { ISimpleMemoryService } from "@src/interfaces/simple_memory_service.js";
 import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
@@ -14,6 +15,7 @@ export class Environment implements IEnvironment {
     private user_service_instance?: IUserService;
     private task_tracker_instance?: ITaskTrackerService;
     private simple_memory_instance?: ISimpleMemoryService;
+    private deposit_service_instance?: IDepositService;
 
     static get global(): IEnvironment {
         return Environment.require_global();
@@ -78,6 +80,21 @@ export class Environment implements IEnvironment {
 
     get maybe_simple_memory_service(): ISimpleMemoryService | undefined {
         return this.simple_memory_instance;
+    }
+
+    set deposit_service(deposit_service: IDepositService) {
+        this.deposit_service_instance = deposit_service;
+    }
+
+    get deposit_service(): IDepositService {
+        if (!this.deposit_service_instance) {
+            throw new Error("Deposit service is not set");
+        }
+        return this.deposit_service_instance;
+    }
+
+    get maybe_deposit_service(): IDepositService | undefined {
+        return this.deposit_service_instance;
     }
 
     private static require_global(): Environment {
