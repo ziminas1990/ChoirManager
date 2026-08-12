@@ -22,10 +22,16 @@
         "sheet_id": "",
         "table_name": "Messages"
     },
-    "scores_fetcher": {
-        "google_sheet_id": "",
-        "range": "Scores!A:Z",
-        "fetch_interval_sec": 3600
+    "scores_service": {
+        "type": "local",
+        "storage": {
+            "type": "google_spreadsheet",
+            "google_sheet_id": "",
+            "range": "Scores!A:Z"
+        },
+        "fetch_interval_sec": 3600,
+        "model": "gpt-5.6-luna",
+        "search_prompt_file": "./config/prompts/scores_search.md"
     },
     "deposit_service": {
         "type": "local",
@@ -61,7 +67,7 @@
         "fetch_interval_sec": 3600
     },
     "assistant": {
-        "model": "gpt-5.4",
+        "model": "gpt-5.6-luna",
         "prompt_file": "./config/prompts/chorister_agent.md"
     },
     "feedback_storage": {
@@ -83,7 +89,7 @@
         }
     },
     "managers_chat_agent": {
-        "model": "gpt-5.4",
+        "model": "gpt-5.6-terra",
         "context_days": 3,
         "prompt_file": "./config/managers_chat_agent_prompt.txt"
     },

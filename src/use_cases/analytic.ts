@@ -116,29 +116,32 @@ export class Analytic {
         let actual_minutes = 0;
         let actual_rehersals = 0;
         // Ideal stats count from the user's first presence ever (not just in period).
-        let first_rehersal: Date = database.first_presence_date(user_id) ?? end;
+        const first_presence = database.first_presence_date(user_id) ?? end;
         const actual_songs = new Map<string, number>();
         rehersals.forEach(rehersal => {
             const minutes = rehersal.minutes_of_presence(user_id);
             if (minutes > 0) {
                 actual_minutes += minutes;
                 actual_rehersals++;
-                if (first_rehersal > rehersal.when()) {
-                    first_rehersal = rehersal.when();
-                }
                 accumulate_songs_stat(rehersal.songs(), actual_songs);
             }
         });
 
-        // Accumulating ideal statistic since first visited rehersal
+        // Accumulating ideal statistic since first visited rehersal.
+        // period.from is the earliest rehearsal in this sample (not first presence ever).
         let ideal_minutes = 0;
         let ideal_rehersals = 0;
+        let period_from: Date | undefined;
         const ideal_songs = new Map<string, number>();
         rehersals.forEach(rehersal => {
-            if (rehersal.when() >= first_rehersal) {
+            const when = rehersal.when();
+            if (when >= first_presence) {
                 ideal_minutes += rehersal.duration(voice);
                 ideal_rehersals++;
                 accumulate_songs_stat(rehersal.songs(), ideal_songs);
+                if (!period_from || when < period_from) {
+                    period_from = when;
+                }
             }
         });
 
@@ -152,7 +155,7 @@ export class Analytic {
 
         return Expected.ok({
             period: {
-                from: first_rehersal,
+                from: period_from ?? end,
                 to: end
             },
             total_rehersals: ideal_rehersals,
