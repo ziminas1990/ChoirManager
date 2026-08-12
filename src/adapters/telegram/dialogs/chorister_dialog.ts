@@ -9,7 +9,7 @@ import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { AdminActions } from "@src/use_cases/admin_actions.js";
 import { GlobalFormatter, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
 import { ChoristerAgent } from "@src/components/ai/agents/chorister_agent.js";
-import { Scores } from "@src/database.js";
+import { Score } from "@src/entities/score.js";
 import { Language } from "@src/entities/user.js";
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity.js";
@@ -146,7 +146,7 @@ export class ChoristerDialog implements IChorister {
     }
 
     // From IChorister
-    async send_scores_list(scores: Scores[]): Promise<Status> {
+    async send_scores_list(scores: Score[]): Promise<Status> {
         this.journal.log().info("sending scores list");
 
         if (scores.length == 0) {
@@ -274,7 +274,7 @@ export class ChoristerDialog implements IChorister {
         return Expected.ok(undefined);
     }
 
-    private async do_download_scores(score: Scores): Promise<Status> {
+    private async do_download_scores(score: Score): Promise<Status> {
         this.journal.log().info(`downloading scores ${score.name}`);
         const status = await ScoresActions.download_scores_request(this.user, score, this.journal);
         if (!status.ok) {

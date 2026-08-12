@@ -1,57 +1,6 @@
 import { Voice } from "@src/entities/user.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
-function find<T>(array: Iterable<T>, what: Partial<T>): T | undefined {
-    for (const item of array) {
-        const keys = Object.keys(what) as (keyof T)[];
-        if (keys.every(key => item[key] == what[key])) {
-            return item;
-        }
-    }
-    return undefined;
-}
-
-export class Scores {
-    constructor(
-        public name: string,
-        public author: string,
-        public hints: string,
-        public duration: number,
-        public file?: string,
-    ) {}
-
-    static csv_header(): string {
-        return "name;author;hints;file";
-    }
-
-    public to_csv(separator: string = ";"): string {
-        return [this.author, this.hints, this.duration, this.file]
-            .map(s => `"${s}"`)
-            .map(s => s.replace(separator, separator == ";" ? "," : ";"))
-            .join(separator);
-    }
-
-    public get_key(): string {
-        return `${this.author} by ${this.name}`;
-    }
-
-    public update(scores: Scores): string[] {
-        if (this.author != scores.author) {
-            return [`author: "${this.author}" -> "${scores.author}"`];
-        }
-        if (this.hints != scores.hints) {
-            return [`hits: "${this.hints}" -> "${scores.hints}"`];
-        }
-        if (this.duration != scores.duration) {
-            return [`duration: ${this.duration} -> ${scores.duration}`];
-        }
-        if (this.file != scores.file) {
-            return [`file: "${this.file}" -> "${scores.file}"`];
-        }
-        return [];
-    }
-}
-
 export class Song {
     constructor(public id: number, public name: string) {}
 }
@@ -116,7 +65,6 @@ export class Rehersal {
 }
 
 export type Data = {
-    scores: Map<string, Scores>;
     songs: Map<number, Song>;
     rehersals: Map<number, RehersalData>;
     // rehersal_id -> song_id -> minutes
@@ -129,7 +77,6 @@ export type Data = {
 
 export class Database {
     private data: Data = {
-        scores: new Map(),
         songs: new Map(),
         rehersals: new Map(),
         rehersal_songs: new Map(),
@@ -137,10 +84,6 @@ export class Database {
         rehersals_index: new Map(),
         songs_index: new Map()
     };
-
-    public add_scores(scores: Scores): void {
-        this.data.scores.set(scores.get_key(), scores);
-    }
 
     public add_song(name: string): Song {
         {
@@ -261,14 +204,6 @@ export class Database {
             }
         }
         return first;
-    }
-
-    public find_scores(what: Partial<Scores>): Scores | undefined {
-        return find(this.data.scores.values(), what);
-    }
-
-    public all_scores(): IterableIterator<Scores> {
-        return this.data.scores.values();
     }
 
     public lowlevel(): Data { return this.data; }

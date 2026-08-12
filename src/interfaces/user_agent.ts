@@ -1,6 +1,6 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { Deposit, DepositChange } from "@src/entities/deposit.js";
-import { Scores } from "@src/database.js";
+import { Score } from "@src/entities/score.js";
 import { UserData } from "@src/entities/user.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { Transaction } from "./transactions_storage";
@@ -31,7 +31,7 @@ export interface IUserAgent
 export interface IChorister {
     base(): IUserAgent;
 
-    send_scores_list(scores: Scores[]): Promise<Status>;
+    send_scores_list(scores: Score[]): Promise<Status>;
 
     on_feedback_received(feedback: Feedback): Promise<Status>;
 }

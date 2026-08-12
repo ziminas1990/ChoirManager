@@ -1,5 +1,6 @@
 import { IDepositService } from "@src/interfaces/deposit_service.js";
 import { IEnvironment } from "@src/interfaces/environment.js";
+import { IScoresService } from "@src/interfaces/scores_service.js";
 import { ISimpleMemoryService } from "@src/interfaces/simple_memory_service.js";
 import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
 import { IUserService } from "@src/interfaces/user_service.js";
@@ -16,6 +17,7 @@ export class Environment implements IEnvironment {
     private task_tracker_instance?: ITaskTrackerService;
     private simple_memory_instance?: ISimpleMemoryService;
     private deposit_service_instance?: IDepositService;
+    private scores_service_instance?: IScoresService;
 
     static get global(): IEnvironment {
         return Environment.require_global();
@@ -95,6 +97,21 @@ export class Environment implements IEnvironment {
 
     get maybe_deposit_service(): IDepositService | undefined {
         return this.deposit_service_instance;
+    }
+
+    set scores_service(scores_service: IScoresService) {
+        this.scores_service_instance = scores_service;
+    }
+
+    get scores_service(): IScoresService {
+        if (!this.scores_service_instance) {
+            throw new Error("Scores service is not set");
+        }
+        return this.scores_service_instance;
+    }
+
+    get maybe_scores_service(): IScoresService | undefined {
+        return this.scores_service_instance;
     }
 
     private static require_global(): Environment {

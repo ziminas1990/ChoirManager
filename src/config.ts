@@ -15,7 +15,10 @@ import {
     DepositServiceConfig,
     DepositServiceConfigJson,
 } from "@src/adapters/deposit_service/factory.js";
-import { ScoresFetcherConfig, ScoresFetcherConfigJson } from "@src/fetchers/scores_fetcher.js";
+import {
+    ScoresServiceConfig,
+    ScoresServiceConfigJson,
+} from "@src/adapters/scores_service/factory.js";
 import { AttendanceTrackerConfig, AttendanceTrackerConfigJson } from "@src/logic/attendance_tracker.js";
 import { RehersalsTrackerConfig, RehersalsTrackerConfigJson } from "@src/logic/rehersals_tracker.js";
 import { UserServiceConfig, UserServiceConfigJson } from "@src/adapters/user_service/factory.js";
@@ -218,7 +221,7 @@ export type BotConfigJson = {
     tg_adapter: TgAdapterConfigJson;
     user_service: UserServiceConfigJson;
     messages_provider: MessagesProviderConfigJson;
-    scores_fetcher?: ScoresFetcherConfigJson;
+    scores_service?: ScoresServiceConfigJson;
     new_records_tracker?: NewRecordsTrackerConfigJson;
     deposit_service?: DepositServiceConfigJson;
     attendance_tracker?: AttendanceTrackerConfigJson;
@@ -238,7 +241,7 @@ export class BotConfig {
     public readonly tg_adapter?: TgAdapterConfig;
     public readonly user_service?: UserServiceConfig;
     public readonly messages_provider?: MessagesProviderConfig;
-    public readonly scores_fetcher?: ScoresFetcherConfig;
+    public readonly scores_service?: ScoresServiceConfig;
     public readonly new_records_tracker?: NewRecordsTrackerConfig;
     public readonly deposit_service?: DepositServiceConfig;
     public readonly attendance_tracker?: AttendanceTrackerConfig;
@@ -264,8 +267,8 @@ export class BotConfig {
         if (json.messages_provider != undefined) {
             this.messages_provider = new MessagesProviderConfig(json.messages_provider);
         }
-        if (json.scores_fetcher != undefined) {
-            this.scores_fetcher = new ScoresFetcherConfig(json.scores_fetcher);
+        if (json.scores_service != undefined) {
+            this.scores_service = new ScoresServiceConfig(json.scores_service);
         }
         if (json.new_records_tracker != undefined) {
             this.new_records_tracker = new NewRecordsTrackerConfig(json.new_records_tracker);
@@ -329,11 +332,13 @@ export class BotConfig {
             return status.wrap_error("'messages_provider' misconfiguration");
         }
 
-        if (this.scores_fetcher) {
-            status = this.scores_fetcher.verify();
+        if (this.scores_service) {
+            status = this.scores_service.verify();
             if (!status.ok) {
-                return status.wrap_error("'scores_fetcher' misconfiguration");
+                return status.wrap_error("'scores_service' misconfiguration");
             }
+        } else {
+            console.warn("'scores_service' is not specifed, feature will be DISABLED");
         }
 
         if (this.new_records_tracker) {
@@ -504,8 +509,8 @@ export class Config {
         return this.current_config().assistant != undefined;
     }
 
-    static HasScoresFetcher(): boolean {
-        return this.current_config().scores_fetcher != undefined;
+    static HasScoresService(): boolean {
+        return this.current_config().scores_service != undefined;
     }
 
     static HasNewRecordsTracker(): boolean {
@@ -528,10 +533,10 @@ export class Config {
         return cfg;
     }
 
-    static ScoresFetcher(): ScoresFetcherConfig {
-        const cfg = this.current_config().scores_fetcher;
+    static ScoresService(): ScoresServiceConfig {
+        const cfg = this.current_config().scores_service;
         if (!cfg) {
-            throw new Error("scores_fetcher is not specified!");
+            throw new Error("scores_service is not specified!");
         }
         return cfg;
     }

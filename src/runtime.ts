@@ -11,7 +11,6 @@ import { pack_map, return_exception, unpack_map } from "./utils.js";
 import { Proceeder } from "./logic/abstracts.js";
 import { UserService } from "./components/user_service.js";
 import { IUserServiceReplica } from "./interfaces/user_service.js";
-import { ScoresFetcher } from "./fetchers/scores_fetcher.js";
 import { Journal } from "./journal.js";
 import { AdminActions } from "./use_cases/admin_actions.js";
 import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
@@ -20,6 +19,7 @@ import { TgAdapter } from "./adapters/telegram/adapter.js";
 import { TaskTrackerServiceFactory } from "./adapters/task_tracker_service/factory.js";
 import { SimpleMemoryServiceFactory } from "./adapters/simple_memory_service/factory.js";
 import { DepositServiceFactory } from "./adapters/deposit_service/factory.js";
+import { ScoresServiceFactory } from "./adapters/scores_service/factory.js";
 import { update_v2_v3 } from "./configuration/update_v2_v3.js";
 import { IAdapter } from "./interfaces/adapter.js";
 import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
@@ -35,6 +35,7 @@ import { TaskTrackerService } from "./components/task_tracker_service.js";
 import { TaskTrackerEvent } from "./interfaces/task_tracker_service.js";
 import { DepositService } from "./components/deposit_service.js";
 import { DepositEvent } from "./interfaces/deposit_service.js";
+import { ScoresService } from "./components/scores_service.js";
 import { Environment } from "./components/environment.js";
 import { MANAGERS_MEMORY_GROUP_ID } from "./entities/memory.js";
 import { ManagersAgent } from "./components/ai/agents/managers_agent.js";
@@ -124,7 +125,7 @@ export class Runtime {
 
     private next_dump: Date = new Date();
     private update_interval_sec: number = 0;
-    private scores_fetcher?: ScoresFetcher;
+    private scores_service?: ScoresService;
     private new_records_fetcher?: NewRecordsFetcher;
     private feedback_storage?: IFeedbackStorage;
     private rehersals_storage?: IRehersalsStorage;
@@ -207,13 +208,21 @@ export class Runtime {
             }
         }
 
-        if (this.config.scores_fetcher) {
-            this.journal.log().info("Starting scores fetcher");
-            this.scores_fetcher = new ScoresFetcher(this.config.scores_fetcher, this.database);
-            const scores_status = await this.scores_fetcher.start();
-            if (!scores_status.ok) {
-                return scores_status.wrap_error("Failed to start scores fetcher");
+        if (this.config.scores_service) {
+            this.journal.log().info("Initializing scores service...");
+            const create_status = ScoresServiceFactory.create(
+                this.config.scores_service,
+                this.journal,
+            );
+            if (!create_status.ok) {
+                return create_status.wrap_error("Failed to create scores service");
             }
+            this.scores_service = create_status.value;
+            const init_status = await this.scores_service.init();
+            if (!init_status.ok) {
+                return init_status.wrap_error("Failed to initialize scores service");
+            }
+            Environment.setup.scores_service = this.scores_service;
         }
 
         if (this.config.new_records_tracker) {
@@ -580,10 +589,10 @@ export class Runtime {
             }
         }
 
-        if (this.scores_fetcher) {
-            const scores_status = await this.scores_fetcher.proceed();
+        if (this.scores_service) {
+            const scores_status = await this.scores_service.proceed(now);
             if (!scores_status.ok) {
-                this.journal.log().error(`Scores fetcher proceed failed: ${scores_status.error}`);
+                this.journal.log().error(`Scores service proceed failed: ${scores_status.error}`);
             }
         }
 
