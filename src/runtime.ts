@@ -5,7 +5,7 @@ import path from "path";
 import { BotConfig } from "./config.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Database } from "./database.js";
-import { user_tgid } from "./entities/user.js";
+import { user_tg_username } from "./entities/user.js";
 import { UserLogic } from "./logic/user.js";
 import { pack_map, return_exception, unpack_map } from "./utils.js";
 import { Proceeder } from "./logic/abstracts.js";
@@ -199,7 +199,6 @@ export class Runtime {
                         runtime: this.config.runtime,
                         assistant: this.config.assistant,
                     },
-                    this.user_service.as_replica(),
                     this.journal);
             }
             const status = await this.tg_adapter.init();
@@ -501,7 +500,7 @@ export class Runtime {
         }
 
         const replica = this.user_service.as_replica();
-        const resolved = replica.resolve_user({ telegram_id: tg_id });
+        const resolved = replica.resolve_user({ tg_username: tg_id });
         if (!resolved.ok) {
             this.journal.log().error(`Failed to resolve user @${tg_id}: ${resolved.error}`);
             return undefined;
@@ -719,7 +718,7 @@ export class Runtime {
         const replica = user_service.as_replica();
 
         const users = unpack_map(packed.users, (packed) => {
-            const resolved = replica.resolve_user({ telegram_id: packed.tgid });
+            const resolved = replica.resolve_user({ tg_username: packed.tgid });
             if (!resolved.ok || !resolved.value) {
                 journal.log().warn(
                     `loading users: ${resolved.ok ? `User @${packed.tgid} not found` : resolved.error}`);
@@ -745,7 +744,6 @@ export class Runtime {
                     assistant: config.assistant,
                 },
                 packed.tg_adapter,
-                replica,
                 journal,
             );
         }
@@ -758,7 +756,7 @@ export class Runtime {
         if (!startup) {
             const name = user.data.name.length > 0 ? user.data.name : "guest";
             AdminActions.notify_all_admins(
-                `User ${name} ${user.data.surname} (@${user_tgid(user.data)}) has joined`,
+                `User ${name} ${user.data.surname} (@${user_tg_username(user.data)}) has joined`,
                 this.journal);
         }
     }

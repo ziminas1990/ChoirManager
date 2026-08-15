@@ -1,4 +1,4 @@
-import { Database, RehersalEntity } from "../data_model"
+import { Database, RehersalEntity } from "../data_model.js"
 
 declare var packed_json: any;
 import * as Plotly from 'plotly.js';

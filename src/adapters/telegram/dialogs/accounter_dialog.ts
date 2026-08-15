@@ -1,7 +1,7 @@
 import { Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Formatter, GlobalFormatter } from "@src/utils.js";
-import { Language, UserData, user_tgid } from "@src/entities/user.js";
+import { Language, UserData, user_tg_username } from "@src/entities/user.js";
 import { Deposit, DepositChange } from "@src/entities/deposit.js";
 import { Orator } from "./deposit_owner_dialog.js";
 import { IAccounterAgent, IUserAgent } from "@src/interfaces/user_agent.js";
@@ -36,7 +36,7 @@ export class AccounterDialog implements IAccounterAgent {
 
     async mirror_message(message: string, receiver?: UserData): Promise<Status> {
         const prefix = receiver
-            ? `Notification for ${receiver.name} ${receiver.surname} (@${user_tgid(receiver)}):\n`
+            ? `Notification for ${receiver.name} ${receiver.surname} (@${user_tg_username(receiver)}):\n`
             : "Notification:\n";
         const full_message = [prefix, message].filter(line => line.trim().length > 0).join("\n");
         return (await this.user.send_message(full_message)).as_status();
@@ -45,7 +45,7 @@ export class AccounterDialog implements IAccounterAgent {
     async mirror_deposit_changes(who: UserData, deposit: Deposit, changes: DepositChange): Promise<Status> {
         const orator = new Orator(this.formatter);
         const changes_msg = orator.deposit_change(deposit, changes, this.user.info().lang);
-        const who_msg = `Notification for ${who.name} ${who.surname} (@${user_tgid(who)}):\n`;
+        const who_msg = `Notification for ${who.name} ${who.surname} (@${user_tg_username(who)}):\n`;
         const message = [who_msg, changes_msg].join("\n");
         return (await this.user.send_message(message)).as_status();
     }
@@ -56,7 +56,7 @@ export class AccounterDialog implements IAccounterAgent {
     }
 
     private user_already_paid(who: UserData, lang: Language): string {
-        const name = `${who.name} ${who.surname ?? ""} (@${user_tgid(who)})`;
+        const name = `${who.name} ${who.surname ?? ""} (@${user_tg_username(who)})`;
         switch (lang) {
             case Language.RU:
                 return `${name} говорит что уже оплатил членский взнос`;
@@ -70,7 +70,7 @@ export class AccounterDialog implements IAccounterAgent {
         user: UserData, amount: number, original_message: string, lang: Language)
     : string
     {
-        const name = `${user.name} ${user.surname ?? ""} (@${user_tgid(user)})`;
+        const name = `${user.name} ${user.surname ?? ""} (@${user_tg_username(user)})`;
         const lines: string[] = [];
         switch (lang) {
             case Language.RU:
@@ -88,7 +88,7 @@ export class AccounterDialog implements IAccounterAgent {
     }
 
     private mirrored_reminder(who: UserData, amount: number, lang: Language): string {
-        const name = `${who.name} ${who.surname ?? ""} (@${user_tgid(who)})`;
+        const name = `${who.name} ${who.surname ?? ""} (@${user_tg_username(who)})`;
         const message: string[] = []
 
         switch (lang) {

@@ -3,7 +3,7 @@ import { Journal } from "@src/journal.js";
 import { Runtime } from "@src/runtime.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { return_fail } from "@src/utils.js";
-import { Role, UserData, user_has_role, user_tgid } from "@src/entities/user.js";
+import { Role, UserData, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { exit } from "process";
 
 export class AdminActions {
@@ -16,14 +16,14 @@ export class AdminActions {
             for (const agent of admin_agents ?? []) {
                 const status = await agent.send_notification(notification);
                 if (!status.ok) {
-                    journal.log().warn(`Failed to notify admin @${user_tgid(user.data)}: ${status.error}`);
+                    journal.log().warn(`Failed to notify admin @${user_tg_username(user.data)}: ${status.error}`);
                 }
             }
         }
     }
 
     static async send_runtime_backup(user: UserData, config: RuntimeConfig, journal: Journal): Promise<Status> {
-        const tgid = user_tgid(user);
+        const tgid = user_tg_username(user);
         journal.log().info(`Sending runtime backup to @${tgid}`);
 
         if (!user_has_role(user, Role.Admin)) {
@@ -48,7 +48,7 @@ export class AdminActions {
     }
 
     static async send_logs(user: UserData, config: RuntimeConfig, journal: Journal): Promise<Status> {
-        const tgid = user_tgid(user);
+        const tgid = user_tg_username(user);
         journal.log().info(`Sending logs to @${tgid}`);
 
         if (!user_has_role(user, Role.Admin)) {

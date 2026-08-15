@@ -158,7 +158,7 @@ export class UserLogic extends Logic<void> {
         this.last_user_refresh_at_ms = now_ms;
 
         const resolved = this.users.resolve_user({
-            telegram_id: this.telegram_id,
+            tg_username: this.telegram_id,
         });
         if (resolved.ok && resolved.value) {
             this.data = resolved.value;

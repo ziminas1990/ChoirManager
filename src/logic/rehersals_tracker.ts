@@ -101,7 +101,7 @@ export class RehersalsTracker {
     }
 
     private resolve_voice(tgid: string): Voice {
-        const resolved = this.users.resolve_user({ telegram_id: tgid });
+        const resolved = this.users.resolve_user({ tg_username: tgid });
         if (!resolved.ok || !resolved.value) {
             return Voice.Unknown;
         }

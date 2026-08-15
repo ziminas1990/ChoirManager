@@ -1,5 +1,5 @@
 import { Database } from "@src/database.js";
-import { Language, Role, UserData, user_has_role, user_tgid } from "@src/entities/user.js";
+import { Language, Role, UserData, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { UserLogic } from "@src/logic/user.js";
 import { Journal } from "@src/journal.js";
@@ -161,7 +161,7 @@ export class AttendanceTracker extends Logic<void> {
         const notified_choristers: UserData[] = [];
 
         for (const chorister of choristers) {
-            const tgid = user_tgid(chorister);
+            const tgid = user_tg_username(chorister);
             const statistic = chorister_stats.get(tgid);
             if (!statistic) {
                 continue;
@@ -228,7 +228,7 @@ export class AttendanceTracker extends Logic<void> {
         }
 
         const choristers_list = choristers
-            .map(chorister => `${chorister.name} (@${user_tgid(chorister)})`)
+            .map(chorister => `${chorister.name} (@${user_tg_username(chorister)})`)
             .join("\n");
         const message = this.messages_provider.get_attendance_reminders_report_message(
             Language.RU,
@@ -258,7 +258,7 @@ export class AttendanceTracker extends Logic<void> {
             if (!user_has_role(user, Role.Chorister)) {
                 continue;
             }
-            if (!user.id.telegram_id) {
+            if (!user.id.tg_username) {
                 continue;
             }
             choristers.push(user);
@@ -273,7 +273,7 @@ export class AttendanceTracker extends Logic<void> {
     ): Map<string, ChoristerAttendanceStat> {
         const stats = new Map<string, ChoristerAttendanceStat>();
         for (const chorister of choristers) {
-            const tgid = user_tgid(chorister);
+            const tgid = user_tg_username(chorister);
             const statistic = Analytic.chorister_statistic_request(
                 this.database, tgid, chorister.voice, begin, end);
             if (!statistic.ok) {
@@ -304,7 +304,7 @@ function format_bad_attendance_list(
 ): string {
     return choristers
         .flatMap(chorister => {
-            const tgid = user_tgid(chorister);
+            const tgid = user_tg_username(chorister);
             const stat = stats.get(tgid);
             if (!stat) {
                 return [];

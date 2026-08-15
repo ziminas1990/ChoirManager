@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { user_tgid } from "@src/entities/user.js";
+import { user_tg_username } from "@src/entities/user.js";
 import {
     MemoryAccessContext,
     MemoryFact,
@@ -260,7 +260,7 @@ export class SimpleMemoryTools implements IToolchain {
         }
 
         const resolved = this.users.resolve_user({
-            telegram_id: agent_author_user_id,
+            tg_username: agent_author_user_id,
         });
         if (!resolved.ok || !resolved.value) {
             return Expected.err(
@@ -269,15 +269,15 @@ export class SimpleMemoryTools implements IToolchain {
             );
         }
 
-        return Expected.ok(user_tgid(resolved.value));
+        return Expected.ok(user_tg_username(resolved.value));
     }
 
     private serialize_fact(fact: MemoryFact): SerializableMemoryFact {
         const resolved = this.users.resolve_user({
-            telegram_id: fact.author_user_id,
+            tg_username: fact.author_user_id,
         });
         const author = resolved.ok && resolved.value
-            ? user_tgid(resolved.value)
+            ? user_tg_username(resolved.value)
             : fact.author_user_id;
         return {
             fact_id: fact.id,

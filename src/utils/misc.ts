@@ -1,3 +1,5 @@
+import { Expected } from "@src/utils/expected.js";
+import { Journal } from "@src/journal.js";
 import crypto from "crypto";
 
 function pad_2(value: number): string {
@@ -30,4 +32,17 @@ export function generate_memory_id(created_at: Date): string {
 
 export function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function return_fail<T>(what: string | Expected<T>, logger?: Journal): Expected<T> {
+    if (what instanceof Expected) {
+        if (logger) {
+            logger.log().error(what.error);
+        }
+        return what;
+    }
+    if (logger) {
+        logger.log().error(what);
+    }
+    return Expected.err(what);
 }

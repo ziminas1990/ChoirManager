@@ -81,7 +81,7 @@ export class ScoresActions {
         }
 
         const userid = agent.userid();
-        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: userid });
+        const resolved = await Environment.global.user_service.resolve_user({ tg_username: userid });
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
@@ -101,7 +101,7 @@ export class ScoresActions {
         journal: Journal,
     ): Promise<Expected<IScoresService>> {
         const userid = agent.userid();
-        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: userid });
+        const resolved = await Environment.global.user_service.resolve_user({ tg_username: userid });
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }

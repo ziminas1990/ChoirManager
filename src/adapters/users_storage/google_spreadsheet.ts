@@ -106,7 +106,7 @@ function try_parse_row(row: string[], columns: TableColumns): Expected<UserData>
         const user: UserData = {
             id: {
                 system_id: "",
-                telegram_id: tgid,
+                tg_username: tgid,
             },
             name,
             surname,

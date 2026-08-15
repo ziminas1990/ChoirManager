@@ -1,5 +1,5 @@
-import { IMessagesBacklog } from "@src/interfaces/messages_backlog";
-import { Journal } from "@src/journal";
+import { IMessagesBacklog } from "@src/interfaces/messages_backlog.js";
+import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 

@@ -247,7 +247,7 @@ export class ManagersAgent {
         }
 
         const resolved = this.users.resolve_user({
-            telegram_id: message.user_id,
+            tg_username: message.user_id,
         });
         if (!resolved.ok || !resolved.value) {
             return `@${message.user_id}`;

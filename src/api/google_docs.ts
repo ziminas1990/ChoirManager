@@ -1,6 +1,6 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { TokenBucket } from "@src/utils/token_bucket.js";
-import { GoogleAuth } from "./google_auth";
+import { GoogleAuth } from "./google_auth.js";
 
 export type Row = string[];
 export type Table = Row[];

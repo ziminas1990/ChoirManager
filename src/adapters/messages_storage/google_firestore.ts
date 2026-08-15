@@ -3,8 +3,8 @@ import crypto from "crypto";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IMessagesBacklog, Message } from "@src/interfaces/messages_backlog.js";
 import { CollectionReference, Firestore } from "@google-cloud/firestore";
-import { GoogleAuth } from "@src/api/google_auth";
-import { TokenBucket } from "@src/utils/token_bucket";
+import { GoogleAuth } from "@src/api/google_auth.js";
+import { TokenBucket } from "@src/utils/token_bucket.js";
 
 export type Config = {
     database_id: string,

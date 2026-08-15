@@ -46,7 +46,7 @@ export class UserService extends Logic<void> implements IUserService {
         const guest: UserData = {
             id: {
                 system_id: Helpers.system_id_from_name("guest", telegram_id),
-                telegram_id,
+                tg_username: telegram_id,
             },
             name: "",
             surname: "",
@@ -78,10 +78,10 @@ export class UserService extends Logic<void> implements IUserService {
     }
 
     private resolve_from_cache(user_id: Partial<UserId>): Expected<UserData | undefined> {
-        if (!user_id.system_id && !user_id.telegram_id) {
+        if (!user_id.system_id && !user_id.tg_username) {
             return Expected.err("at least one of system_id or telegram_id must be provided");
         }
-        if (user_id.system_id && user_id.telegram_id) {
+        if (user_id.system_id && user_id.tg_username) {
             return Expected.err("when system_id is provided, other UserId fields must be empty");
         }
 
@@ -89,7 +89,7 @@ export class UserService extends Logic<void> implements IUserService {
             return Expected.ok(this.users.get(user_id.system_id));
         }
 
-        const telegram_id = user_id.telegram_id!;
+        const telegram_id = user_id.tg_username!;
         return Expected.ok(
             this.by_telegram_id.get(telegram_id) ?? this.guests.get(telegram_id)
         );
@@ -108,7 +108,7 @@ export class UserService extends Logic<void> implements IUserService {
 
         for (const raw of fetched) {
             const system_id = raw.id.system_id || Helpers.system_id_from_name(raw.name, raw.surname);
-            const telegram_id = raw.id.telegram_id;
+            const telegram_id = raw.id.tg_username;
 
             if (next_users.has(system_id)) {
                 this.journal.log().warn(`Duplicate system_id '${system_id}', keeping first`);
@@ -123,7 +123,7 @@ export class UserService extends Logic<void> implements IUserService {
                 ...raw,
                 id: {
                     system_id,
-                    ...(telegram_id ? { telegram_id } : {}),
+                    ...(telegram_id ? { tg_username: telegram_id } : {}),
                 },
             };
 
@@ -170,8 +170,8 @@ class Helpers {
         if (prev.voice != next.voice) {
             diffs.push(`voice: ${prev.voice} -> ${next.voice}`);
         }
-        if (prev.id.telegram_id != next.id.telegram_id) {
-            diffs.push(`telegram_id: ${prev.id.telegram_id} -> ${next.id.telegram_id}`);
+        if (prev.id.tg_username != next.id.tg_username) {
+            diffs.push(`telegram_id: ${prev.id.tg_username} -> ${next.id.tg_username}`);
         }
 
         for (const granted_role of next.roles) {

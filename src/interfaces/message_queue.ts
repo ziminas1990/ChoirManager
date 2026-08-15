@@ -1,4 +1,4 @@
-import { Expected, Status } from "@src/utils/expected";
+import { Expected, Status } from "@src/utils/expected.js";
 
 export interface ISubscription<T> {
     unsubscribe(): Promise<Status>;

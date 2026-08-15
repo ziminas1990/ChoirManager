@@ -7,7 +7,13 @@
     "tg_adapter": {
         "token_file": "./config/tgbot_token",
         "bot_id": "",
-        "formatting": "html"
+        "formatting": "html",
+        "users_storage": {
+            "type": "google_firestore",
+            "database_id": "",
+            "collection_name": "telegram_users",
+            "cache_size": 500
+        }
     },
     "user_service": {
         "type": "local",

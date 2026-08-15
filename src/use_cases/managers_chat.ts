@@ -1,6 +1,6 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { Runtime } from "@src/runtime.js";
-import { GroupChatMessage } from "@src/logic/group_chat";
+import { GroupChatMessage } from "@src/logic/group_chat.js";
 
 export class ManagersChat {
 

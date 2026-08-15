@@ -22,6 +22,10 @@ import {
 import { AttendanceTrackerConfig, AttendanceTrackerConfigJson } from "@src/logic/attendance_tracker.js";
 import { RehersalsTrackerConfig, RehersalsTrackerConfigJson } from "@src/logic/rehersals_tracker.js";
 import { UserServiceConfig, UserServiceConfigJson } from "@src/adapters/user_service/factory.js";
+import {
+    PlainCollectionConfig,
+    PlainCollectionFactory,
+} from "@src/adapters/plain_collection/factory.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Formatting } from "@src/utils.js";
@@ -30,6 +34,7 @@ export type TgAdapterConfigJson = {
     token_file: string;
     formatting: Formatting;
     bot_id?: string;
+    users_storage: PlainCollectionConfig;
 }
 
 export class TgAdapterConfig {
@@ -47,12 +52,23 @@ export class TgAdapterConfig {
         return this.json.bot_id;
     }
 
+    get users_storage(): PlainCollectionConfig {
+        return this.json.users_storage;
+    }
+
     verify(): Status {
         if (!this.json.token_file) {
             return Expected.err("'token_file' MUST be specified");
         }
         if (!this.json.formatting || !["markdown", "html", "plain"].includes(this.json.formatting)) {
             return Expected.err("'formatting' MUST be specified (markdown, html, plain)");
+        }
+        if (!this.json.users_storage) {
+            return Expected.err("'users_storage' MUST be specified");
+        }
+        const storage_status = PlainCollectionFactory.verify(this.json.users_storage);
+        if (!storage_status.ok) {
+            return storage_status.wrap_error("'users_storage' misconfiguration");
         }
         return Expected.ok(undefined);
     }

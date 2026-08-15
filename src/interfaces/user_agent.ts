@@ -3,7 +3,7 @@ import { Deposit, DepositChange } from "@src/entities/deposit.js";
 import { Score } from "@src/entities/score.js";
 import { UserData } from "@src/entities/user.js";
 import { Feedback } from "@src/entities/feedback.js";
-import { Transaction } from "./transactions_storage";
+import { Transaction } from "./transactions_storage.js";
 
 
 export interface IUserAgent

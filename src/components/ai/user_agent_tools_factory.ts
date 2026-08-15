@@ -1,4 +1,4 @@
-import { Role, UserData, user_has_role, user_tgid } from "@src/entities/user.js";
+import { Role, UserData, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { MANAGERS_MEMORY_GROUP_ID } from "@src/entities/memory.js";
 import { IToolchain } from "@src/interfaces/llm.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
@@ -55,7 +55,7 @@ export function register_user_assistant_tools(
         statuses.push(host.add_tool(new SimpleMemoryTools(
             services.simple_memory,
             {
-                user_id: user_tgid(user),
+                user_id: user_tg_username(user),
                 group_ids: [MANAGERS_MEMORY_GROUP_ID],
             },
             {

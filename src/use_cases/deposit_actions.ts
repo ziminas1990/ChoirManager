@@ -6,7 +6,7 @@ import { return_fail } from "@src/utils.js";
 import { UserLogic } from "@src/logic/user.js";
 import { DepositEvent } from "@src/interfaces/deposit_service.js";
 import { Deposit, DepositChange } from "@src/entities/deposit.js";
-import { Role, user_has_role, user_tgid } from "@src/entities/user.js";
+import { Role, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { Environment } from "@src/components/environment.js";
 
 
@@ -17,7 +17,7 @@ export class DepositActions {
         journal: Journal
     ): Promise<Status> {
         const userid = agent.userid();
-        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: userid });
+        const resolved = await Environment.global.user_service.resolve_user({ tg_username: userid });
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
@@ -44,8 +44,8 @@ export class DepositActions {
         limit?: number
     ): Promise<Status> {
         const userid = agent.userid();
-        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: userid });
-        journal.log().info(`transactions_requested by ${resolved.ok && resolved.value ? user_tgid(resolved.value) : undefined}`);
+        const resolved = await Environment.global.user_service.resolve_user({ tg_username: userid });
+        journal.log().info(`transactions_requested by ${resolved.ok && resolved.value ? user_tg_username(resolved.value) : undefined}`);
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
@@ -59,7 +59,7 @@ export class DepositActions {
         }
 
         const transactions = await deposit_service.fetch_transactions(
-            user_tgid(resolved.value), { limit });
+            user_tg_username(resolved.value), { limit });
         return await agent.as_deposit_owner().send_transactions_info(transactions);
     }
 
@@ -72,7 +72,7 @@ export class DepositActions {
         const user_id = agent.userid();
         journal.log().info(`top_up ${user_id} ${amount} ${original_message}`);
 
-        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: user_id });
+        const resolved = await Environment.global.user_service.resolve_user({ tg_username: user_id });
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
@@ -119,7 +119,7 @@ export class DepositActions {
         const user_id = agent.userid();
         journal.log().info(`handle already_paid by ${user_id}`);
 
-        const resolved = await Environment.global.user_service.resolve_user({ telegram_id: user_id });
+        const resolved = await Environment.global.user_service.resolve_user({ tg_username: user_id });
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
@@ -146,7 +146,7 @@ export class DepositActions {
                 const status = await accounter.send_already_paid_notification(user);
                 if (!status.ok) {
                     journal.log().warn([
-                        `failed to send already_paid notification to ${user_tgid(user)}`,
+                        `failed to send already_paid notification to ${user_tg_username(user)}`,
                         status.error
                     ].join(":"));
                 }
@@ -162,7 +162,7 @@ export class DepositActions {
         journal: Journal,
     ): Promise<Status>
     {
-        const tgid = user_tgid(user.data);
+        const tgid = user_tg_username(user.data);
         journal.log().info(`send_deposit_update for ${tgid}`);
 
         const deposit_owner_dialog = user.as_deposit_owner();
@@ -201,7 +201,7 @@ export class DepositActions {
         journal: Journal
     ): Promise<Status>
     {
-        const userid = user_tgid(user.data);
+        const userid = user_tg_username(user.data);
         journal.log().info(`send_reminder for @${userid}`);
 
         if (amount < 10) {

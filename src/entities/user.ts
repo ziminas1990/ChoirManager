@@ -23,7 +23,7 @@ export enum Language {
 
 export type UserId = {
     system_id: string;  // internal system uuid for the user
-    telegram_id?: string;  // telegram user id
+    tg_username?: string;  // telegram username
 }
 
 export type UserData = {
@@ -35,11 +35,11 @@ export type UserData = {
     roles: Role[];
 }
 
-export function user_tgid(user: UserData): string {
-    if (!user.id.telegram_id) {
+export function user_tg_username(user: UserData): string {
+    if (!user.id.tg_username) {
         throw new Error(`user '${user.id.system_id}' has no telegram_id`);
     }
-    return user.id.telegram_id;
+    return user.id.tg_username;
 }
 
 export function user_has_role(user: UserData, role: Role): boolean {

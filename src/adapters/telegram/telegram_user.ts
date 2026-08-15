@@ -3,7 +3,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
-import { Role, UserData, user_has_role, user_tgid } from "@src/entities/user.js";
+import { Role, UserData, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { return_exception, return_fail } from "@src/utils.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { Environment } from "@src/components/environment.js";
@@ -65,7 +65,7 @@ export class TelegramUser implements IUserAgent {
         private readonly dependencies: TelegramUserDependencies,
         parent_journal: Journal,
     ) {
-        this.journal = parent_journal.child(`@${user_tgid(this.user_info)}`);
+        this.journal = parent_journal.child(`@${user_tg_username(this.user_info)}`);
         this.callbacks_registry = new TelegramCallbacks(this.journal);
         this.timings = {};
     }
@@ -83,6 +83,10 @@ export class TelegramUser implements IUserAgent {
 
     info() { return this.user_info; }
 
+    private_chat_id(): number { return this.chat_id; }
+
+    set_private_chat_id(chat_id: number) { this.chat_id = chat_id; }
+
     put_incoming_item(item: IcomingItem) {
         this.queue.push(item);
     }
@@ -90,7 +94,7 @@ export class TelegramUser implements IUserAgent {
     agent_name(): string { return "TelegramUser"; }
 
     // From IUserAgent
-    userid(): string { return user_tgid(this.user_info); }
+    userid(): string { return user_tg_username(this.user_info); }
 
     // From IUserAgent
     as_chorister(): IChorister {
@@ -300,7 +304,7 @@ export class TelegramUser implements IUserAgent {
         }
 
         const resolved = await Environment.global.user_service.resolve_user({
-            telegram_id: this.userid(),
+            tg_username: this.userid(),
         });
         if (!resolved.ok) {
             return;
