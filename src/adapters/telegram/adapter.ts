@@ -26,6 +26,7 @@ import { IPlainCollection } from "@src/interfaces/plain_collection.js";
 import { telegram_user_firestore_converter } from "@src/adapters/telegram/telegram_user_mapper.js";
 import {
     TelegramUserRecord,
+    telegram_id_from_record,
     telegram_user_record_id,
 } from "@src/adapters/telegram/telegram_user_record.js";
 
@@ -152,7 +153,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 const status = await this.raise_user_from_record(record);
                 if (!status.ok) {
                     this.journal.log().warn(
-                        `failed to raise telegram user ${record.telegram_id}: ${status.error}`);
+                        `failed to raise telegram user ${record.id}: ${status.error}`);
                 }
             }
 
@@ -509,7 +510,6 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             revision: 1,
             user_id: resolved.value.id.system_id,
             telegram_username: username,
-            telegram_id,
             private_chat_id: chat_id,
         };
         const created = await this.users_collection.create(record);
@@ -522,7 +522,8 @@ export class TgAdapter extends Logic<void> implements IAdapter {
     }
 
     private async raise_user_from_record(record: TelegramUserRecord): Promise<Status> {
-        if (this.users.has(record.telegram_id)) {
+        const telegram_id = telegram_id_from_record(record);
+        if (this.users.has(telegram_id)) {
             return Expected.ok(undefined);
         }
         const resolved = await Helpers.resolve_user_data(record, undefined);
@@ -531,13 +532,13 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         }
         const agent = new TelegramUser(
             resolved.value, record.private_chat_id, this.dependencies, this.journal);
-        this.users.set(record.telegram_id, agent);
+        this.users.set(telegram_id, agent);
 
         const update_status = await this.update_record_if_changed(
-            record, resolved.value, record.telegram_id, undefined, record.private_chat_id);
+            record, resolved.value, telegram_id, undefined, record.private_chat_id);
         if (!update_status.ok) {
             this.journal.log().warn(
-                `failed to sync telegram user ${record.telegram_id} on raise: ${update_status.error}`);
+                `failed to sync telegram user ${record.id} on raise: ${update_status.error}`);
         }
         return Expected.ok(undefined);
     }
@@ -633,7 +634,6 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             id,
             user_id: patch.user_id,
             telegram_username: patch.telegram_username,
-            telegram_id: patch.telegram_id,
             private_chat_id: patch.private_chat_id,
         });
     }

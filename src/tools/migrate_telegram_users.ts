@@ -57,17 +57,17 @@ function is_complete_packed_user(
 
 async function upsert_record(
     collection: IPlainCollection<TelegramUserRecord>,
+    telegram_id: number,
     record: Omit<TelegramUserRecord, "id" | "revision">,
     dry_run: boolean,
 ): Promise<Expected<UpsertOutcome>> {
-    const id = telegram_user_record_id(record.telegram_id);
+    const id = telegram_user_record_id(telegram_id);
     const existing = await collection.get_one(id);
 
     if (existing.ok) {
         if (existing.value.user_id === record.user_id
             && existing.value.telegram_username === record.telegram_username
-            && existing.value.private_chat_id === record.private_chat_id
-            && existing.value.telegram_id === record.telegram_id) {
+            && existing.value.private_chat_id === record.private_chat_id) {
             return Expected.ok("unchanged");
         }
         if (dry_run) {
@@ -77,7 +77,6 @@ async function upsert_record(
             id,
             user_id: record.user_id,
             telegram_username: record.telegram_username,
-            telegram_id: record.telegram_id,
             private_chat_id: record.private_chat_id,
         });
         if (!updated.ok) {
@@ -145,10 +144,9 @@ async function migrate(
         const record = {
             user_id: resolved.value.id.system_id,
             telegram_username,
-            telegram_id,
             private_chat_id: telegram_id,
         };
-        const outcome = await upsert_record(collection, record, dry_run);
+        const outcome = await upsert_record(collection, telegram_id, record, dry_run);
         if (!outcome.ok) {
             skipped++;
             console.error(

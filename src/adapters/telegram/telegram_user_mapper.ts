@@ -12,7 +12,6 @@ type TelegramUserStoredRecord = {
     revision?: number;
     user_id: string;
     telegram_username: string;
-    telegram_id: number;
     private_chat_id: number;
 }
 
@@ -23,7 +22,6 @@ export function to_record(source: TelegramUserRecord): TelegramUserStoredRecord 
         revision: source.revision,
         user_id: source.user_id,
         telegram_username: source.telegram_username,
-        telegram_id: source.telegram_id,
         private_chat_id: source.private_chat_id,
     };
 }
@@ -37,12 +35,10 @@ export function to_entity(record: TelegramUserStoredRecord, doc_id: string): Tel
         revision: latest.revision ?? 0,
         user_id: latest.user_id,
         telegram_username: latest.telegram_username,
-        telegram_id: latest.telegram_id,
         private_chat_id: latest.private_chat_id,
     };
 }
 
-// Upgrade older stored schemas one version at a time until the latest.
 export function to_latest_version(record: TelegramUserStoredRecord): TelegramUserStoredRecord {
     if (record.schema == undefined) {
         return { ...record, schema: 1 };
@@ -54,6 +50,9 @@ export function validate_telegram_user_record(item: TelegramUserRecord): Status 
     if (!item.id) {
         return Expected.err("id is required");
     }
+    if (!Number.isFinite(Number(item.id))) {
+        return Expected.err("id must be a telegram user id");
+    }
     if (typeof item.revision !== "number") {
         return Expected.err("revision is required");
     }
@@ -62,9 +61,6 @@ export function validate_telegram_user_record(item: TelegramUserRecord): Status 
     }
     if (!item.telegram_username) {
         return Expected.err("telegram_username is required");
-    }
-    if (typeof item.telegram_id !== "number") {
-        return Expected.err("telegram_id is required");
     }
     if (typeof item.private_chat_id !== "number") {
         return Expected.err("private_chat_id is required");

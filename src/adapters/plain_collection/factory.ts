@@ -6,14 +6,23 @@ import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { FirestorePlainCollection } from "./firestore_plain_collection.js";
 
-export type PlainCollectionConfig = {
+export type FirestorePlainCollectionConfig = {
     type: "google_firestore";
     database_id: string;
     collection_name: string;
-    cache_size?: number;
 }
 
-const DEFAULT_CACHE_SIZE = 500;
+export type CacheAsideCollectionConfig = {
+    type: "cache_aside_collection";
+    cache_size: number;
+    underlying: PlainCollectionConfig;
+}
+
+export type PlainCollectionConfig =
+    | FirestorePlainCollectionConfig
+    | CacheAsideCollectionConfig;
+
+const AVAILABLE_TYPES = ["google_firestore", "cache_aside_collection"];
 
 export class PlainCollectionFactory {
 
@@ -21,9 +30,8 @@ export class PlainCollectionFactory {
         if (!config.type) {
             return Expected.err("'type' MUST be specified");
         }
-        const available_types = ["google_firestore"];
-        if (!available_types.includes(config.type)) {
-            return Expected.err(`'type' MUST be: ${available_types.join(", ")}`);
+        if (!AVAILABLE_TYPES.includes(config.type)) {
+            return Expected.err(`'type' MUST be: ${AVAILABLE_TYPES.join(", ")}`);
         }
         switch (config.type) {
             case "google_firestore": {
@@ -33,8 +41,18 @@ export class PlainCollectionFactory {
                 if (!config.collection_name) {
                     return Expected.err("'collection_name' MUST be specified");
                 }
-                if (config.cache_size != undefined && config.cache_size <= 0) {
+                return Expected.ok(undefined);
+            }
+            case "cache_aside_collection": {
+                if (!config.cache_size || config.cache_size <= 0) {
                     return Expected.err("'cache_size' MUST be greater than 0");
+                }
+                if (!config.underlying) {
+                    return Expected.err("'underlying' MUST be specified");
+                }
+                const underlying_status = PlainCollectionFactory.verify(config.underlying);
+                if (!underlying_status.ok) {
+                    return underlying_status.wrap_error("'underlying' misconfiguration");
                 }
                 return Expected.ok(undefined);
             }
@@ -60,8 +78,18 @@ export class PlainCollectionFactory {
                     data_converter,
                     parent_journal,
                 );
-                const cache_size = config.cache_size ?? DEFAULT_CACHE_SIZE;
-                return Expected.ok(new CacheAsideCollection(firestore, cache_size));
+                return Expected.ok(firestore);
+            }
+            case "cache_aside_collection": {
+                const underlying = PlainCollectionFactory.create(
+                    config.underlying,
+                    data_converter,
+                    parent_journal,
+                );
+                if (!underlying.ok) {
+                    return underlying;
+                }
+                return Expected.ok(new CacheAsideCollection(underlying.value, config.cache_size));
             }
         }
     }
