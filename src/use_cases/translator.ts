@@ -15,7 +15,8 @@ export class Translator {
             return Expected.ok(undefined);
         }
 
-        const users = [...Runtime.get_instance().all_users()].filter(logic => logic.data.lang !== Language.RU);
+        const users = [...Runtime.get_instance().all_users()]
+            .filter(logic => !logic.has_no_roles() && logic.data.lang !== Language.RU);
         if (users.length == 0) {
             return Expected.ok(undefined);
         }

@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-import { Language, Role, UserData, UserId, user_has_role, Voice } from "@src/entities/user.js";
+import { Language, UserData, UserId, is_guest_user, Voice } from "@src/entities/user.js";
 import { ICollection } from "@src/interfaces/collection.js";
 import {
     IUserService,
@@ -14,7 +14,6 @@ import { Expected, Status } from "@src/utils/expected.js";
 
 export class UserService implements IUserService {
     private readonly journal: Journal;
-    // Includes guests. fetch_all() filters them out.
     private by_system_id = new Map<string, UserData>();
     private by_tg_username = new Map<string, UserData>();
 
@@ -30,41 +29,42 @@ export class UserService implements IUserService {
     }
 
     async fetch_all(): Promise<UserData[]> {
-        return this.registered_users();
+        return Array.from(this.by_system_id.values());
     }
 
     async resolve_user(user_id: Partial<UserId>): Promise<Expected<UserData | undefined>> {
         return this.resolve_from_cache(user_id);
     }
 
-    async create_guest(tg_username?: string): Promise<Expected<UserData>> {
+    async resolve_or_create(tg_username: string): Promise<Expected<UserData>> {
         const username = this.optional_username(tg_username);
-        if (username) {
-            const existing = this.by_tg_username.get(username);
-            if (existing) {
-                return Expected.ok(existing);
-            }
+        if (!username) {
+            return Expected.err("tg_username must be non-empty");
         }
 
-        const guest: UserData = {
+        const existing = this.by_tg_username.get(username);
+        if (existing) {
+            return Expected.ok(existing);
+        }
+
+        const created: UserData = {
             id: {
                 system_id: crypto.randomUUID(),
-                ...(username ? { tg_username: username } : {}),
+                tg_username: username,
             },
             name: "",
             surname: "",
             lang: Language.EN,
             voice: Voice.Unknown,
-            roles: [Role.Guest],
+            roles: [],
         };
 
-        const persisted = await this.persist_new(guest);
+        const persisted = await this.persist_new(created);
         if (!persisted.ok) {
-            return persisted.wrap_error("can't create guest");
+            return persisted.wrap_error("can't create user");
         }
 
-        const label = username ?? persisted.value.id.system_id;
-        this.journal.log().info(`Created guest user ${label}`);
+        this.journal.log().info(`Created user ${username} without roles`);
         return persisted;
     }
 
@@ -72,9 +72,6 @@ export class UserService implements IUserService {
         const username = this.optional_username(user.tg_username);
         if (username && this.username_in_use(username)) {
             return Expected.err(`tg_username '${username}' is already used`);
-        }
-        if (user.roles.includes(Role.Guest)) {
-            return Expected.err("create() cannot assign guest; use create_guest()");
         }
 
         const created: UserData = {
@@ -133,7 +130,7 @@ export class UserService implements IUserService {
     // Not part of IUserService — remote implementations will not have this.
     as_replica(): IUserServiceReplica {
         return {
-            fetch_all: () => this.registered_users(),
+            fetch_all: () => Array.from(this.by_system_id.values()),
             resolve_user: (user_id) => this.resolve_from_cache(user_id),
             sync: () => this.hydrate(),
         };
@@ -202,10 +199,10 @@ export class UserService implements IUserService {
         this.by_system_id = next_by_system_id;
         this.by_tg_username = next_by_tg_username;
 
-        const users_count = this.registered_users().length;
+        const all_users = Array.from(this.by_system_id.values());
         this.journal.log().info({
-            users_count,
-            guests_count: this.by_system_id.size - users_count,
+            users_count: all_users.length,
+            users_without_roles: all_users.filter((user) => is_guest_user(user)).length,
         }, "Users cache refreshed");
         return Expected.ok(undefined);
     }
@@ -237,11 +234,6 @@ export class UserService implements IUserService {
     private username_in_use(tg_username: string, except_system_id?: string): boolean {
         const existing = this.by_tg_username.get(tg_username);
         return existing != undefined && existing.id.system_id !== except_system_id;
-    }
-
-    private registered_users(): UserData[] {
-        return Array.from(this.by_system_id.values())
-            .filter((user) => !user_has_role(user, Role.Guest));
     }
 
     private optional_username(tg_username?: string): string | undefined {

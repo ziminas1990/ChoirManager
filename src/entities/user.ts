@@ -3,7 +3,6 @@ export enum Role {
     Conductor = "conductor",
     Manager = "manager",
     Admin = "admin",
-    Guest = "guest",
     Accountant = "accountant",
     ExChorister = "ex-chorister",
 }
@@ -35,7 +34,7 @@ export type UserData = {
     roles: Role[];
 }
 
-// Display / sheet-bridge alias. Some guests and older records have no @.
+// Display / sheet-bridge alias. Some older records have no @.
 // Canonical identity is user.id.system_id — do not use this as a map key.
 export function user_tg_username(user: UserData): string {
     return user.id.tg_username ?? "";
@@ -43,4 +42,8 @@ export function user_tg_username(user: UserData): string {
 
 export function user_has_role(user: UserData, role: Role): boolean {
     return user.roles.includes(role);
+}
+
+export function is_guest_user(user: UserData): boolean {
+    return user.roles.length === 0;
 }

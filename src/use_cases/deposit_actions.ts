@@ -6,7 +6,7 @@ import { return_fail } from "@src/utils.js";
 import { UserLogic } from "@src/logic/user.js";
 import { DepositEvent } from "@src/interfaces/deposit_service.js";
 import { Deposit, DepositChange } from "@src/entities/deposit.js";
-import { Role, user_has_role, user_tg_username } from "@src/entities/user.js";
+import { is_guest_user, user_tg_username } from "@src/entities/user.js";
 import { Environment } from "@src/components/environment.js";
 
 
@@ -21,8 +21,8 @@ export class DepositActions {
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
-        if (user_has_role(resolved.value, Role.Guest)) {
-            return return_fail(`user ${userid} is a guest`, journal.log());
+        if (is_guest_user(resolved.value)) {
+            return return_fail(`user ${userid} has no permissions`, journal.log());
         }
 
         const deposit_service = Environment.global.maybe_deposit_service;
@@ -49,8 +49,8 @@ export class DepositActions {
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
-        if (user_has_role(resolved.value, Role.Guest)) {
-            return return_fail(`user ${userid} is a guest`, journal.log());
+        if (is_guest_user(resolved.value)) {
+            return return_fail(`user ${userid} has no permissions`, journal.log());
         }
 
         const deposit_service = Environment.global.maybe_deposit_service;
@@ -76,8 +76,8 @@ export class DepositActions {
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
-        if (user_has_role(resolved.value, Role.Guest)) {
-            return return_fail(`user ${user_id} is a guest`, journal.log());
+        if (is_guest_user(resolved.value)) {
+            return return_fail(`user ${user_id} has no permissions`, journal.log());
         }
         const user = resolved.value;
 

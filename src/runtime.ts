@@ -168,8 +168,7 @@ export class Runtime {
         private user_service: UserService,
         private runtime_hash: string,
         private users: Map<string, UserLogic>,
-        private journal: Journal,
-        private guest_users: Map<string, UserLogic> = new Map())
+        private journal: Journal)
     {
         if (Runtime.instance) {
             throw new Error("Runtime is already initialized");
@@ -481,18 +480,10 @@ export class Runtime {
 
     // Existing runtime session for this system_id, if any.
     get_user_logic(system_id: string): UserLogic | undefined {
-        const user_logic = this.users.get(system_id) ?? this.guest_users.get(system_id);
-        if (!user_logic) {
-            return undefined;
-        }
-        if (this.guest_users.has(system_id) && !user_logic.is_guest()) {
-            this.guest_users.delete(system_id);
-            this.users.set(system_id, user_logic);
-        }
-        return user_logic;
+        return this.users.get(system_id);
     }
 
-    // Create UserLogic if the user already exists in UserService (registered or guest).
+    // Create UserLogic if the user already exists in UserService.
     ensure_user_logic(system_id: string): UserLogic | undefined {
         const existing = this.get_user_logic(system_id);
         if (existing) {
@@ -517,11 +508,7 @@ export class Runtime {
             replica,
         );
 
-        if (user_logic.is_guest()) {
-            this.guest_users.set(system_id, user_logic);
-        } else {
-            this.users.set(system_id, user_logic);
-        }
+        this.users.set(system_id, user_logic);
         this.on_user_added(user_logic, false);
         return user_logic;
     }
@@ -631,7 +618,7 @@ export class Runtime {
         }
 
         // Check that all users have a related proceeders
-        for (const user of [...this.users.values(), ...this.guest_users.values()]) {
+        for (const user of this.users.values()) {
             if (this.user_proceeders.has(user)) {
                 continue;
             }
@@ -739,7 +726,7 @@ export class Runtime {
     private async on_user_added(user: UserLogic, startup: boolean): Promise<void> {
         // Notify admins:
         if (!startup) {
-            const name = user.data.name.length > 0 ? user.data.name : "guest";
+            const name = user.data.name.length > 0 ? user.data.name : "(no name)";
             AdminActions.notify_all_admins(
                 `User ${name} ${user.data.surname} (@${user_tg_username(user.data)}) has joined`,
                 this.journal);

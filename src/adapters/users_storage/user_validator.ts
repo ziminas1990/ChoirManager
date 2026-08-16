@@ -26,6 +26,9 @@ export function parse_roles(values: string[]): Expected<Role[]> {
     }
     const roles: Role[] = [];
     for (const role of values) {
+        if (role === "guest") {  // deprecated role, remove later
+            continue;
+        }
         if (!ROLES.has(role)) {
             return Expected.err(`unknown role '${role}'`);
         }

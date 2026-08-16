@@ -1,5 +1,5 @@
 import { Score } from "@src/entities/score.js";
-import { Role, user_has_role } from "@src/entities/user.js";
+import { is_guest_user } from "@src/entities/user.js";
 import { Environment } from "@src/components/environment.js";
 import { IScoresService } from "@src/interfaces/scores_service.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
@@ -86,9 +86,9 @@ export class ScoresActions {
             return return_fail(`user ${userid} not found`, journal.log());
         }
 
-        if (user_has_role(resolved.value, Role.Guest)) {
-            // Guests are not allowed to download scores
-            return return_fail(`user ${userid} is a guest`, journal.log());
+        if (is_guest_user(resolved.value)) {
+            // Users without roles are not allowed to download scores
+            return return_fail(`user ${userid} has no permissions`, journal.log());
         }
 
         return (await agent.send_message(GlobalFormatter.instance().link(
@@ -105,9 +105,9 @@ export class ScoresActions {
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
-        if (user_has_role(resolved.value, Role.Guest)) {
-            // Guests are not allowed to access scores
-            return return_fail(`user ${userid} is a guest`, journal.log());
+        if (is_guest_user(resolved.value)) {
+            // Users without roles are not allowed to access scores
+            return return_fail(`user ${userid} has no permissions`, journal.log());
         }
 
         const service = Environment.global.maybe_scores_service;

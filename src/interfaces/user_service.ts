@@ -12,16 +12,15 @@ export type UserPatch = Partial<Omit<UserData, "id">> & {
 
 export interface IUserService {
 
-    // Snapshot of registered (non-guest) users. Guests are persisted in the
-    // same collection but are omitted here.
+    // Snapshot of all users
     fetch_all(): Promise<UserData[]>;
 
     // Find a user by system_id XOR tg_username.
     resolve_user(user_id: Partial<UserId>): Promise<Expected<UserData | undefined>>;
 
-    // Allocate a system_id and persist a guest. If tg_username is already bound,
-    // return that user (guest or registered).
-    create_guest(tg_username?: string): Promise<Expected<UserData>>;
+    // Return the user bound to tg_username or create a new one with no roles
+    // (minimal permissions).
+    resolve_or_create(tg_username: string): Promise<Expected<UserData>>;
 
     create(user: NewUserData): Promise<Expected<UserData>>;
 

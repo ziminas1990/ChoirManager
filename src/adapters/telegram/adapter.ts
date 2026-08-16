@@ -490,7 +490,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return stored.cast_error<TelegramUser>();
         }
 
-        // First contact: username binds this telegram id to a roster row (or a guest).
+        // First contact: username binds this telegram id to a roster row or to a new user without roles.
         if (username == undefined) {
             return Expected.err("username is undefined");
         }
@@ -732,14 +732,14 @@ class Helpers {
         record: TelegramUserRecord | undefined,
         username: string | undefined,
     ): Promise<Expected<UserData>> {
+        const service = Environment.global.user_service;
         if (!record) {
             if (username == undefined) {
                 return Expected.err("username is undefined");
             }
-            return Helpers.resolve_or_create_by_username(username);
+            return await service.resolve_or_create(username);
         }
 
-        const service = Environment.global.user_service;
         const by_id = await service.resolve_user({ system_id: record.user_id });
         if (!by_id.ok) {
             return by_id.cast_error();
@@ -752,24 +752,6 @@ class Helpers {
         if (!uname) {
             return Expected.err(`user ${record.user_id} not found`);
         }
-        return Helpers.resolve_or_create_by_username(uname);
-    }
-
-    static async resolve_or_create_by_username(
-        username: string,
-    ): Promise<Expected<UserData>> {
-        const service = Environment.global.user_service;
-        const by_name = await service.resolve_user({ tg_username: username });
-        if (!by_name.ok) {
-            return by_name.cast_error();
-        }
-        if (by_name.value) {
-            return Expected.ok(by_name.value);
-        }
-        const guest = await service.create_guest(username);
-        if (!guest.ok) {
-            return guest.cast_error();
-        }
-        return Expected.ok(guest.value);
+        return await service.resolve_or_create(uname);
     }
 }

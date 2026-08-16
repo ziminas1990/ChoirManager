@@ -1,5 +1,5 @@
 import { Logic } from '@src/logic/abstracts.js';
-import { Role, UserData, user_has_role, user_tg_username } from '@src/entities/user.js';
+import { Role, UserData, is_guest_user, user_has_role, user_tg_username } from '@src/entities/user.js';
 import { Expected } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from '@src/interfaces/user_agent.js';
@@ -30,8 +30,8 @@ export class UserLogic extends Logic<void> {
         super(proceed_interval_ms);
 
         const additional_tags: Record<string, any> = {};
-        if (this.is_guest()) {
-            additional_tags.role = "guest";
+        if (this.has_no_roles()) {
+            additional_tags.no_roles = true;
         }
 
         const username = user_tg_username(this.data);
@@ -44,8 +44,8 @@ export class UserLogic extends Logic<void> {
         return this.journal;
     }
 
-    is_guest(): boolean {
-        return user_has_role(this.data, Role.Guest);
+    has_no_roles(): boolean {
+        return is_guest_user(this.data);
     }
 
     is_admin(): boolean {

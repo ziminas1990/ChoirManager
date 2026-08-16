@@ -3,7 +3,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
-import { Role, UserData, user_has_role, user_tg_username } from "@src/entities/user.js";
+import { Role, UserData, is_guest_user, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { return_exception, return_fail } from "@src/utils.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { Environment } from "@src/components/environment.js";
@@ -316,7 +316,7 @@ export class TelegramUser implements IUserAgent {
     }
 
     private get_main_dialog(): ChoristerDialog | GuestDialog | undefined {
-        if (user_has_role(this.user_info, Role.Guest)) {
+        if (is_guest_user(this.user_info)) {
             if (!this.guest_dialog) {
                 this.guest_dialog = new GuestDialog(this, this.journal);
             }
