@@ -9,7 +9,6 @@ import { Role, UserData } from "@src/entities/user.js";
 import { Translator } from "@src/use_cases/translator.js";
 import { AdminActions } from "@src/use_cases/admin_actions.js";
 import { IAdapter, IManagersChat } from "@src/interfaces/adapter.js";
-import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { GroupChat } from "@src/adapters/telegram/group_chat.js";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
@@ -168,15 +167,6 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         } catch (e) {
             return (((e) instanceof Error) ? Expected.err((e).message) : Expected.err(String(e)));
         }
-    }
-
-    async get_user_agent(user_id: string): Promise<Expected<IUserAgent>> {
-        for (const user of this.users.values()) {
-            if (user.userid() === user_id) {
-                return Expected.ok(user);
-            }
-        }
-        return Expected.err("user not found");
     }
 
     async get_announcement_chat(): Promise<IGroupChat | undefined> {
@@ -474,7 +464,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         const stored = await this.users_collection.get_one(
             telegram_user_record_id(telegram_id));
         if (stored.ok) {
-            const resolved = await Helpers.resolve_user_data(stored.value, username);
+            const resolved = await this.resolve_user_data(stored.value, username);
             if (!resolved.ok) {
                 return resolved.cast_error<TelegramUser>();
             }
@@ -483,11 +473,16 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             if (!agent.ok) {
                 return agent;
             }
-            const update_status = await this.update_record_if_changed(
-                stored.value, resolved.value, telegram_id, username, chat_id);
-            if (!update_status.ok) {
-                this.journal.log().warn(
-                    `failed to update telegram user ${telegram_id}: ${update_status.error}`);
+            const telegram_username = username
+                ?? stored.value.telegram_username
+                ?? resolved.value.id.tg_username;
+            if (telegram_username) {
+                const update_status = await this.persist_binding(
+                    telegram_id, telegram_username, chat_id, resolved.value, agent.value);
+                if (!update_status.ok) {
+                    this.journal.log().warn(
+                        `failed to update telegram user ${telegram_id}: ${update_status.error}`);
+                }
             }
             return agent;
         }
@@ -495,12 +490,12 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return stored.cast_error<TelegramUser>();
         }
 
-        // First contact: username is required to bind to UserService / sheets.
+        // First contact: username binds this telegram id to a roster row (or a guest).
         if (username == undefined) {
             return Expected.err("username is undefined");
         }
 
-        const resolved = await Helpers.resolve_user_data(undefined, username);
+        const resolved = await this.resolve_user_data(undefined, username);
         if (!resolved.ok) {
             return resolved.cast_error<TelegramUser>();
         }
@@ -526,7 +521,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         if (this.users.has(telegram_id)) {
             return Expected.ok(undefined);
         }
-        const resolved = await Helpers.resolve_user_data(record, undefined);
+        const resolved = await this.resolve_user_data(record, undefined);
         if (!resolved.ok) {
             return resolved.cast_error();
         }
@@ -534,11 +529,20 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             resolved.value, record.private_chat_id, this.dependencies, this.journal);
         this.users.set(telegram_id, agent);
 
-        const update_status = await this.update_record_if_changed(
-            record, resolved.value, telegram_id, undefined, record.private_chat_id);
-        if (!update_status.ok) {
-            this.journal.log().warn(
-                `failed to sync telegram user ${record.id} on raise: ${update_status.error}`);
+        const telegram_username = record.telegram_username
+            ?? resolved.value.id.tg_username;
+        if (telegram_username) {
+            const update_status = await this.persist_binding(
+                telegram_id,
+                telegram_username,
+                record.private_chat_id,
+                resolved.value,
+                agent,
+            );
+            if (!update_status.ok) {
+                this.journal.log().warn(
+                    `failed to sync telegram user ${record.id} on raise: ${update_status.error}`);
+            }
         }
         return Expected.ok(undefined);
     }
@@ -585,33 +589,44 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         if (telegram_username == undefined) {
             return Expected.err("telegram username is missing");
         }
-        return (await this.update_user_record({
-            user_id: info.id.system_id,
-            telegram_username,
-            telegram_id,
-            private_chat_id: chat_id,
-        })).as_status();
+        return this.persist_binding(
+            telegram_id, telegram_username, chat_id, info, user);
     }
 
-    private async update_record_if_changed(
-        record: TelegramUserRecord,
-        user_data: UserData,
+    // Writes TelegramUserRecord and, on @ change, patches UserService + in-memory user.
+    // Routing uses record.user_id / system_id even if the UserService patch fails.
+    private async persist_binding(
         telegram_id: number,
-        username: string | undefined,
+        username: string,
         chat_id: number,
+        user_data: UserData,
+        agent?: TelegramUser,
     ): Promise<Status> {
-        const telegram_username = username
-            ?? record.telegram_username
-            ?? user_data.id.tg_username;
-        if (telegram_username == undefined) {
-            return Expected.err("telegram username is missing");
-        }
-        return (await this.update_user_record({
+        const record_status = await this.update_user_record({
             user_id: user_data.id.system_id,
-            telegram_username,
+            telegram_username: username,
             telegram_id,
             private_chat_id: chat_id,
-        })).as_status();
+        });
+        if (!record_status.ok) {
+            return record_status.as_status();
+        }
+
+        if (username === user_data.id.tg_username) {
+            return Expected.ok(undefined);
+        }
+
+        const patched = await Environment.global.user_service.update(
+            user_data.id.system_id,
+            { tg_username: username },
+        );
+        if (!patched.ok) {
+            this.journal.log().warn(
+                `failed to update tg_username for ${telegram_id}: ${patched.error}`);
+            return Expected.ok(undefined);
+        }
+        agent?.set_user_info(patched.value);
+        return Expected.ok(undefined);
     }
 
     private async update_user_record(patch: {
@@ -642,23 +657,67 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         telegram_id: number,
         username: string | undefined,
     ): Promise<Expected<UserData | undefined>> {
-        if (username != undefined) {
-            const resolved = await Environment.global.user_service.resolve_user({
-                tg_username: username,
-            });
+        const agent = this.users.get(telegram_id);
+        if (agent) {
+            if (username != undefined) {
+                const sync_status = await this.sync_existing_user(
+                    agent, telegram_id, username, agent.private_chat_id());
+                if (!sync_status.ok) {
+                    this.journal.log().warn(
+                        `failed to sync telegram user ${telegram_id}: ${sync_status.error}`);
+                }
+            }
+            return Expected.ok(agent.info());
+        }
+
+        const stored = await this.users_collection.get_one(
+            telegram_user_record_id(telegram_id));
+        if (stored.ok) {
+            const resolved = await this.resolve_user_data(stored.value, username);
             if (!resolved.ok) {
                 return resolved.cast_error();
             }
-            return Expected.ok(
-                resolved.value
-                    ?? await Environment.global.user_service.create_guest(username));
+            const telegram_username = username
+                ?? stored.value.telegram_username
+                ?? resolved.value.id.tg_username;
+            if (telegram_username) {
+                const update_status = await this.persist_binding(
+                    telegram_id,
+                    telegram_username,
+                    stored.value.private_chat_id,
+                    resolved.value,
+                );
+                if (!update_status.ok) {
+                    this.journal.log().warn(
+                        `failed to update telegram user ${telegram_id}: ${update_status.error}`);
+                }
+            }
+            return Expected.ok(resolved.value);
+        }
+        if (!Helpers.is_item_not_found(stored)) {
+            return stored.cast_error();
         }
 
-        const agent = this.users.get(telegram_id);
-        if (agent) {
-            return Expected.ok(agent.info());
+        // First group contact without a mapping: username is the only bind key.
+        if (username == undefined) {
+            return Expected.ok(undefined);
         }
-        return Expected.ok(undefined);
+        return this.resolve_user_data(undefined, username);
+    }
+
+    private async resolve_user_data(
+        record: TelegramUserRecord | undefined,
+        username: string | undefined,
+    ): Promise<Expected<UserData>> {
+        const resolved = await Helpers.resolve_user_data(record, username);
+        if (!resolved.ok) {
+            return resolved;
+        }
+        if (record && resolved.value.id.system_id !== record.user_id) {
+            this.journal.log().warn(
+                `rebound telegram user ${record.id} from ${record.user_id} to ${resolved.value.id.system_id}`);
+        }
+        return resolved;
     }
 }
 
@@ -667,50 +726,50 @@ class Helpers {
         return !status.ok && status.error.includes("not found");
     }
 
+    // Record present: resolve by stored system_id. Username is only a fallback
+    // when that document is missing (legacy hash id). No record: first contact.
     static async resolve_user_data(
         record: TelegramUserRecord | undefined,
         username: string | undefined,
     ): Promise<Expected<UserData>> {
-        const service = Environment.global.user_service;
-
         if (!record) {
             if (username == undefined) {
                 return Expected.err("username is undefined");
             }
-            const by_name = await service.resolve_user({ tg_username: username });
-            if (!by_name.ok) {
-                return by_name.cast_error();
-            }
-            return Expected.ok(
-                by_name.value ?? await service.create_guest(username));
+            return Helpers.resolve_or_create_by_username(username);
         }
 
+        const service = Environment.global.user_service;
         const by_id = await service.resolve_user({ system_id: record.user_id });
         if (!by_id.ok) {
             return by_id.cast_error();
         }
-
-        let user_data = by_id.value;
-        const uname = username ?? record.telegram_username;
-        if (uname) {
-            const by_name = await service.resolve_user({ tg_username: uname });
-            if (!by_name.ok) {
-                return by_name.cast_error();
-            }
-            if (by_name.value) {
-                // Prefer username match when system_id changed (guest became chorister)
-                // or when stored system_id is no longer present.
-                if (!user_data || by_name.value.id.system_id !== user_data.id.system_id) {
-                    user_data = by_name.value;
-                }
-            } else if (!user_data) {
-                user_data = await service.create_guest(uname);
-            }
+        if (by_id.value) {
+            return Expected.ok(by_id.value);
         }
 
-        if (!user_data) {
+        const uname = username ?? record.telegram_username;
+        if (!uname) {
             return Expected.err(`user ${record.user_id} not found`);
         }
-        return Expected.ok(user_data);
+        return Helpers.resolve_or_create_by_username(uname);
+    }
+
+    static async resolve_or_create_by_username(
+        username: string,
+    ): Promise<Expected<UserData>> {
+        const service = Environment.global.user_service;
+        const by_name = await service.resolve_user({ tg_username: username });
+        if (!by_name.ok) {
+            return by_name.cast_error();
+        }
+        if (by_name.value) {
+            return Expected.ok(by_name.value);
+        }
+        const guest = await service.create_guest(username);
+        if (!guest.ok) {
+            return guest.cast_error();
+        }
+        return Expected.ok(guest.value);
     }
 }

@@ -1,14 +1,11 @@
 import { Feedback } from "@src/entities/feedback.js";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
-import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 // NOTE: not all addapters are required to support group chats
 export interface IAdapter {
 
     init(): Promise<Status>;
-
-    get_user_agent(user_id: string): Promise<Expected<IUserAgent>>;
 
     get_announcement_chat(): Promise<IGroupChat | undefined>;
 

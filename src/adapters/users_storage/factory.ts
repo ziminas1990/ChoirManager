@@ -1,43 +1,45 @@
-import { IUsersStorage } from "@src/interfaces/storage/users_storage.js";
+import {
+    PlainCollectionConfig,
+    PlainCollectionFactory,
+} from "@src/adapters/plain_collection/factory.js";
+import { PackedPlainCollection } from "@src/components/collections/packed_plain_collection.js";
+import { UserData } from "@src/entities/user.js";
+import { ICollection } from "@src/interfaces/collection.js";
+import { UserPatch } from "@src/interfaces/user_service.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { GoogleSpreadsheetUsersStorage, Config as GoogleSpreadsheetConfig } from "./google_spreadsheet.js";
+import {
+    apply_user_patch,
+    from_user_data,
+    to_user_data,
+    user_firestore_converter,
+} from "./user_mapper.js";
 
-export type UsersStorageConfig =
-{ type: "google_spreadsheet" } & GoogleSpreadsheetConfig;
+export type UsersStorageConfig = PlainCollectionConfig;
 
 export class UsersStorageFactory {
+    static verify(config: UsersStorageConfig): Status {
+        return PlainCollectionFactory.verify(config);
+    }
 
     static create(config: UsersStorageConfig, parent_journal: Journal)
-    : Expected<IUsersStorage>
+    : Expected<ICollection<UserData, UserPatch>>
     {
-        switch (config.type) {
-            case "google_spreadsheet": {
-                const storage = new GoogleSpreadsheetUsersStorage(config, parent_journal);
-                return Expected.ok(storage);
-            }
+        const collection_status = PlainCollectionFactory.create(
+            config,
+            user_firestore_converter(),
+            parent_journal,
+        );
+        if (!collection_status.ok) {
+            return collection_status.wrap_error("can't create users collection");
         }
+        return Expected.ok(new PackedPlainCollection(
+            collection_status.value,
+            (user) => from_user_data(user, 0),
+            to_user_data,
+            apply_user_patch,
+            (user) => user.id.system_id,
+            parent_journal,
+        ));
     }
-
-    static verify(config: UsersStorageConfig): Status {
-        if (!config.type) {
-            return Expected.err("'type' MUST be specified");
-        }
-        const available_types = ["google_spreadsheet"];
-        if (!available_types.includes(config.type)) {
-            return Expected.err(`'type' MUST be: ${available_types.join(", ")}`);
-        }
-        switch (config.type) {
-            case "google_spreadsheet": {
-                if (!config.google_sheet_id) {
-                    return Expected.err("'google_sheet_id' MUST be specified");
-                }
-                if (!config.range) {
-                    return Expected.err("'range' MUST be specified");
-                }
-                return Expected.ok(undefined);
-            }
-        }
-    }
-
 }

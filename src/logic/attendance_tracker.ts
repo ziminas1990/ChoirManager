@@ -91,7 +91,7 @@ export class AttendanceTracker extends Logic<void> {
         private readonly messages_provider: IMessagesProvider,
         private readonly users: IUserServiceReplica,
         private readonly database: Database,
-        private readonly get_user_logic: (tgid: string) => UserLogic | undefined,
+        private readonly get_user_logic: (system_id: string) => UserLogic | undefined,
         private readonly get_managers_chat: () => Promise<IManagersChat | undefined>,
         parent_journal: Journal,
     ) {
@@ -171,7 +171,7 @@ export class AttendanceTracker extends Logic<void> {
                 continue;
             }
 
-            const user_logic = this.get_user_logic(tgid);
+            const user_logic = this.get_user_logic(chorister.id.system_id);
             if (!user_logic) {
                 continue;
             }

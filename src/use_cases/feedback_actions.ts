@@ -14,7 +14,7 @@ export class FeedbackActions {
         const runtime = Runtime.get_instance();
 
         const user_id = who.userid();
-        const resolved = await Environment.global.user_service.resolve_user({ tg_username: user_id });
+        const resolved = await Environment.global.user_service.resolve_user({ system_id: user_id });
         if (!resolved.ok || !resolved.value) {
             return Expected.err(`user ${user_id} not found`);
         }

@@ -35,11 +35,10 @@ export type UserData = {
     roles: Role[];
 }
 
+// Display / sheet-bridge alias. Some guests and older records have no @.
+// Canonical identity is user.id.system_id — do not use this as a map key.
 export function user_tg_username(user: UserData): string {
-    if (!user.id.tg_username) {
-        throw new Error(`user '${user.id.system_id}' has no telegram_id`);
-    }
-    return user.id.tg_username;
+    return user.id.tg_username ?? "";
 }
 
 export function user_has_role(user: UserData, role: Role): boolean {

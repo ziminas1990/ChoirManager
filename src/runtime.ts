@@ -6,8 +6,8 @@ import { BotConfig } from "./config.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Database } from "./database.js";
 import { user_tg_username } from "./entities/user.js";
-import { UserLogic } from "./logic/user.js";
-import { pack_map, return_exception, unpack_map } from "./utils.js";
+import { UserLogic, PackedUserLogic } from "./logic/user.js";
+import { pack_map, PackedMap, return_exception } from "./utils.js";
 import { Proceeder } from "./logic/abstracts.js";
 import { UserService } from "./components/user_service.js";
 import { IUserServiceReplica } from "./interfaces/user_service.js";
@@ -309,7 +309,7 @@ export class Runtime {
                 this.messages_provider,
                 this.user_service.as_replica(),
                 this.database,
-                (tgid) => this.get_user_logic(tgid),
+                (system_id) => this.get_user_logic(system_id),
                 async () => await this.tg_adapter?.get_managers_chat(),
                 this.journal
             );
@@ -479,30 +479,30 @@ export class Runtime {
         return this.announce_chat;
     }
 
-    // Existing runtime session for this telegram id, if any.
-    get_user_logic(tg_id: string): UserLogic | undefined {
-        const user_logic = this.users.get(tg_id) ?? this.guest_users.get(tg_id);
+    // Existing runtime session for this system_id, if any.
+    get_user_logic(system_id: string): UserLogic | undefined {
+        const user_logic = this.users.get(system_id) ?? this.guest_users.get(system_id);
         if (!user_logic) {
             return undefined;
         }
-        if (this.guest_users.has(tg_id) && !user_logic.is_guest()) {
-            this.guest_users.delete(tg_id);
-            this.users.set(tg_id, user_logic);
+        if (this.guest_users.has(system_id) && !user_logic.is_guest()) {
+            this.guest_users.delete(system_id);
+            this.users.set(system_id, user_logic);
         }
         return user_logic;
     }
 
     // Create UserLogic if the user already exists in UserService (registered or guest).
-    ensure_user_logic(tg_id: string): UserLogic | undefined {
-        const existing = this.get_user_logic(tg_id);
+    ensure_user_logic(system_id: string): UserLogic | undefined {
+        const existing = this.get_user_logic(system_id);
         if (existing) {
             return existing;
         }
 
         const replica = this.user_service.as_replica();
-        const resolved = replica.resolve_user({ tg_username: tg_id });
+        const resolved = replica.resolve_user({ system_id });
         if (!resolved.ok) {
-            this.journal.log().error(`Failed to resolve user @${tg_id}: ${resolved.error}`);
+            this.journal.log().error(`Failed to resolve user '${system_id}': ${resolved.error}`);
             return undefined;
         }
         if (!resolved.value) {
@@ -510,7 +510,7 @@ export class Runtime {
         }
 
         const user_logic = new UserLogic(
-            tg_id,
+            system_id,
             resolved.value,
             100,
             this.journal,
@@ -518,9 +518,9 @@ export class Runtime {
         );
 
         if (user_logic.is_guest()) {
-            this.guest_users.set(tg_id, user_logic);
+            this.guest_users.set(system_id, user_logic);
         } else {
-            this.users.set(tg_id, user_logic);
+            this.users.set(system_id, user_logic);
         }
         this.on_user_added(user_logic, false);
         return user_logic;
@@ -689,7 +689,7 @@ export class Runtime {
 
     static pack(runtime: Runtime) {
         return {
-            version: 3,
+            version: 4,
             tg_adapter: runtime.tg_adapter ? TgAdapter.pack(runtime.tg_adapter) : undefined,
             users: pack_map(runtime.users, UserLogic.pack)
         } as const;
@@ -706,7 +706,7 @@ export class Runtime {
     {
         const runtime_hash = crypto.createHash("sha256").update(JSON.stringify(packed)).digest("hex");
 
-        if (packed.version != 3) {
+        if (packed.version != 4) {
             const old_version: number = packed.version == "1.0" ? 1 : packed.version;
             try {
                 packed = update_packed_runtime(old_version, packed);
@@ -716,22 +716,7 @@ export class Runtime {
         }
 
         const replica = user_service.as_replica();
-
-        const users = unpack_map(packed.users, (packed) => {
-            const resolved = replica.resolve_user({ tg_username: packed.tgid });
-            if (!resolved.ok || !resolved.value) {
-                journal.log().warn(
-                    `loading users: ${resolved.ok ? `User @${packed.tgid} not found` : resolved.error}`);
-                return undefined;
-            }
-            const status = UserLogic.unpack(
-                resolved.value, packed, journal, replica);
-            if (!status.ok) {
-                journal.log().warn(`loading users: ${status.error}`);
-                return undefined;
-            }
-            return status.value;
-        });
+        const users = unpack_runtime_users(packed.users, replica, journal);
 
         const runtime = new Runtime(config, database, user_service, runtime_hash, users, journal);
 
@@ -763,6 +748,32 @@ export class Runtime {
 }
 
 
+function unpack_runtime_users(
+    packed_users: PackedMap<string, PackedUserLogic>,
+    replica: IUserServiceReplica,
+    journal: Journal,
+): Map<string, UserLogic> {
+    const users = new Map<string, UserLogic>();
+    for (const [key, packed] of packed_users) {
+        const resolved = packed.system_id
+            ? replica.resolve_user({ system_id: packed.system_id })
+            : replica.resolve_user({ tg_username: packed.tgid ?? key });
+        const label = packed.system_id ?? packed.tgid ?? key;
+        if (!resolved.ok || !resolved.value) {
+            journal.log().warn(
+                `loading users: ${resolved.ok ? `User '${label}' not found` : resolved.error}`);
+            continue;
+        }
+        const status = UserLogic.unpack(resolved.value, packed, journal, replica);
+        if (!status.ok) {
+            journal.log().warn(`loading users: ${status.error}`);
+            continue;
+        }
+        users.set(resolved.value.id.system_id, status.value);
+    }
+    return users;
+}
+
 function update_packed_runtime(old_version: number, data: any)
 : ReturnType<typeof Runtime.pack> {
     if (old_version == 1) {
@@ -771,5 +782,7 @@ function update_packed_runtime(old_version: number, data: any)
     if (old_version == 2) {
         data = update_v2_v3(data);
     }
+    // v3 users are keyed by telegram username and packed as { tgid }.
+    // unpack_runtime_users resolves them and rekeys by system_id.
     return data;
 }

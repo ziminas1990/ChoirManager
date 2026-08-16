@@ -1,6 +1,5 @@
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
 import { Language, Role, UserData, Voice } from "@src/entities/user.js";
-import { IUsersStorage } from "@src/interfaces/storage/users_storage.js";
 import { Journal } from "@src/journal.js";
 import { Expected } from "@src/utils/expected.js";
 
@@ -120,7 +119,9 @@ function try_parse_row(row: string[], columns: TableColumns): Expected<UserData>
     }
 }
 
-export class GoogleSpreadsheetUsersStorage implements IUsersStorage {
+// Sheet parser kept for the users-collection migration tool.
+// Not used by production UserService.
+export class GoogleSpreadsheetUsersStorage {
     private sheet: GoogleSpreadsheet;
     private journal: Journal;
 

@@ -1,9 +1,15 @@
 import { Logic } from '@src/logic/abstracts.js';
-import { Role, UserData, user_has_role } from '@src/entities/user.js';
+import { Role, UserData, user_has_role, user_tg_username } from '@src/entities/user.js';
 import { Expected } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from '@src/interfaces/user_agent.js';
 import { IUserServiceReplica } from '@src/interfaces/user_service.js';
+
+export type PackedUserLogic = {
+    system_id?: string;
+    // runtime.json v3 stored telegram username here
+    tgid?: string;
+};
 
 export class UserLogic extends Logic<void> {
     private static readonly USER_REFRESH_INTERVAL_MS = 10_000;
@@ -14,7 +20,7 @@ export class UserLogic extends Logic<void> {
     private last_user_refresh_at_ms: number | undefined;
 
     constructor(
-        private readonly telegram_id: string,
+        private readonly system_id: string,
         public data: UserData,
         proceed_interval_ms: number,
         parent_journal: Journal,
@@ -28,8 +34,10 @@ export class UserLogic extends Logic<void> {
             additional_tags.role = "guest";
         }
 
-        this.journal = parent_journal.child(`@${telegram_id}`, additional_tags);
-        this.journal.log().info(`UserLogic created for ${telegram_id}`);
+        const username = user_tg_username(this.data);
+        const label = username.length > 0 ? `@${username}` : this.system_id;
+        this.journal = parent_journal.child(label, additional_tags);
+        this.journal.log().info(`UserLogic created for ${this.system_id}`);
     }
 
     get_journal(): Journal {
@@ -120,23 +128,23 @@ export class UserLogic extends Logic<void> {
 
     static pack(user: UserLogic) {
         return {
-            "tgid": user.telegram_id,
+            system_id: user.system_id,
         } as const;
     }
 
     static unpack(
         user: UserData,
-        packed: ReturnType<typeof UserLogic.pack>,
+        packed: PackedUserLogic,
         parent_journal: Journal,
         users: IUserServiceReplica,
     ): Expected<UserLogic> {
-        const tgid = packed.tgid;
-        if (!tgid) {
-            return Expected.err("User tgid is missing");
+        const system_id = packed.system_id ?? user.id.system_id;
+        if (!system_id) {
+            return Expected.err("User system_id is missing");
         }
 
         const logic = new UserLogic(
-            tgid,
+            system_id,
             user,
             100,
             parent_journal,
@@ -158,7 +166,7 @@ export class UserLogic extends Logic<void> {
         this.last_user_refresh_at_ms = now_ms;
 
         const resolved = this.users.resolve_user({
-            tg_username: this.telegram_id,
+            system_id: this.system_id,
         });
         if (resolved.ok && resolved.value) {
             this.data = resolved.value;

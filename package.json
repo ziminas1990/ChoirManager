@@ -13,7 +13,8 @@
     "build_and_run": "npm run build && npm run app",
     "test": "echo \"Error: no test specified\" && exit 1",
     "firestore-updater": "node dist/tools/firestore_updater_new.js",
-    "migrate-telegram-users": "node dist/tools/migrate_telegram_users.js"
+    "migrate-telegram-users": "node dist/tools/migrate_telegram_users.js",
+    "migrate-users": "node dist/tools/migrate_users.js"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.16",

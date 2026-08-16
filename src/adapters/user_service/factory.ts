@@ -1,13 +1,15 @@
-import { UsersStorageConfig, UsersStorageFactory } from "@src/adapters/users_storage/factory.js";
+import {
+    UsersStorageConfig,
+    UsersStorageFactory,
+} from "@src/adapters/users_storage/factory.js";
 import { UserService } from "@src/components/user_service.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
-// "local" — UserService is instantiated in-process on top of IUsersStorage.
+// "local" — UserService is instantiated in-process on top of ICollection.
 export type UserServiceConfigJson = {
     type: "local";
     storage: UsersStorageConfig;
-    fetch_interval_sec: number;
 }
 
 export class UserServiceConfig {
@@ -19,10 +21,6 @@ export class UserServiceConfig {
 
     get storage(): UsersStorageConfig {
         return this.json.storage;
-    }
-
-    get fetch_interval_sec(): number {
-        return this.json.fetch_interval_sec;
     }
 
     verify(): Status {
@@ -39,12 +37,6 @@ export class UserServiceConfig {
         if (!storage_status.ok) {
             return storage_status.wrap_error("'storage' misconfiguration");
         }
-        if (!this.json.fetch_interval_sec) {
-            return Expected.err("'fetch_interval_sec' MUST be specified");
-        }
-        if (this.json.fetch_interval_sec < 10) {
-            return Expected.err("'fetch_interval_sec' MUST be at least 10 seconds");
-        }
         return Expected.ok(undefined);
     }
 }
@@ -53,13 +45,15 @@ export class UserServiceFactory {
     static create(config: UserServiceConfig, parent_journal: Journal): Expected<UserService> {
         switch (config.type) {
             case "local": {
-                const storage_status = UsersStorageFactory.create(config.storage, parent_journal);
+                const storage_status = UsersStorageFactory.create(
+                    config.storage,
+                    parent_journal,
+                );
                 if (!storage_status.ok) {
-                    return storage_status.wrap_error("can't create users storage");
+                    return storage_status.wrap_error("can't create users collection");
                 }
                 return Expected.ok(new UserService(
                     storage_status.value,
-                    config.fetch_interval_sec,
                     parent_journal,
                 ));
             }

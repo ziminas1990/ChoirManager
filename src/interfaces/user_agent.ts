@@ -10,6 +10,7 @@ export interface IUserAgent
 {
     agent_name(): string;
 
+    // Canonical identity: UserData.id.system_id, not telegram username.
     userid(): string;
 
     send_message(message: string): Promise<Expected<number>>;

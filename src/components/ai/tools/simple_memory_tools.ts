@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { user_tg_username } from "@src/entities/user.js";
+import { UserData, user_tg_username } from "@src/entities/user.js";
 import {
     MemoryAccessContext,
     MemoryFact,
@@ -14,7 +14,7 @@ import { parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
 
 const remember_schema = z.object({
     author_user_id: z.string().trim().min(1).optional()
-        .describe("Telegram user_id (username without @) of who asked to remember the fact."),
+        .describe("User id of who asked to remember the fact (the user_id from the chat message)."),
     content: z.string().trim().min(1)
         .describe(
             "Normalized self-contained fact statement to store. "
@@ -246,6 +246,7 @@ export class SimpleMemoryTools implements IToolchain {
     }
 
     // Prefer access.user_id (private chat). Otherwise require agent-provided user_id and resolve it.
+    // Stored author_user_id is always system_id.
     private resolve_author_user_id(
         agent_author_user_id: string | undefined,
     ): Expected<string> {
@@ -255,35 +256,51 @@ export class SimpleMemoryTools implements IToolchain {
 
         if (!agent_author_user_id) {
             return Expected.err(
-                "author_user_id is required. Pass the Telegram username of the requester.",
+                "author_user_id is required. Pass the user_id from the chat message.",
             );
         }
 
-        const resolved = this.users.resolve_user({
-            tg_username: agent_author_user_id,
-        });
-        if (!resolved.ok || !resolved.value) {
+        const resolved = Helpers.resolve_user_by_any_id(this.users, agent_author_user_id);
+        if (!resolved) {
             return Expected.err(
                 `User '${agent_author_user_id}' not found. `
-                + "You must pass a valid Telegram user_id (username without @) as author_user_id.",
+                + "You must pass a valid user_id as author_user_id.",
             );
         }
 
-        return Expected.ok(user_tg_username(resolved.value));
+        return Expected.ok(resolved.id.system_id);
     }
 
     private serialize_fact(fact: MemoryFact): SerializableMemoryFact {
-        const resolved = this.users.resolve_user({
-            tg_username: fact.author_user_id,
-        });
-        const author = resolved.ok && resolved.value
-            ? user_tg_username(resolved.value)
-            : fact.author_user_id;
         return {
             fact_id: fact.id,
             created_at: fact.created_at.toISOString(),
-            author: `@${author}`,
+            author: `@${Helpers.author_display_name(this.users, fact.author_user_id)}`,
             content: fact.content,
         };
+    }
+}
+
+class Helpers {
+    static author_display_name(users: IUserServiceReplica, author_user_id: string): string {
+        const resolved = Helpers.resolve_user_by_any_id(users, author_user_id);
+        if (!resolved) {
+            return author_user_id;
+        }
+        const username = user_tg_username(resolved);
+        return username.length > 0 ? username : resolved.id.system_id;
+    }
+
+    // New facts store system_id; older facts may still have tg_username.
+    static resolve_user_by_any_id(users: IUserServiceReplica, id: string): UserData | undefined {
+        const by_system = users.resolve_user({ system_id: id });
+        if (by_system.ok && by_system.value) {
+            return by_system.value;
+        }
+        const by_name = users.resolve_user({ tg_username: id });
+        if (by_name.ok && by_name.value) {
+            return by_name.value;
+        }
+        return undefined;
     }
 }

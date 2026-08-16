@@ -43,22 +43,6 @@ export class TelegramUser implements IUserAgent {
         next_user_info_update?: number;
     };
 
-    public static pack(user: TelegramUser) {
-        return {
-            tgid: user.userid(),
-            chat_id: user.chat_id,
-        } as const;
-    }
-
-    public static unpack(
-        user_info: UserData,
-        packed: ReturnType<typeof TelegramUser.pack>,
-        dependencies: TelegramUserDependencies,
-        parent_journal: Journal): TelegramUser
-    {
-        return new TelegramUser(user_info, packed.chat_id, dependencies, parent_journal);
-    }
-
     constructor(
         private user_info: UserData,
         private chat_id: number,
@@ -87,6 +71,8 @@ export class TelegramUser implements IUserAgent {
 
     set_private_chat_id(chat_id: number) { this.chat_id = chat_id; }
 
+    set_user_info(user_info: UserData) { this.user_info = user_info; }
+
     put_incoming_item(item: IcomingItem) {
         this.queue.push(item);
     }
@@ -94,7 +80,7 @@ export class TelegramUser implements IUserAgent {
     agent_name(): string { return "TelegramUser"; }
 
     // From IUserAgent
-    userid(): string { return user_tg_username(this.user_info); }
+    userid(): string { return this.user_info.id.system_id; }
 
     // From IUserAgent
     as_chorister(): IChorister {
@@ -304,13 +290,12 @@ export class TelegramUser implements IUserAgent {
         }
 
         const resolved = await Environment.global.user_service.resolve_user({
-            tg_username: this.userid(),
+            system_id: this.userid(),
         });
-        if (!resolved.ok) {
+        if (!resolved.ok || !resolved.value) {
             return;
         }
-        this.user_info = resolved.value
-            ?? await Environment.global.user_service.create_guest(this.userid());
+        this.user_info = resolved.value;
     }
 
     private get_or_create_chorister_dialog(): Expected<ChoristerDialog> {

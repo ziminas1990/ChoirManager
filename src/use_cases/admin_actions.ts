@@ -30,7 +30,7 @@ export class AdminActions {
             return return_fail(`User ${tgid} is not an admin`, journal.log());
         }
 
-        const user_logic = Runtime.get_instance().get_user_logic(tgid);
+        const user_logic = Runtime.get_instance().get_user_logic(user.id.system_id);
         if (!user_logic) {
             return return_fail(`User ${tgid} has no runtime session`, journal.log());
         }
@@ -39,7 +39,7 @@ export class AdminActions {
             const status = await agent.send_runtime_backup(config.runtime_cache_filename);
             if (!status.ok) {
                 journal.log().warn([
-                    `Failed to send runtime backup to @${agent.base().userid()}`,
+                    `Failed to send runtime backup to @${user_tg_username(user)}`,
                     `Error: ${status.error}`,
                 ].join("\n"));
             }
@@ -55,7 +55,7 @@ export class AdminActions {
             return return_fail(`User ${tgid} is not an admin`, journal.log());
         }
 
-        const user_logic = Runtime.get_instance().get_user_logic(tgid);
+        const user_logic = Runtime.get_instance().get_user_logic(user.id.system_id);
         if (!user_logic) {
             return return_fail(`User ${tgid} has no runtime session`, journal.log());
         }
@@ -64,7 +64,7 @@ export class AdminActions {
             const status = await agent.send_logs(config.logs_file);
             if (!status.ok) {
                 journal.log().warn([
-                    `Failed to send runtime backup to @${agent.base().userid()}`,
+                    `Failed to send runtime backup to @${user_tg_username(user)}`,
                     `Error: ${status.error}`,
                 ].join("\n"));
             }

@@ -10,14 +10,14 @@ export class CoreAPI {
         this.journal = journal;
     }
 
-    public static on_new_user_agent(tg_id: string, agent: IUserAgent): Status {
+    public static on_new_user_agent(user_id: string, agent: IUserAgent): Status {
         const runtime = Runtime.get_instance();
-        const user = runtime.ensure_user_logic(tg_id);
+        const user = runtime.ensure_user_logic(user_id);
         if (!user) {
-            return Expected.err(`user @${tg_id} not found`);
+            return Expected.err(`user '${user_id}' not found`);
         }
         user.add_agent(agent);
-        this.journal?.log().info(`New user agent ${tg_id} added`);
+        this.journal?.log().info(`New user agent ${user_id} added`);
         return Expected.ok(undefined);
     }
 

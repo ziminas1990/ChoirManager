@@ -20,16 +20,16 @@ export class Translator {
             return Expected.ok(undefined);
         }
 
-        const author_tgid = user_tg_username(author);
+        const author_username = user_tg_username(author);
         const translated_text = await GoogleTranslate.translate([
-            `Объявление от ${author.name} ${author.surname ?? ""} (@${author_tgid}):`,
+            `Объявление от ${author.name} ${author.surname ?? ""} (@${author_username}):`,
             "",
             announce,
             "",
         ].join("\n"), "en");
 
         for (const user of users) {
-            if (user_tg_username(user.data) == author_tgid) {
+            if (user.data.id.system_id === author.id.system_id) {
                 continue;
             }
             const agents = user.all_agents();

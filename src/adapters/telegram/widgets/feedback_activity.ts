@@ -4,7 +4,7 @@ import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { AbstractWidget as AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { Language } from "@src/entities/user.js";
+import { Language, user_tg_username } from "@src/entities/user.js";
 import { GlobalFormatter, log_and_return } from "@src/utils.js";
 import { FeedbackActions } from "@src/use_cases/feedback_actions.js";
 import { Feedback } from "@src/entities/feedback.js";
@@ -163,7 +163,7 @@ export class FeedbackWidget implements AbstractWidget {
         if (mode == "by_user") {
             this.feedback.who = {
                 name_surname: `${this.user.info().name} ${this.user.info().surname}`,
-                tgid: this.user.userid()
+                tgid: user_tg_username(this.user.info())
             };
         }
         if (mode == "by_party" || mode == "by_user") {

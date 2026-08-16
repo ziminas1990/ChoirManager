@@ -5,7 +5,7 @@ import { ChoristerAttendanceStat } from "@src/entities/statistics.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Journal } from "@src/journal.js";
-import { Language } from "@src/entities/user.js";
+import { Language, user_tg_username } from "@src/entities/user.js";
 import { apply_interval, GlobalFormatter, shorten } from "@src/utils.js";
 import { Analytic } from "@src/use_cases/analytic.js";
 import { Runtime } from "@src/runtime.js";
@@ -139,7 +139,7 @@ export class ChoristerStatisticsWidget implements AbstractWidget {
             : new Date(0);
         const statistic = Analytic.chorister_statistic_request(
             Runtime.get_instance().get_database(),
-            this.user.userid(),
+            user_tg_username(this.user.info()),
             this.user.info().voice,
             begin,
             end,

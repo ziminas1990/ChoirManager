@@ -17,7 +17,7 @@ export class DepositActions {
         journal: Journal
     ): Promise<Status> {
         const userid = agent.userid();
-        const resolved = await Environment.global.user_service.resolve_user({ tg_username: userid });
+        const resolved = await Environment.global.user_service.resolve_user({ system_id: userid });
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
@@ -30,7 +30,7 @@ export class DepositActions {
             return return_fail(`deposit service is not configured`, journal.log());
         }
 
-        const deposit = await deposit_service.get_deposit(userid);
+        const deposit = await deposit_service.get_deposit(user_tg_username(resolved.value));
         if (!deposit.ok) {
             return return_fail(`failed to get deposit for ${userid}: ${deposit.error}`, journal.log());
         }
@@ -44,7 +44,7 @@ export class DepositActions {
         limit?: number
     ): Promise<Status> {
         const userid = agent.userid();
-        const resolved = await Environment.global.user_service.resolve_user({ tg_username: userid });
+        const resolved = await Environment.global.user_service.resolve_user({ system_id: userid });
         journal.log().info(`transactions_requested by ${resolved.ok && resolved.value ? user_tg_username(resolved.value) : undefined}`);
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
@@ -72,7 +72,7 @@ export class DepositActions {
         const user_id = agent.userid();
         journal.log().info(`top_up ${user_id} ${amount} ${original_message}`);
 
-        const resolved = await Environment.global.user_service.resolve_user({ tg_username: user_id });
+        const resolved = await Environment.global.user_service.resolve_user({ system_id: user_id });
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
@@ -119,7 +119,7 @@ export class DepositActions {
         const user_id = agent.userid();
         journal.log().info(`handle already_paid by ${user_id}`);
 
-        const resolved = await Environment.global.user_service.resolve_user({ tg_username: user_id });
+        const resolved = await Environment.global.user_service.resolve_user({ system_id: user_id });
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
@@ -246,7 +246,12 @@ export class DepositActions {
     ): Promise<Status> {
         journal.log().info({ event }, `got event`);
 
-        const user = Runtime.get_instance().get_user_logic(event.tgid);
+        const replica = Runtime.get_instance().get_user_service_replica();
+        const resolved = replica.resolve_user({ tg_username: event.tgid });
+        if (!resolved.ok || !resolved.value) {
+            return Expected.err(`user ${event.tgid} not found`);
+        }
+        const user = Runtime.get_instance().get_user_logic(resolved.value.id.system_id);
         if (!user) {
             return Expected.err(`user ${event.tgid} has no runtime session`);
         }

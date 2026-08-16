@@ -4,7 +4,7 @@ import { Journal } from "@src/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { current_month, Formatter, GlobalFormatter } from "@src/utils.js";
 import { Status } from "@src/utils/expected.js";
-import { Language } from "@src/entities/user.js";
+import { Language, user_tg_username } from "@src/entities/user.js";
 import { Deposit, DepositChange } from "@src/entities/deposit.js";
 import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
@@ -34,7 +34,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
     async send_deposit_info(info: Deposit | undefined): Promise<Status> {        
         const get_transactions_button = this.user.create_keyboard_button(
                 this.orator.get_transactions_button(this.user.info().lang),
-                `open transactions for ${this.user.userid()}`,
+                `open transactions for ${user_tg_username(this.user.info())}`,
                 async () => {
                     // todo: make limited transactions request
                     return await DepositActions.transactions_requested(
@@ -89,7 +89,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
 
         const have_paid_botton = this.user.create_keyboard_button(
             this.orator.have_paid_already(this.user.info().lang),
-            `already paid by @${this.user.userid()}`,
+            `already paid by @${user_tg_username(this.user.info())}`,
             async () => {
                 return await DepositActions.already_paid(this.user, this.journal);
             }
