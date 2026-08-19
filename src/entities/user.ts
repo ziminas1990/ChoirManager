@@ -34,6 +34,15 @@ export type UserData = {
     roles: Role[];
 }
 
+// Partial identity and profile fields for create/update requests.
+export type UserFields = {
+    name?: string;
+    surname?: string;
+    lang?: Language;
+    voice?: Voice;
+    tg_username?: string;
+}
+
 // Display / sheet-bridge alias. Some older records have no @.
 // Canonical identity is user.id.system_id — do not use this as a map key.
 export function user_tg_username(user: UserData): string {

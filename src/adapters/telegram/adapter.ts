@@ -618,7 +618,11 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
         const patched = await Environment.global.user_service.update(
             user_data.id.system_id,
-            { tg_username: username },
+            {
+                id: {
+                    tg_username: [user_data.id.tg_username, username],
+                },
+            },
         );
         if (!patched.ok) {
             this.journal.log().warn(

@@ -17,7 +17,7 @@ implements ICollection<T, P>
         private readonly underlying: IPlainCollection<U>,
         private readonly pack: (item: T) => U,
         private readonly unpack: (item: U) => Expected<T>,
-        private readonly apply: (item: T, patch: P) => T,
+        private readonly apply: (item: T, patch: P) => Expected<T>,
         private readonly id_of: (item: T) => string,
         parent_journal: Journal,
     ) {
@@ -81,8 +81,11 @@ implements ICollection<T, P>
             return existing;
         }
         const next = this.apply(existing.value, patch);
+        if (!next.ok) {
+            return next;
+        }
         const stored = await this.underlying.update(
-            Helpers.as_update_patch(this.to_plain(next)));
+            Helpers.as_update_patch(this.to_plain(next.value)));
         if (!stored.ok) {
             return stored.cast_error();
         }

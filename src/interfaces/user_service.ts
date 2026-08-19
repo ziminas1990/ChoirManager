@@ -1,14 +1,13 @@
 import { UserData, UserId } from "@src/entities/user.js";
 import { Expected, Status } from "@src/utils/expected.js";
+import { CasPatch } from "@src/utils/patching.js";
 
 
 export type NewUserData = Omit<UserData, "id"> & {
     tg_username?: string;
 };
 
-export type UserPatch = Partial<Omit<UserData, "id">> & {
-    tg_username?: string;
-};
+export type UserPatch = CasPatch<UserData>;
 
 export interface IUserService {
 

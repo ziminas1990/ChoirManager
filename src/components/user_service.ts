@@ -102,10 +102,15 @@ export class UserService implements IUserService {
             return Expected.err(`user '${system_id}' not found`);
         }
 
-        const username = patch.tg_username !== undefined
-            ? this.optional_username(patch.tg_username)
+        if (patch.id?.system_id !== undefined) {
+            return Expected.err("cannot change system_id");
+        }
+
+        const username_cas = patch.id?.tg_username;
+        const username = username_cas !== undefined
+            ? this.optional_username(username_cas[1])
             : undefined;
-        if (patch.tg_username !== undefined && !username) {
+        if (username_cas !== undefined && !username) {
             return Expected.err("tg_username must be non-empty when set");
         }
         if (username && this.username_in_use(username, system_id)) {

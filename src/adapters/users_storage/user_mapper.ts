@@ -6,6 +6,7 @@ import { FirestoreValidatingConverter } from "@src/adapters/plain_collection/fir
 import { UserData } from "@src/entities/user.js";
 import { UserPatch } from "@src/interfaces/user_service.js";
 import { Expected } from "@src/utils/expected.js";
+import { apply_cas_patch } from "@src/utils/patching.js";
 import { UserRecord } from "./user_record.js";
 import {
     parse_language,
@@ -76,21 +77,11 @@ export function from_user_data(user: UserData, revision: number): UserRecord {
     };
 }
 
-export function apply_user_patch(existing: UserData, patch: UserPatch): UserData {
-    const next_username = patch.tg_username !== undefined
-        ? patch.tg_username
-        : existing.id.tg_username;
-    return {
-        id: {
-            system_id: existing.id.system_id,
-            ...(next_username ? { tg_username: next_username } : {}),
-        },
-        name: patch.name ?? existing.name,
-        surname: patch.surname ?? existing.surname,
-        lang: patch.lang ?? existing.lang,
-        voice: patch.voice ?? existing.voice,
-        roles: patch.roles ?? existing.roles,
-    };
+export function apply_user_patch(existing: UserData, patch: UserPatch): Expected<UserData> {
+    if (patch.id?.system_id !== undefined) {
+        return Expected.err("cannot change system_id");
+    }
+    return apply_cas_patch(existing, patch);
 }
 
 // Nested UserId is assembled here; it is not stored in Firestore.
