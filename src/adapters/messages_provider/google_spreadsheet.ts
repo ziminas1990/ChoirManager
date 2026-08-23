@@ -65,7 +65,7 @@ function try_parse_templates(table: string[][]): Expected<Map<string, Record<Lan
         }
 
         if (!ALL_MESSAGE_IDS.includes(message_id as MessageId)) {
-            return Expected.err(`Unknown message identifier '${message_id}' at row ${row_index + 2}`);
+            continue;
         }
 
         templates.set(message_id, {

@@ -32,12 +32,7 @@ export type PendingOperation = {
     operation: AdministrationOperation;
 };
 
-export type AdministrationEvent = {
-    what: "confirmation_requested";
-    request: PendingOperation;
-};
-
-// Service logic: admin ACL, confirmation, and apply. Events go via IBroadcaster.
+// Service logic: admin ACL, confirmation, and apply. No callbacks or event bus.
 export interface IAdministrationService {
 
     request_create_user(

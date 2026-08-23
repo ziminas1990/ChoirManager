@@ -1,4 +1,4 @@
-import { UserData, UserId } from "@src/entities/user.js";
+import { Role, UserData, UserId } from "@src/entities/user.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { CasPatch } from "@src/utils/patching.js";
 
@@ -9,10 +9,20 @@ export type NewUserData = Omit<UserData, "id"> & {
 
 export type UserPatch = CasPatch<UserData>;
 
+export type UserFindQuery = {
+    query?: string;
+    system_id?: string;
+    tg_username?: string;
+    role?: Role;
+};
+
 export interface IUserService {
 
     // Snapshot of all users
     fetch_all(): Promise<UserData[]>;
+
+    // Users matching all provided filters. Empty query returns everyone.
+    find(query: UserFindQuery): Promise<UserData[]>;
 
     // Find a user by system_id XOR tg_username.
     resolve_user(user_id: Partial<UserId>): Promise<Expected<UserData | undefined>>;
@@ -35,6 +45,8 @@ export interface IUserServiceReplica {
     sync(): Promise<Status>;
 
     fetch_all(): UserData[];
+
+    find(query: UserFindQuery): UserData[];
 
     resolve_user(user_id: Partial<UserId>): Expected<UserData | undefined>;
 }

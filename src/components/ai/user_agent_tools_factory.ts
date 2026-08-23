@@ -1,5 +1,6 @@
 import { Role, UserData, user_has_role } from "@src/entities/user.js";
 import { MANAGERS_MEMORY_GROUP_ID } from "@src/entities/memory.js";
+import { IAdministrationService } from "@src/interfaces/administration_service.js";
 import { IToolchain } from "@src/interfaces/llm.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { ISimpleMemoryService } from "@src/interfaces/simple_memory_service.js";
@@ -7,6 +8,7 @@ import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
+import { AdministrationTools } from "./tools/administration_tools.js";
 import { DepositManagerTools } from "./tools/deposit_manager_tools.js";
 import { FeedbackTools } from "./tools/feedback_tools.js";
 import { MessengerTools } from "./tools/messenger_tools.js";
@@ -23,6 +25,7 @@ export type Services = {
     task_tracker?: ITaskTrackerService;
     simple_memory?: ISimpleMemoryService;
     users?: IUserServiceReplica;
+    administration?: IAdministrationService;
 }
 
 type ToolsHost = {
@@ -63,6 +66,15 @@ export function register_user_assistant_tools(
                 group_id: MANAGERS_MEMORY_GROUP_ID,
             },
             services.users,
+        )));
+    }
+
+    if (user_has_role(user, Role.Admin) && services.administration && services.users) {
+        statuses.push(host.add_tool(new AdministrationTools(
+            user_agent,
+            journal,
+            services.users,
+            services.administration,
         )));
     }
 

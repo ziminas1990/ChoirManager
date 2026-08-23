@@ -12,6 +12,10 @@ import {
     SimpleMemoryServiceConfigJson,
 } from "@src/adapters/simple_memory_service/factory.js";
 import {
+    AdministrationServiceConfig,
+    AdministrationServiceConfigJson,
+} from "@src/adapters/administration_service/factory.js";
+import {
     DepositServiceConfig,
     DepositServiceConfigJson,
 } from "@src/adapters/deposit_service/factory.js";
@@ -249,6 +253,7 @@ export type BotConfigJson = {
     managers_chat_agent?: ManagersChatAgentConfigJson;
     announce_chat?: ChatConfigJson;
     task_tracker?: TaskTrackerServiceConfigJson;
+    administration_service?: AdministrationServiceConfigJson;
     simple_memory: SimpleMemoryServiceConfigJson;
 }
 
@@ -264,6 +269,7 @@ export class BotConfig {
     public readonly rehersals_tracker?: RehersalsTrackerConfig;
     public readonly assistant?: AssistantConfig;
     public readonly task_tracker?: TaskTrackerServiceConfig;
+    public readonly administration_service?: AdministrationServiceConfig;
     public readonly simple_memory: SimpleMemoryServiceConfig;
     public readonly managers_chat_agent?: ManagersChatAgentConfig;
 
@@ -303,6 +309,9 @@ export class BotConfig {
         }
         if (json.task_tracker != undefined) {
             this.task_tracker = new TaskTrackerServiceConfig(json.task_tracker);
+        }
+        if (json.administration_service != undefined) {
+            this.administration_service = new AdministrationServiceConfig(json.administration_service);
         }
         this.simple_memory = new SimpleMemoryServiceConfig(json.simple_memory);
         if (json.managers_chat_agent != undefined) {
@@ -429,6 +438,13 @@ export class BotConfig {
             status = this.task_tracker.verify();
             if (!status.ok) {
                 return status.wrap_error("'task_tracker' misconfiguration");
+            }
+        }
+
+        if (this.administration_service) {
+            status = this.administration_service.verify();
+            if (!status.ok) {
+                return status.wrap_error("'administration_service' misconfiguration");
             }
         }
 

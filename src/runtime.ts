@@ -16,6 +16,7 @@ import { AdminActions } from "./use_cases/admin_actions.js";
 import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
 import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
+import { AdministrationServiceFactory } from "./adapters/administration_service/factory.js";
 import { TaskTrackerServiceFactory } from "./adapters/task_tracker_service/factory.js";
 import { SimpleMemoryServiceFactory } from "./adapters/simple_memory_service/factory.js";
 import { DepositServiceFactory } from "./adapters/deposit_service/factory.js";
@@ -31,6 +32,7 @@ import { LocalBroadcaster } from "./adapters/local_message_queue/local_broadcast
 import { GroupChat } from "./logic/group_chat.js";
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
 import { AttendanceTracker } from "./logic/attendance_tracker.js";
+import { AdministrationService } from "./components/administration_service.js";
 import { TaskTrackerService } from "./components/task_tracker_service.js";
 import { TaskTrackerEvent } from "./interfaces/task_tracker_service.js";
 import { DepositService } from "./components/deposit_service.js";
@@ -141,6 +143,7 @@ export class Runtime {
     private attendance_tracker?: AttendanceTracker;
     private rehersals_tracker?: RehersalsTracker;
     private task_tracker?: TaskTrackerService;
+    private administration_service?: AdministrationService;
     private deposit_service?: DepositService;
 
     private tg_adapter?: TgAdapter;
@@ -334,6 +337,20 @@ export class Runtime {
                 return init_status.wrap_error("Failed to initialize task tracker");
             }
             Environment.setup.task_tracker_service = this.task_tracker;
+        }
+
+        if (this.config.administration_service) {
+            this.journal.log().info("Initializing administration service...");
+            const create_status = AdministrationServiceFactory.create(
+                this.config.administration_service,
+                this.user_service,
+                this.journal,
+            );
+            if (!create_status.ok) {
+                return create_status.wrap_error("Failed to create administration service");
+            }
+            this.administration_service = create_status.value;
+            Environment.setup.administration_service = this.administration_service;
         }
 
         if (this.config.deposit_service) {
@@ -565,6 +582,13 @@ export class Runtime {
             const task_tracker_status = await this.task_tracker.proceed(now);
             if (!task_tracker_status.ok) {
                 this.journal.log().error(`Task tracker proceed failed: ${task_tracker_status.error}`);
+            }
+        }
+
+        if (this.administration_service) {
+            const administration_status = await this.administration_service.proceed(now);
+            if (!administration_status.ok) {
+                this.journal.log().error(`Administration service proceed failed: ${administration_status.error}`);
             }
         }
 

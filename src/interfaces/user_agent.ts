@@ -17,6 +17,15 @@ export interface IUserAgent
 
     send_file(filename: string, caption?: string, content_type?: string): Promise<Status>;
 
+    // Ask a yes/no question. Button labels default to "yes" / "no".
+    // Optional `lifetime_sec` expires unanswered prompts as an error.
+    ask_confirmation(
+        question: string,
+        positive?: string,
+        negative?: string,
+        lifetime_sec?: number,
+    ): Promise<Expected<"positive" | "negative">>;
+
     proceed(now: Date): Promise<void>;
 
     as_chorister(): IChorister;

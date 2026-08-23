@@ -1,11 +1,12 @@
 import crypto from "crypto";
 
-import { Language, UserData, UserId, is_guest_user, Voice } from "@src/entities/user.js";
+import { Language, UserData, UserId, is_guest_user, user_tg_username, Voice } from "@src/entities/user.js";
 import { ICollection } from "@src/interfaces/collection.js";
 import {
     IUserService,
     IUserServiceReplica,
     NewUserData,
+    UserFindQuery,
     UserPatch,
 } from "@src/interfaces/user_service.js";
 import { Journal } from "@src/journal.js";
@@ -30,6 +31,10 @@ export class UserService implements IUserService {
 
     async fetch_all(): Promise<UserData[]> {
         return Array.from(this.by_system_id.values());
+    }
+
+    async find(query: UserFindQuery): Promise<UserData[]> {
+        return this.find_from_cache(query);
     }
 
     async resolve_user(user_id: Partial<UserId>): Promise<Expected<UserData | undefined>> {
@@ -136,6 +141,7 @@ export class UserService implements IUserService {
     as_replica(): IUserServiceReplica {
         return {
             fetch_all: () => Array.from(this.by_system_id.values()),
+            find: (query) => this.find_from_cache(query),
             resolve_user: (user_id) => this.resolve_from_cache(user_id),
             sync: () => this.hydrate(),
         };
@@ -148,6 +154,11 @@ export class UserService implements IUserService {
         } catch (e) {
             return Expected.exception("can't proceed users collection", e);
         }
+    }
+
+    private find_from_cache(query: UserFindQuery): UserData[] {
+        return Array.from(this.by_system_id.values())
+            .filter((user) => Helpers.matches_query(user, query));
     }
 
     private resolve_from_cache(user_id: Partial<UserId>): Expected<UserData | undefined> {
@@ -250,6 +261,42 @@ export class UserService implements IUserService {
 }
 
 class Helpers {
+    static matches_query(user: UserData, query: UserFindQuery): boolean {
+        if (query.system_id && user.id.system_id !== query.system_id) {
+            return false;
+        }
+        if (query.role && !user.roles.includes(query.role)) {
+            return false;
+        }
+        if (query.tg_username) {
+            const wanted = Helpers.normalize_username(query.tg_username) ?? "";
+            const actual = Helpers.normalize_username(user_tg_username(user)) ?? "";
+            if (actual !== wanted) {
+                return false;
+            }
+        }
+        if (query.query) {
+            const haystack = [
+                user.id.system_id,
+                user.name,
+                user.surname,
+                user_tg_username(user),
+                `${user.name} ${user.surname}`,
+            ].join(" ").toLowerCase();
+            if (!haystack.includes(query.query.toLowerCase())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static normalize_username(value: string | undefined): string | undefined {
+        if (value == undefined) {
+            return undefined;
+        }
+        return value.replace(/^@/, "");
+    }
+
     static diff_user(prev: UserData, next: UserData): string[] {
         const diffs: string[] = [];
         if (prev.name != next.name) {

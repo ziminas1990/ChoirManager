@@ -1,7 +1,7 @@
 import { IAdminAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
-import { GlobalFormatter } from "@src/utils.js";
 import { Status } from "@src/utils/expected.js";
+import { GlobalFormatter } from "@src/utils.js";
 
 export class AdminDialog implements IAdminAgent {
 

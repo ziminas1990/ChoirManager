@@ -14,6 +14,7 @@ import { AccounterDialog } from "./dialogs/accounter_dialog.js";
 import { ChoristerDialog } from "./dialogs/chorister_dialog.js";
 import { GuestDialog } from "./dialogs/guest_dialog.js";
 import { AdminDialog } from "./dialogs/admin_dialog.js";
+import { ConfirmationWidget } from "./widgets/confirmation.js";
 import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
@@ -178,6 +179,22 @@ export class TelegramUser implements IUserAgent {
         } catch (e) {
             return return_exception(e, this.journal.log());
         }
+    }
+
+    // From IUserAgent
+    async ask_confirmation(
+        question: string,
+        positive: string = "yes",
+        negative: string = "no",
+        lifetime_sec?: number,
+    ): Promise<Expected<"positive" | "negative">> {
+        const widget = new ConfirmationWidget(
+            this, this.journal, question, positive, negative, lifetime_sec);
+        const started = await widget.start();
+        if (!started.ok) {
+            return started.cast_error();
+        }
+        return await widget.answer();
     }
 
     // From IUserAgent

@@ -61,6 +61,7 @@ export class ChoristerDialog implements IChorister {
                     task_tracker: Environment.global.maybe_task_tracker_service,
                     simple_memory: Environment.global.simple_memory_service,
                     users: Runtime.get_instance().get_user_service_replica(),
+                    administration: Environment.global.maybe_administration_service,
                 },
             );
             if (!tools_status.ok) {

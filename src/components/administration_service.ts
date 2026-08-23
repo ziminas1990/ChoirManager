@@ -6,14 +6,12 @@ import {
     user_has_role,
 } from "@src/entities/user.js";
 import {
-    AdministrationEvent,
     AdministrationOperation,
     IAdministrationService,
     OperationResult,
     PendingOperation,
     UserCasPatch,
 } from "@src/interfaces/administration_service.js";
-import { IBroadcaster } from "@src/interfaces/message_queue.js";
 import { IUserService, NewUserData } from "@src/interfaces/user_service.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
@@ -29,7 +27,6 @@ export class AdministrationService extends Logic<void> implements IAdministratio
         private readonly confirmation_ttl_sec: number,
         private readonly max_pending_per_user: number,
         private readonly users: IUserService,
-        private readonly broadcaster: IBroadcaster<AdministrationEvent>,
         parent_journal: Journal,
     ) {
         super(1000);
@@ -156,16 +153,6 @@ export class AdministrationService extends Logic<void> implements IAdministratio
             operation,
         };
         this.pending.set(pending.id, pending);
-
-        const broadcast_status = await this.broadcaster.broadcast({
-            what: "confirmation_requested",
-            request: Helpers.clone_pending(pending),
-        });
-        if (!broadcast_status.ok) {
-            this.pending.delete(pending.id);
-            return broadcast_status.cast_error<PendingOperation>()
-                .wrap_error("failed to broadcast confirmation request");
-        }
 
         this.journal.log().info(
             `Requested ${operation.what} ${pending.id} by ${Helpers.actor_label(actor)}`,

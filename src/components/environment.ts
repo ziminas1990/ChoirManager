@@ -1,3 +1,4 @@
+import { IAdministrationService } from "@src/interfaces/administration_service.js";
 import { IDepositService } from "@src/interfaces/deposit_service.js";
 import { IEnvironment } from "@src/interfaces/environment.js";
 import { IScoresService } from "@src/interfaces/scores_service.js";
@@ -15,6 +16,7 @@ export class Environment implements IEnvironment {
 
     private user_service_instance?: IUserService;
     private task_tracker_instance?: ITaskTrackerService;
+    private administration_service_instance?: IAdministrationService;
     private simple_memory_instance?: ISimpleMemoryService;
     private deposit_service_instance?: IDepositService;
     private scores_service_instance?: IScoresService;
@@ -67,6 +69,21 @@ export class Environment implements IEnvironment {
 
     get maybe_task_tracker_service(): ITaskTrackerService | undefined {
         return this.task_tracker_instance;
+    }
+
+    set administration_service(administration_service: IAdministrationService) {
+        this.administration_service_instance = administration_service;
+    }
+
+    get administration_service(): IAdministrationService {
+        if (!this.administration_service_instance) {
+            throw new Error("Administration service is not set");
+        }
+        return this.administration_service_instance;
+    }
+
+    get maybe_administration_service(): IAdministrationService | undefined {
+        return this.administration_service_instance;
     }
 
     set simple_memory_service(simple_memory: ISimpleMemoryService) {
