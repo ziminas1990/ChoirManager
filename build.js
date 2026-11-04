@@ -8,14 +8,11 @@ import { builtinModules } from 'module';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-build({
-  entryPoints: ['./dist/app.js'],
+const shared = {
   bundle: true,
-  target: 'node18', // Adjust this to your Node version
+  target: 'node18',
   platform: 'node',
   format: 'cjs',
-  outfile: 'dist/app.cjs',
-//   external: ['plotly.js'], // Don't bundle plotly.js
   external: [...builtinModules],
   resolveExtensions: ['.ts', '.js'],
   alias: {
@@ -24,4 +21,17 @@ build({
   loader: {
     '.ts': 'ts',
   },
-}).catch(() => process.exit(1));
+};
+
+Promise.all([
+  build({
+    ...shared,
+    entryPoints: ['./dist/app.js'],
+    outfile: 'dist/app.cjs',
+  }),
+  build({
+    ...shared,
+    entryPoints: ['./dist/tools/migrate_release_1.js'],
+    outfile: 'dist/migrate.cjs',
+  }),
+]).catch(() => process.exit(1));

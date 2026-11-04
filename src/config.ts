@@ -446,6 +446,10 @@ export class BotConfig {
             if (!status.ok) {
                 return status.wrap_error("'administration_service' misconfiguration");
             }
+            console.warn(
+                "'administration_service' is configured but disabled in this release; "
+                + "the bot will not create users, remove users, or change roles",
+            );
         }
 
         if (!this.json.simple_memory) {

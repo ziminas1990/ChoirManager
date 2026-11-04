@@ -135,11 +135,6 @@
         "notification_time_utc": "08:00",
         "deadline_notification_days": [3, 1]
     },
-    "administration_service": {
-        "type": "local",
-        "confirmation_ttl_sec": 300,
-        "max_pending_per_user": 5
-    },
     "simple_memory": {
         "type": "local",
         "storage": {

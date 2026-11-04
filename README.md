@@ -66,6 +66,8 @@ For local run:
 docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config -v $(pwd)/logs:/mnt/logs --name ursa-major-agent ursa-major-agent:latest
 ```
 
+The image also contains the release 1 migration command (`node migrate.cjs`). The update and rollback steps are in [docs/release_1_update.md](docs/release_1_update.md).
+
 ## Things to be done:
 * ignore all messages, received during the startup
 * notifications about new applications

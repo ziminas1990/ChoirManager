@@ -58,24 +58,29 @@ function get_voice(voice: string): Voice {
     }
 }
 
+function role_is_set(row: string[], index: number): boolean {
+    const cell = row[index];
+    return typeof cell === "string" && cell.toLowerCase() === "true";
+}
+
 function get_roles(row: string[], columns: TableColumns): Role[] {
     const roles: Role[] = [];
-    if (row[columns.chorister]?.toLowerCase() === "true") {
+    if (role_is_set(row, columns.chorister)) {
         roles.push(Role.Chorister);
     }
-    if (row[columns.manager]?.toLowerCase() === "true") {
+    if (role_is_set(row, columns.manager)) {
         roles.push(Role.Manager);
     }
-    if (row[columns.admin]?.toLowerCase() === "true") {
+    if (role_is_set(row, columns.admin)) {
         roles.push(Role.Admin);
     }
-    if (row[columns.ex_chorister]?.toLowerCase() === "true") {
+    if (role_is_set(row, columns.ex_chorister)) {
         roles.push(Role.ExChorister);
     }
-    if (row[columns.accountant]?.toLowerCase() === "true") {
+    if (role_is_set(row, columns.accountant)) {
         roles.push(Role.Accountant);
     }
-    if (row[columns.conductor]?.toLowerCase() === "true") {
+    if (role_is_set(row, columns.conductor)) {
         roles.push(Role.Conductor);
     }
     return roles;
@@ -89,34 +94,93 @@ function get_language(lang: string): Language {
     }
 }
 
+export type UsersSheetRowError = {
+    // 1-based position inside the fetched range. Row 1 is the header.
+    row: number;
+    tgid: string;
+    message: string;
+};
+
+export type UsersSheetRead = {
+    rows: UserData[];
+    errors: UsersSheetRowError[];
+};
+
 function try_parse_row(row: string[], columns: TableColumns): Expected<UserData> {
-    try {
-        const tgid = row[columns.tgid];
-        if (!tgid || tgid.length === 0) {
-            return Expected.err("No 'tgid' column found");
-        }
-
-        const [name, surname] = row[columns.name].split(" ");
-        const lang = get_language(row[columns.language]);
-        const voice = get_voice(row[columns.voice]);
-        const roles = get_roles(row, columns);
-
-        // Sheets only know telegram ids; system_id is filled by a higher layer.
-        const user: UserData = {
-            id: {
-                system_id: "",
-                tg_username: tgid,
-            },
-            name,
-            surname,
-            lang,
-            voice,
-            roles,
-        };
-        return Expected.ok(user);
-    } catch (e) {
-        return Expected.exception("error", e);
+    const tgid = row[columns.tgid];
+    if (typeof tgid !== "string" || tgid.length === 0) {
+        return Expected.err(typeof tgid === "string" ? "tgid is empty" : "tgid must be text");
     }
+
+    const name_cell = row[columns.name];
+    if (typeof name_cell !== "string" || name_cell.length === 0) {
+        return Expected.err("name is empty");
+    }
+    const [name, surname] = name_cell.split(" ");
+
+    const language_cell = row[columns.language];
+    if (typeof language_cell !== "string") {
+        return Expected.err("language must be text");
+    }
+    const voice_cell = row[columns.voice];
+    if (typeof voice_cell !== "string") {
+        return Expected.err("voice must be text");
+    }
+
+    // Sheets only know telegram ids; system_id is filled by a higher layer.
+    // tgid is kept verbatim so later deposit links still match.
+    const user: UserData = {
+        id: {
+            system_id: "",
+            tg_username: tgid,
+        },
+        name,
+        surname: surname ?? "",
+        lang: get_language(language_cell),
+        voice: get_voice(voice_cell),
+        roles: get_roles(row, columns),
+    };
+    return Expected.ok(user);
+}
+
+// A bad header is a read failure. A bad data row is returned in errors
+// together with the rows that parsed.
+export function parse_users_table(table: string[][]): Expected<UsersSheetRead> {
+    if (table.length === 0) {
+        return Expected.ok({ rows: [], errors: [] });
+    }
+
+    const header_status = try_parse_header(table[0]);
+    if (!header_status.ok) {
+        return header_status.wrap_error("invalid header");
+    }
+    const columns = header_status.value;
+
+    const rows: UserData[] = [];
+    const errors: UsersSheetRowError[] = [];
+    for (let index = 1; index < table.length; index++) {
+        const row = table[index];
+        if (!Array.isArray(row)) {
+            errors.push({
+                row: index + 1,
+                tgid: "",
+                message: "row is not a list of cells",
+            });
+            continue;
+        }
+        const status = try_parse_row(row, columns);
+        if (!status.ok) {
+            const tgid_cell = row[columns.tgid];
+            errors.push({
+                row: index + 1,
+                tgid: typeof tgid_cell === "string" ? tgid_cell : "",
+                message: status.error,
+            });
+            continue;
+        }
+        rows.push(status.value);
+    }
+    return Expected.ok({ rows, errors });
 }
 
 // Sheet parser kept for the users-collection migration tool.
@@ -130,34 +194,21 @@ export class GoogleSpreadsheetUsersStorage {
         this.journal = parent_journal.child("users_storage");
     }
 
-    async fetch_all(): Promise<UserData[]> {
+    async fetch_all(): Promise<Expected<UsersSheetRead>> {
         const sheet_status = await this.sheet.read(this.config.range);
         if (!sheet_status.ok) {
-            throw new Error(sheet_status.wrap_error("can't fetch sheet data").error);
-        }
-        const table = sheet_status.value;
-        if (table.length < 2) {
-            // Header only or empty sheet — not an error.
-            return [];
+            return sheet_status.wrap_error("can't fetch sheet data");
         }
 
-        const header_status = try_parse_header(table[0]);
-        if (!header_status.ok) {
-            throw new Error(header_status.wrap_error("invalid header").error);
+        const parsed = parse_users_table(sheet_status.value);
+        if (!parsed.ok) {
+            return parsed;
         }
-        const columns = header_status.value;
-
-        const users: UserData[] = [];
-        table.slice(1).forEach((row, idx) => {
-            const status = try_parse_row(row, columns);
-            if (!status.ok) {
-                this.journal.log().error(
-                    `Error parsing user '${row[columns.tgid]}' at row ${idx}: ${status.error}`);
-            } else {
-                users.push(status.value);
-            }
-        });
-
-        return users;
+        for (const error of parsed.value.errors) {
+            const who = error.tgid.length > 0 ? error.tgid : "(blank)";
+            this.journal.log().error(
+                `Error parsing user '${who}' at row ${error.row}: ${error.message}`);
+        }
+        return parsed;
     }
 }

@@ -2,7 +2,7 @@
 
 ## Background
 
-After [release 1](TASK-001.md), users are stored in Firestore, but administrators cannot yet manage membership through the bot. Adding members needs a flow where AI proposes a change and a person makes the decision.
+After [release 1](./closed/TASK-001.md), users are stored in Firestore, but administrators cannot yet manage membership through the bot. Adding members needs a flow where AI proposes a change and a person makes the decision.
 
 ## Require
 
