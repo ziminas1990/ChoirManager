@@ -10,7 +10,7 @@ Before reading, editing, creating, or reviewing files under `docs/`, first read 
 
 Follow `docs/AGENT.md` as the source of truth for:
 
-- the difference between proposals and specs;
-- document naming and numbering;
-- required documentation workflow for non-trivial changes;
-- how to handle inconsistencies between proposals, specs, and code.
+- development tasks and epics under `docs/tasks/`;
+- the task writing rules and tracker commands;
+- keeping current guides consistent with implemented behavior;
+- handling inconsistencies between documentation, task requirements, and code.

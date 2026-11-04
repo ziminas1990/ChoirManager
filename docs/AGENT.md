@@ -1,129 +1,40 @@
-# Project Documentation Model
+# Project documentation
 
-The `docs/` directory contains two subdirectories:
+Development work is tracked by tasks and epics under `docs/tasks/`.
+Other documents in `docs/` describe current architecture, infrastructure,
+deployment, and operational procedures.
 
-* `proposals/` — historical documents describing proposed changes.
-* `specs/` — living documents describing how the system works now.
+## Development tasks and epics
 
-## Core principle
+Before creating, editing, or closing a task or epic, read
+[`task-writing.mdc`](../.cursor/rules/task-writing.mdc). Follow
+[`tasks/README.md`](tasks/README.md) for commands and directory layout.
 
-Use `proposals/` to answer:
+- Tasks use `TASK-XXX` and describe a problem, required behavior, and observable
+  acceptance criteria.
+- Epics use `EPIC-XXX` and group related tasks in the required order.
+- Create and close both through `scripts/task.py` from `docs/tasks/`.
+- Never choose identifiers or move tracking documents into archives by hand.
+- Closed tasks and epics are historical records. Only the script may update
+  their links; do not rewrite their content to match later code.
 
-> What change was proposed, why was it needed, and what was decided at that time?
+Tasks use `Background`, `Require`, and `Acceptance`. Epics use `Background`
+and `Steps`. These formats apply to tracking documents, not general guides.
 
-Use `specs/` to answer:
+## Working with documentation
 
-> How does this part of the system work in its current implemented state?
+Read relevant guides and any referenced task or epic before changing code.
+Update affected guides when implemented behavior, configuration, or operational
+procedures change. Keep guides consistent with the current implementation;
+record planned changes and their acceptance criteria in tasks.
 
-A proposal records intent and reasoning at a specific point in time. A spec records the latest accepted implementation.
+Before closing a task, verify its acceptance criteria and relevant checks.
+Before closing an epic, verify that its steps are complete, or record why it
+is being abandoned. The script archives documents and maintains links; it does
+not verify completion.
 
-Do not treat old proposals as the current architecture. The relevant spec is the primary source of truth for the intended current design.
-
-## Directory structure
-
-```text
-proposals/
-  prop-001-initial-event-storage.md
-  prop-002-add-event-search.md
-
-specs/
-  spec-001-event-domain.md
-  spec-002-event-storage.md
-  spec-003-event-search.md
-```
-
-## Naming convention
-
-Use sequential numeric identifiers and descriptive kebab-case names.
-
-```text
-proposals/prop-NNN-short-description.md
-specs/spec-NNN-short-description.md
-```
-
-Examples:
-
-```text
-proposals/prop-012-add-task-assignees.md
-specs/spec-007-task-domain.md
-```
-
-Never reuse an existing number.
-
-## Proposals
-
-A proposal is historical. Do not rewrite it later to make it describe the final implementation. Update its status instead.
-
-Every proposal must begin with metadata:
-
-```md
-# Add task assignees
-
-Status: draft
-
-Related specs:
-- specs/spec-007-task-domain.md
-```
-
-Allowed statuses:
-
-* `draft` — under consideration and not yet accepted;
-* `accepted` — approved for implementation;
-* `implemented` — implementation and related specs have been updated;
-* `rejected` — explicitly decided against;
-* `superseded` — replaced by a later proposal.
-
-## Specs
-
-A spec describes one coherent component, domain area, or cross-cutting concern as it exists now.
-
-Examples:
-
-* event domain and lifecycle;
-* authentication;
-* Firestore persistence;
-* Telegram integration;
-* task management;
-* search behavior;
-* background jobs.
-
-A spec must not describe planned or hypothetical behavior. Planned changes belong in proposals until implemented.
-
-Every spec must start with an influence history:
-
-```md
-# Task domain
-
-## Influencing proposals
-
-- `prop-005-create-task-domain.md` — introduced tasks, task status, and ownership.
-- `prop-012-add-task-assignees.md` — added assignees and assignment rules.
-- `prop-018-task-deadlines.md` — added optional deadlines and overdue-state semantics.
-```
-
-Keep this list in chronological order. Each entry must state the essential change introduced by that proposal.
-
-## Required workflow for changes
-
-When asked to make a non-trivial change:
-
-1. Inspect the relevant specs before changing code.
-2. Inspect the proposals listed in the relevant specs when historical context matters.
-3. If the requested change requires a proposal, ask the user if you should create a new propsal for that or not.
-4. Update every affected spec so that it reflects the implemented state.
-5. Add the proposal to the `Influencing proposals` section of each affected spec.
-6. Mark the proposal as `implemented`.
-7. Verify that the proposal, specs, and code do not contradict one another.
-
-## Handling inconsistencies
-
-When code, specs, and proposals disagree:
-
-* Treat proposals as historical context, not current truth.
-* Treat specs as the intended current design.
-* Treat code as the actual current behavior.
-* Do not silently overwrite one source to match another.
-* Identify the inconsistency and determine whether the code or spec should be corrected.
-* Update the affected documentation once the intended state is clear.
-
-When uncertain, ask the user for clarification.
+When documentation and code disagree, identify the inconsistency and use the
+user's requested behavior and the task's requirements to determine the intended
+change. Correct affected code or current guides accordingly, preserving closed
+tracking documents as history. Ask for clarification when the intended behavior
+cannot be determined from the available context.

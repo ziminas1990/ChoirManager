@@ -1,9 +1,11 @@
 ---
-description: Prefer // comments; never use block JSDoc /** */
+description: Comment style and mandatory development task workflow
 alwaysApply: true
 ---
 
-# Comment style
+# General rules
+
+## Comment style
 
 Never use block comments of the form `/** ... */` or `/* ... */`.
 
@@ -26,3 +28,20 @@ export function remember() {}
 ```
 
 This applies to TypeScript, JavaScript, and similar languages in this repo.
+
+## Development tasks
+
+Before creating, editing, or closing a task or epic under `docs/tasks/`, read
+and follow [task-writing.mdc](./task-writing.mdc).
+
+Create and close documents only with `scripts/task.py`. Run from the repository
+root, changing into the tracker directory in the same command:
+
+- `cd docs/tasks && python3 ../../scripts/task.py create`
+- `cd docs/tasks && python3 ../../scripts/task.py create --epic`
+- `cd docs/tasks && python3 ../../scripts/task.py close TASK-001`
+- `cd docs/tasks && python3 ../../scripts/task.py close EPIC-001`
+
+Never allocate numbers or move documents into archives by hand. Closed tasks
+and epics are immutable historical records; only `scripts/task.py` may update
+their links. Do not rewrite them to match later code.
