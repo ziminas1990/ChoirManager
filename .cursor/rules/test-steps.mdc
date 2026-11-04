@@ -1,0 +1,157 @@
+---
+description: general rules for tests authoring
+globs: "**/*.test.ts,**/*.test.js,**/*.test.mjs,**/test_*.py,**/tests_*.py,**/*_test.py,**/*Tests.cpp"
+alwaysApply: false
+---
+
+# Test step comments
+
+## Motivation
+
+Every test must begin its body with a comment starting with `// Motivation: ...`
+and explaining why the test exists.
+Place it before any declarations and before the first numbered step, separated
+from that step by a blank line.
+
+Motivation comments may span multiple consecutive `//` lines. If a line would
+exceed 80 characters, including indentation and the comment prefix, wrap it at
+word boundaries so each line stays within that limit. Use `Motivation:` only
+on the first line.
+
+```ts
+// Motivation: inspection failures must preserve route ownership so a
+// temporary Docker outage cannot revoke a live client's access.
+```
+
+Describe the behavior or regression the test protects against and why it needs
+coverage at this component's level. Do not merely repeat the test name or list
+its steps. When adding or editing a test, ensure this comment is present.
+
+## Steps
+
+Each test should be represented as a number of steps.
+
+Each step is one visually separate block:
+
+```pseudocode
+// N. what this block does
+<declarations of shared objects>
+{
+    <step body>
+}
+```
+
+`<declarations of shared objects>` are objects that step N uses for the first
+time and that later steps also use. Initialize them there if they must already
+exist (for example, an empty collection that the step fills).
+
+`<step body>` may also declare objects that only this step uses.
+
+A loop or a condition is already that block: the body of `for`, `while`, or
+`if` is the step body.
+
+When you add or edit a test, write the steps you touch in this shape. Leave
+untouched steps as they are.
+
+## Where to declare names
+
+- A name read only inside the step is declared inside the block.
+- A name that a later step reads is declared right after the comment of the
+  step that first uses it (before the block), and assigned inside that block
+  when the comment names that assignment. Initialize it there when the name
+  must already exist, such as an empty collection the loop fills.
+- Declarations go after the step comment, never above it.
+
+```ts
+// 1. player logins
+let player;
+{
+    player = await login("spy007", "iamspy");
+}
+
+// 2. administrator spawns a new ship
+{
+    const spawned = expectOk(await spawner.spawn_ship(...), "spawn ship");
+    expect(spawned.owner).toBe(player.id);
+}
+```
+
+```cpp
+// 2. connect and open a commutator session
+client::ClientCommutatorPtr pCommutator;
+{
+  pCommutator = openCommutator();
+  ASSERT_TRUE(pCommutator);
+}
+
+// 3. game is listed among attached modules
+{
+  client::ModulesList attached;
+  ASSERT_TRUE(pCommutator->getAttachedModulesList(attached));
+  ASSERT_EQ(1u, attached.size());
+}
+```
+
+## Shared objects that need initialization
+
+If several steps share an object and the object needs initialization
+(construction with arguments, configuration, attaching to other objects), create
+a dedicated initialization step for it. Do not mix its initialization with the
+action of a later step.
+
+```cpp
+// 1. create an admin socket attached to the terminal
+std::shared_ptr<network::AdminSocket> server;
+{
+  server = std::make_shared<network::AdminSocket>(io, directory);
+  server->attachToTerminal(terminal);
+}
+
+// 2. only the configured client path reaches the terminal
+{
+  Local::socket peer(io, Local::endpoint(path("admin.client")));
+  peer.send_to(boost::asio::buffer("command", 7),
+               Local::endpoint(path("admin.server")));
+}
+```
+
+## Numbering
+
+- Top-level steps: `1.`, `2.`, `3.`, …
+- A loop or condition is one step **X**. The comment is placed **before** it.
+- Actions inside the body: `X.1`, `X.2`, …, each in its own block.
+- Nested loops use the same pattern (`X.1` before the inner loop, `X.1.1`
+  inside).
+- A loop or condition body that is a single action stays one step. The outer
+  `X` is enough.
+
+```ts
+// 1. spawn ships
+const spawnedShips = [];
+for (let i = 0; i < 100; i += 1) {
+    spawnedShips.push(expectOk(await spawner.spawn_ship(...), `spawn ${i}`));
+}
+
+// 2. look up spawned ships and check positions
+for (const spawned of spawnedShips) {
+    let found;
+    // 2.1 get the ship via manipulator
+    {
+        found = expectOk(await manipulator.get_object(...), "get ship");
+    }
+
+    // 2.2 check predicted position matches
+    {
+        expect(almostEqualPosition(found, spawned)).toBe(true);
+    }
+}
+```
+
+## Blank lines
+
+Put a blank line **before** a step when it follows another step of the **same**
+level (`2` after `1`, `1.2` after `1.1`). The blank line goes before that
+step’s comment (its declarations follow the comment).
+
+A parent step and its first nested step stay on adjacent lines (`1`, then
+`1.1` inside the loop). Those are different levels.

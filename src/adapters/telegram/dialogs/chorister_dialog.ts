@@ -20,6 +20,7 @@ import { register_user_assistant_tools } from "@src/components/ai/user_agent_too
 import { Runtime, RuntimeConfig } from "@src/runtime.js";
 import { AssistantConfig } from "@src/config.js";
 import { Environment } from "@src/components/environment.js";
+import { ScoreDownloads } from "@src/adapters/telegram/score_downloads.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -158,14 +159,7 @@ export class ChoristerDialog implements IChorister {
         // send only scores with files
         scores = scores.filter(score => score.file);
 
-        const buttons = scores.map(score => {
-            return this.user.create_keyboard_button(
-                score.name,
-                `download ${score.name} scores`,
-                () => this.do_download_scores(score),
-                3600
-            );
-        });
+        const buttons = scores.map(score => ScoreDownloads.create_button(score));
 
         const keyboard: TelegramBot.InlineKeyboardMarkup = {
             inline_keyboard: split_to_columns(buttons, 2)
@@ -275,15 +269,6 @@ export class ChoristerDialog implements IChorister {
         return Expected.ok(undefined);
     }
 
-    private async do_download_scores(score: Score): Promise<Status> {
-        this.journal.log().info(`downloading scores ${score.name}`);
-        const status = await ScoresActions.download_scores_request(this.user, score, this.journal);
-        if (!status.ok) {
-            return (await this.user.send_message(this.fail_to_send_file(this.user.info().lang))).as_status();
-        }
-        return status;
-    }
-
     private get_scores_list(lang: Language): string {
         switch (lang) {
             case Language.RU: return "Какие ноты тебе нужны?";
@@ -299,15 +284,6 @@ export class ChoristerDialog implements IChorister {
             case Language.EN:
             default:
                 return "No available scores";
-        }
-    }
-
-    private fail_to_send_file(lang: Language): string {
-        switch (lang) {
-            case Language.RU: return "Сори, что-то пошло не так...";
-            case Language.EN:
-            default:
-                return "Sorry, something went wrong...";
         }
     }
 

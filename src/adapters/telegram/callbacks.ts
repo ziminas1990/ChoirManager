@@ -44,6 +44,10 @@ export class TelegramCallbacks extends Logic<void> {
         return id;
     }
 
+    has_callback(id: string): boolean {
+        return this.callbacks.has(id);
+    }
+
     async on_callback(tg_callback: TelegramBot.CallbackQuery): Promise<Status> {
         this.journal.log().info(`On callback ${tg_callback.id} received (${tg_callback.data})`);
         if (tg_callback.data == undefined) {

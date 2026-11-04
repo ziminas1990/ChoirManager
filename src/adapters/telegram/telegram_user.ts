@@ -3,12 +3,13 @@ import TelegramBot from "node-telegram-bot-api";
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
-import { Role, UserData, is_guest_user, user_has_role, user_tg_username } from "@src/entities/user.js";
+import { Language, Role, UserData, is_guest_user, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { return_exception, return_fail } from "@src/utils.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { Environment } from "@src/components/environment.js";
 import { IcomingItem } from "./adapter.js";
 import { TelegramCallbacks } from "./callbacks.js";
+import { ScoreDownloads } from "./score_downloads.js";
 import { DepositOwnerDialog } from "./dialogs/deposit_owner_dialog.js";
 import { AccounterDialog } from "./dialogs/accounter_dialog.js";
 import { ChoristerDialog } from "./dialogs/chorister_dialog.js";
@@ -269,16 +270,19 @@ export class TelegramUser implements IUserAgent {
     }
 
     async proceed(now: Date): Promise<void> {
-        await this.maybe_update_user_info(now);
-        this.callbacks_registry.proceed(now);
+        try {
+            await this.maybe_update_user_info(now);
+        } catch (error) {
+            this.journal.log().warn({ error }, "Failed to refresh user info");
+        }
+        await this.callbacks_registry.proceed(now);
 
         if (this.queue.length == 0) {
             return;
         }
-        const main_dialog = this.get_main_dialog();
-
         for (const item of this.queue) {
             if (item.what == "message") {
+                const main_dialog = this.get_main_dialog();
                 if (main_dialog) {
                     const status = await main_dialog.on_message(item.message);
                     if (!status.ok) {
@@ -288,7 +292,7 @@ export class TelegramUser implements IUserAgent {
                     this.journal.log().warn("ignoring message: no main dialog");
                 }
             } else if (item.what == "callback") {
-                const status = await this.callbacks_registry.on_callback(item.callback);
+                const status = await this.handle_callback(item.callback);
                 if (!status.ok) {
                     this.journal.log().error(`Failed to handle callback: ${status.error}`);
                 }
@@ -313,6 +317,26 @@ export class TelegramUser implements IUserAgent {
             return;
         }
         this.user_info = resolved.value;
+    }
+
+    private async handle_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
+        try {
+            await this.bot?.answerCallbackQuery(query.id);
+        } catch (error) {
+            this.journal.log().warn({ error }, "Failed to answer callback query");
+        }
+
+        if (ScoreDownloads.matches(query.data)) {
+            return await ScoreDownloads.on_callback(query.data!, this, this.journal);
+        }
+        if (query.data && this.callbacks_registry.has_callback(query.data)) {
+            return await this.callbacks_registry.on_callback(query);
+        }
+
+        const message = this.user_info.lang === Language.RU
+            ? "Эта кнопка устарела или больше не распознаётся. Для скачивания нот открой новый список через «Скачать ноты». Если меню не видно, отправь /start."
+            : "This button has expired or is no longer recognized. To download scores, open a new list using Download scores. If the menu is missing, send /start.";
+        return (await this.send_message(message)).as_status();
     }
 
     private get_or_create_chorister_dialog(): Expected<ChoristerDialog> {

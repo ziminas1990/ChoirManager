@@ -11,7 +11,7 @@
     "build": "npm run compile && node build.js",
     "app": "node dist/app.cjs",
     "build_and_run": "npm run build && npm run app",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "autotests": "npm run compile && node --test tests",
     "firestore-updater": "node dist/tools/firestore_updater_new.js",
     "migrate-release-1": "node dist/tools/migrate_release_1.js"
   },

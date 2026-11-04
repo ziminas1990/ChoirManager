@@ -9,6 +9,7 @@ apply to your work; rules marked `alwaysApply` apply across the project.
   storage, service, and factory boundaries; always applies.
 - [typescript_codestyle.mdc](.cursor/rules/typescript_codestyle.mdc) — class
   member order and helper extraction; always applies.
+- [test-steps.mdc](.cursor/rules/test-steps.mdc) — read before adding or editing tests.
 - [docs-agent-guide.mdc](.cursor/rules/docs-agent-guide.mdc) — read
   [docs/AGENT.md](docs/AGENT.md) before working with documentation.
 - [task-writing.mdc](.cursor/rules/task-writing.mdc) — read before creating,
