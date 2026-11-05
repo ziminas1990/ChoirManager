@@ -33,6 +33,7 @@ import {
 import { RuntimeConfig } from "@src/runtime.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Formatting } from "@src/utils.js";
+import { verify_openai_model } from "@src/api/openai_models.js";
 
 export type TgAdapterConfigJson = {
     token_file: string;
@@ -147,7 +148,7 @@ export class AssistantConfig {
     constructor(private readonly json: AssistantConfigJson) {}
 
     get model(): string {
-        return this.json.model;
+        return this.json.model.toLowerCase();
     }
 
     get prompt_file(): string {
@@ -157,8 +158,9 @@ export class AssistantConfig {
     verify(): Status {
         const fail_prefix = "assistant misconfiguration";
 
-        if (!this.json.model) {
-            return Expected.err(`${fail_prefix}: 'model' MUST be specified`);
+        const model_status = verify_openai_model(this.json.model);
+        if (!model_status.ok) {
+            return model_status.wrap_error(fail_prefix);
         }
         if (!fs.existsSync(this.prompt_file)) {
             return Expected.err(`${fail_prefix}: 'prompt_file' does not exist: ${this.prompt_file}`);
@@ -177,7 +179,7 @@ export class ManagersChatAgentConfig {
     constructor(private readonly json: ManagersChatAgentConfigJson) {}
 
     get model(): string {
-        return this.json.model;
+        return this.json.model.toLowerCase();
     }
 
     get context_days(): number {
@@ -189,8 +191,9 @@ export class ManagersChatAgentConfig {
     }
 
     verify(): Status {
-        if (!this.json.model) {
-            return Expected.err("'model' MUST be specified");
+        const model_status = verify_openai_model(this.json.model);
+        if (!model_status.ok) {
+            return model_status;
         }
         if (!Number.isInteger(this.json.context_days) || this.json.context_days <= 0) {
             return Expected.err("'context_days' MUST be a positive integer");

@@ -22,10 +22,13 @@ export type Message = {
 } | {
     role: "assistant",
     content: string,
+    // Opaque provider output preserves reasoning and continuation metadata.
+    provider_data?: { openai_responses: Record<string, unknown>[] };
 } | {
     role: "tool_calls";
     content?: string;
     reasoning_content?: string;
+    provider_data?: { openai_responses: Record<string, unknown>[] };
     calls: {
         tool_call_id: string;
         name: string;

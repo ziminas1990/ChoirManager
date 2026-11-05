@@ -1,4 +1,5 @@
 import fs from "fs";
+import { verify_openai_model } from "@src/api/openai_models.js";
 
 import {
     ScoresStorageConfig,
@@ -33,7 +34,7 @@ export class ScoresServiceConfig {
     }
 
     get model(): string {
-        return this.json.model;
+        return this.json.model.toLowerCase();
     }
 
     get search_prompt_file(): string {
@@ -63,8 +64,9 @@ export class ScoresServiceConfig {
             return Expected.err("'fetch_interval_sec' MUST be at least 60 seconds");
         }
 
-        if (!this.json.model) {
-            return Expected.err("'model' MUST be specified");
+        const model_status = verify_openai_model(this.json.model);
+        if (!model_status.ok) {
+            return model_status;
         }
         if (!this.json.search_prompt_file) {
             return Expected.err("'search_prompt_file' MUST be specified");

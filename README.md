@@ -1,6 +1,10 @@
-## Update docker image
+# Update docker image
+
+Language-model choices, required configuration, and deprecated models are described
+in the [deployment guide](docs/deployment_guide.md#language-models).
 
 To update:
+
 ```bash
 docker build --network=host -t ursa-major-agent .
 docker tag ursa-major-agent ziminas1990/ursa-major-agent:latest
@@ -8,12 +12,15 @@ docker push ziminas1990/ursa-major-agent:latest
 ```
 
 ## Prepare the server (ubuntu 24.04)
+
 If failed to login by copy-paste password, try this:
+
 ```bash
 sshpass -p "..." ssh root@185.170.213.27
 ```
 
 Run the following commands to install docker:
+
 ```bash
 apt update
 apt install -y ca-certificates curl gnupg
@@ -28,10 +35,10 @@ apt update
 apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-
 ## Run docker image on server
 
 To run:
+
 ```bash
 mkdir -p config
 mkdir -p logs
@@ -51,6 +58,7 @@ docker run -ti --network=host \
 ```
 
 To restart (without update):
+
 ```bash
 docker kill ursa-major-agent
 docker rm ursa-major-agent
@@ -58,10 +66,12 @@ docker run -ti --network=host \
        -v $(pwd)/config:/mnt/config \
        -v $(pwd)/logs:/mnt/logs \
        -d --name ursa-major-agent --restart unless-stopped \
-       ziminas1990/ursa-major-agent:latest
+       ziminas1990
+       /ursa-major-agent:latest
 ```
 
 For local run:
+
 ```bash
 docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config -v $(pwd)/logs:/mnt/logs --name ursa-major-agent ursa-major-agent:latest
 ```
@@ -69,6 +79,7 @@ docker run -ti --rm --network=host -v $(pwd)/config:/mnt/config -v $(pwd)/logs:/
 The image also contains the release 1 migration command (`node migrate.cjs`). The update and rollback steps are in [docs/release_1_update.md](docs/release_1_update.md).
 
 ## Things to be done:
+
 * ignore all messages, received during the startup
 * notifications about new applications
 * notifications about new feedback
@@ -81,6 +92,7 @@ The image also contains the release 1 migration command (`node migrate.cjs`). Th
 ## Useful
 
 Regex to find all imports with no ".js" specified:
+
 ```regex
 import.*from\s+["']@([^"']*?)(?<!\.js)["']
 ```
