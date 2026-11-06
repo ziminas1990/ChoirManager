@@ -28,10 +28,5 @@ Promise.all([
     ...shared,
     entryPoints: ['./dist/app.js'],
     outfile: 'dist/app.cjs',
-  }),
-  build({
-    ...shared,
-    entryPoints: ['./dist/tools/migrate_release_1.js'],
-    outfile: 'dist/migrate.cjs',
-  }),
+  })
 ]).catch(() => process.exit(1));

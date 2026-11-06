@@ -15,6 +15,7 @@ import { AccounterDialog } from "./dialogs/accounter_dialog.js";
 import { ChoristerDialog } from "./dialogs/chorister_dialog.js";
 import { GuestDialog } from "./dialogs/guest_dialog.js";
 import { AdminDialog } from "./dialogs/admin_dialog.js";
+import { ChoristerStatisticsWidget } from "./widgets/chorister_statistics.js";
 import { ConfirmationWidget } from "./widgets/confirmation.js";
 import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { AssistantConfig } from "@src/config.js";
@@ -326,6 +327,9 @@ export class TelegramUser implements IUserAgent {
             this.journal.log().warn({ error }, "Failed to answer callback query");
         }
 
+        if (ChoristerStatisticsWidget.matches(query.data)) {
+            return await ChoristerStatisticsWidget.on_callback(query, this, this.journal);
+        }
         if (ScoreDownloads.matches(query.data)) {
             return await ScoreDownloads.on_callback(query.data!, this, this.journal);
         }
@@ -334,8 +338,8 @@ export class TelegramUser implements IUserAgent {
         }
 
         const message = this.user_info.lang === Language.RU
-            ? "Эта кнопка устарела или больше не распознаётся. Для скачивания нот открой новый список через «Скачать ноты». Если меню не видно, отправь /start."
-            : "This button has expired or is no longer recognized. To download scores, open a new list using Download scores. If the menu is missing, send /start.";
+            ? "Эта кнопка устарела или больше не распознаётся."
+            : "This button has expired or is no longer recognized.";
         return (await this.send_message(message)).as_status();
     }
 

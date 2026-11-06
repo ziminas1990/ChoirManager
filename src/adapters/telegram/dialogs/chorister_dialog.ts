@@ -265,7 +265,6 @@ export class ChoristerDialog implements IChorister {
         if (!status.ok) {
             return status.wrap_error("failed to start statistics activity");
         }
-        this.widgets.unshift(statistics_widget);
         return Expected.ok(undefined);
     }
 

@@ -319,9 +319,10 @@ test("a periodic profile refresh failure still lets a button report download fai
     }
 });
 
-test("an expired legacy button gives feedback and recovery instructions", async () => {
+test("an expired legacy button gives unavailable-button feedback", async () => {
     // Motivation: old score lists retain buttons after registry expiration;
-    // Telegram must offer a way forward rather than leaving a silent dead end.
+    // Telegram must explain that the action is unavailable rather than fail
+    // silently.
 
     // 1. create a user and a legacy button with a one-hour lifetime
     let context;
@@ -340,20 +341,26 @@ test("an expired legacy button gives feedback and recovery instructions", async 
         await click(context, legacy.callback_data, new Date(Date.now() + 3601_000));
     }
 
-    // 3. verify localized recovery guidance without invoking the old handler
+    // 3. verify localized feedback without invoking the old handler
     {
         assert.equal(called, false);
         assert_no_link(context.state);
         assert.match(context.state.messages[0].text,
-            /устарела.*Скачать ноты.*\/start/);
+            /устарела.*не распознаётся/);
         assert.equal(context.state.answers.length, 1);
     }
 });
 
-for (const data of ["old-handler-id", "score:v2:unknown", undefined, "score:v1:invalid"]) {
+for (const [data, feedback] of [
+    ["old-handler-id", /expired or is no longer recognized/],
+    ["score:v2:unknown", /expired or is no longer recognized/],
+    [undefined, /expired or is no longer recognized/],
+    ["score:v1:invalid", /Download scores/],
+]) {
     test(`unrecognized button data gives useful feedback (${data})`, async () => {
         // Motivation: Telegram can deliver obsolete or malformed button data;
-        // routing must acknowledge it and explain how to obtain a usable list.
+        // routing must acknowledge it and explain why the action is
+        // unavailable.
 
         // 1. create a user with an empty callback registry
         let context;
@@ -366,10 +373,10 @@ for (const data of ["old-handler-id", "score:v2:unknown", undefined, "score:v1:i
             await click(context, data);
         }
 
-        // 3. verify acknowledgement and recovery guidance without a link
+        // 3. verify acknowledgement and appropriate feedback without a link
         {
             assert_no_link(context.state);
-            assert.match(context.state.messages[0].text, /Download scores/);
+            assert.match(context.state.messages[0].text, feedback);
             assert.equal(context.state.answers.length, 1);
         }
     });

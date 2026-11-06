@@ -1,187 +1,180 @@
 import TelegramBot from "node-telegram-bot-api";
 
-import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { ChoristerAttendanceStat } from "@src/entities/statistics.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Journal } from "@src/journal.js";
-import { Language, user_tg_username } from "@src/entities/user.js";
+import { Language, Role, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { apply_interval, GlobalFormatter, shorten } from "@src/utils.js";
 import { Analytic } from "@src/use_cases/analytic.js";
 import { Runtime } from "@src/runtime.js";
+import { Environment } from "@src/components/environment.js";
 
+type StatisticsAction =
+    | { type: "close" }
+    | { type: "period"; days: number | undefined };
 
-export class ChoristerStatisticsWidget implements AbstractWidget {
+export class ChoristerStatisticsWidget {
+    private static readonly prefix = "stats:v1:";
+    private static readonly period_days = [30, 60, 90, 180] as const;
+    private readonly journal: Journal;
 
-    private journal: Journal;
-    private data?: ChoristerAttendanceStat;
-
-    private _buttons?: {
-        month: TelegramBot.InlineKeyboardButton;
-        two_month: TelegramBot.InlineKeyboardButton;
-        three_month: TelegramBot.InlineKeyboardButton;
-        six_month: TelegramBot.InlineKeyboardButton;
-        all_time: TelegramBot.InlineKeyboardButton;
-        close: TelegramBot.InlineKeyboardButton;
-    };
-    private message_id?: number;
-
-    constructor(private user: TelegramUser, parent_journal: Journal)
-    {
+    constructor(
+        private readonly user: TelegramUser,
+        parent_journal: Journal,
+        private readonly message_id?: number,
+    ) {
         this.journal = parent_journal.child("activity.statistics");
     }
 
+    static matches(data: string | undefined): boolean {
+        return data?.startsWith("stats:") ?? false;
+    }
+
+    static async on_callback(
+        query: TelegramBot.CallbackQuery,
+        user: TelegramUser,
+        journal: Journal,
+    ): Promise<Status> {
+        const action = this.parse_action(query.data);
+        const message = Helpers.callback_private_message(query, user);
+        if (!action || !message.ok) {
+            await user.send_message(Messages.unavailable(user.info().lang));
+            return action
+                ? message.as_status()
+                : Expected.err("unsupported statistics callback action");
+        }
+
+        if (action.type === "close") {
+            return await user.delete_message(message.value.message_id);
+        }
+        const widget = new ChoristerStatisticsWidget(
+            user, journal, message.value.message_id);
+        return await widget.show_statistics(action.days);
+    }
+
     async start(): Promise<Status> {
-        return await this.show_statictics(30);
-    }
-
-    async interrupt(): Promise<Status> { return Expected.ok(undefined); }
-
-    waits_for_message(): boolean { return false; }
-
-    async consume_message(_: TelegramBot.Message): Promise<Status> {
-        return Expected.ok(undefined);
-    }
-
-    // Return true if activity has finished
-    finished(): boolean { return this.message_id == undefined; }
-
-    private buttons() {
-        if (this._buttons) {
-            return this._buttons;
-        }
-
-        const lang = this.user.info().lang;
-        const text = (() => {
-            switch (lang) {
-                case Language.RU:
-                    return {
-                        month: "За 30 дней",
-                        two_month: "За 60 дней",
-                        three_month: "За 90 дней",
-                        six_month: "За 180 дней",
-                        all_time: "За все время",
-                        close: "❌",
-                    };
-                case Language.EN:
-                default:
-                    return {
-                        month: "For 30 days",
-                        two_month: "For 60 days",
-                        three_month: "For 90 days",
-                        six_month: "For 180 days",
-                        all_time: "All time",
-                        close: "❌",
-                    }
-            }
-        })();
-
-        this._buttons = {
-            month: this.user.create_keyboard_button(
-                text.month,
-                "month",
-                () => this.show_statictics(30)),
-            two_month: this.user.create_keyboard_button(
-                text.two_month,
-                "two_month",
-                () => this.show_statictics(60)),
-            three_month: this.user.create_keyboard_button(
-                text.three_month,
-                "three_month",
-                () => this.show_statictics(90)),
-            six_month: this.user.create_keyboard_button(
-                text.six_month,
-                "six_month",
-                () => this.show_statictics(180)),
-            all_time: this.user.create_keyboard_button(
-                text.all_time,
-                "all_time",
-                () => this.show_statictics()),
-            close: this.user.create_keyboard_button(
-                text.close,
-                "close",
-                () => this.on_cancel()),
-        }
-        return this._buttons;
+        return await this.show_statistics(30);
     }
 
     private get_inline_keyboard(): TelegramBot.InlineKeyboardButton[][] {
-        const buttons = this.buttons();
+        const ru = this.user.info().lang === Language.RU;
+        const period_button = (days: number): TelegramBot.InlineKeyboardButton => ({
+            text: ru ? `За ${days} дней` : `For ${days} days`,
+            callback_data: ChoristerStatisticsWidget.prefix + days,
+        });
+        const periods = ChoristerStatisticsWidget.period_days.map(period_button);
         return [
+            periods.slice(0, 2),
+            periods.slice(2),
             [
-                buttons.month,
-                buttons.two_month,
-            ],
-            [
-                buttons.three_month,
-                buttons.six_month,
-            ],
-            [
-                buttons.all_time,
-                buttons.close,
+                {
+                    text: ru ? "За все время" : "All time",
+                    callback_data: ChoristerStatisticsWidget.prefix + "all",
+                },
+                { text: "❌", callback_data: ChoristerStatisticsWidget.prefix + "close" },
             ],
         ];
     }
 
-    private async on_cancel(): Promise<Status> {
-        if (this.message_id) {
-            await this.user.delete_message(this.message_id);
+    private static parse_action(data: string | undefined): StatisticsAction | undefined {
+        if (!data?.startsWith(this.prefix)) {
+            return undefined;
         }
-        return Expected.ok(undefined);
+        const raw = data.slice(this.prefix.length);
+        if (raw === "close") {
+            return { type: "close" };
+        }
+        if (raw === "all") {
+            return { type: "period", days: undefined };
+        }
+        const days = Number.parseInt(raw, 10);
+        if (!Number.isSafeInteger(days) || String(days) !== raw
+            || !(this.period_days as readonly number[]).includes(days))
+        {
+            return undefined;
+        }
+        return { type: "period", days };
     }
 
-    private async show_statictics(period_days?: number): Promise<Status> {
+    private async show_statistics(period_days?: number): Promise<Status> {
         this.journal.log().info({ period_days }, "show statistics");
-
-        const end = new Date();
-        const begin = period_days
-            ? apply_interval(end, { days: -period_days })
-            : new Date(0);
-        const statistic = Analytic.chorister_statistic_request(
-            Runtime.get_instance().get_database(),
-            user_tg_username(this.user.info()),
-            this.user.info().voice,
-            begin,
-            end,
-        );
-        if (!statistic.ok) {
-            const status = await this.update_widget(Messages.fail_message(
-                this.user.info().lang
-            ));
-            if (!status.ok) {
-                return status.wrap_error("failed to update widget");
+        try {
+            const resolved = await Environment.global.user_service.resolve_user({
+                system_id: this.user.userid(),
+            });
+            if (!resolved.ok) {
+                return await this.report_failure(resolved.as_status());
             }
-            return statistic.wrap_error("failed to collect statistics");
-        }
+            const profile = resolved.value;
+            if (!profile || (!user_has_role(profile, Role.Chorister)
+                && !user_has_role(profile, Role.Manager)))
+            {
+                await this.user.send_message(Messages.access_denied(this.user.info().lang));
+                return Expected.err("user has no permission to view statistics");
+            }
+            this.user.set_user_info(profile);
 
-        this.data = statistic.value;
-        const text = Messages.statistics(this.data, this.user.info().lang);
-        return this.update_widget(text);
+            const end = new Date();
+            const begin = period_days
+                ? apply_interval(end, { days: -period_days })
+                : new Date(0);
+            const statistic = Analytic.chorister_statistic_request(
+                Runtime.get_instance().get_database(),
+                user_tg_username(profile),
+                profile.voice,
+                begin,
+                end,
+            );
+            if (!statistic.ok) {
+                return await this.report_failure(statistic.as_status());
+            }
+            const updated = await this.update_widget(
+                Messages.statistics(statistic.value, profile.lang));
+            return updated.ok ? updated : await this.report_failure(updated);
+        } catch (error) {
+            return await this.report_failure(Expected.exception("failed to collect statistics", error));
+        }
+    }
+
+    private async report_failure(status: Status): Promise<Status> {
+        this.journal.log().warn(`Statistics request failed: ${status.error}`);
+        await this.user.send_message(Messages.fail_message(this.user.info().lang));
+        return status;
     }
 
     private async update_widget(text: string): Promise<Status> {
-        if (!this.message_id) {
-            const status = await this.user.send_message(text, {
-                reply_markup: {
-                    inline_keyboard: this.get_inline_keyboard(),
-                },
-            });
-            if (!status.ok) {
-                return status.wrap_error("failed to send message");
-            }
-            this.message_id = status.value;
-            return Expected.ok(undefined);
-        } else {
-            return await this.user.edit_message(this.message_id, {
-                text: text,
-                inline_keyboard: this.get_inline_keyboard(),
-            });
+        const keyboard = this.get_inline_keyboard();
+        if (this.message_id === undefined) {
+            return (await this.user.send_message(text, {
+                reply_markup: { inline_keyboard: keyboard },
+            })).as_status();
         }
+        const updated = await this.user.edit_message(this.message_id, {
+            text,
+            inline_keyboard: keyboard,
+        });
+        // Repeated clicks can produce identical text and keyboard contents.
+        if (!updated.ok && updated.error.includes("message is not modified")) {
+            return Expected.ok(undefined);
+        }
+        return updated;
     }
-
 }
 
 class Messages {
+    static access_denied(lang: Language): string {
+        return lang === Language.RU
+            ? "У тебя нет доступа к статистике. Обратись к руководителю хора, чтобы уточнить права доступа."
+            : "You do not have permission to view statistics. Contact the choir manager to check your access.";
+    }
+
+    static unavailable(lang: Language): string {
+        return lang === Language.RU
+            ? "Эта кнопка статистики недоступна. Открой новый виджет через «Статистика»."
+            : "This statistics button is unavailable. Open a new widget using Statistics.";
+    }
+
     static statistics(data: ChoristerAttendanceStat, lang: Language): string {
         const parts = (() => {
             switch (lang) {
@@ -255,4 +248,31 @@ class Messages {
         }
     }
 
+}
+
+class Helpers {
+    // Returns the callback message when it is a private chat owned by the user
+    // with a usable message id.
+    static callback_private_message(
+        query: TelegramBot.CallbackQuery,
+        user: TelegramUser,
+    ): Expected<TelegramBot.Message> {
+        const message = query.message;
+        if (!message) {
+            return Expected.err("callback has no message");
+        }
+        if (message.chat.type !== "private") {
+            return Expected.err("callback message is not from a private chat");
+        }
+        if (message.chat.id !== user.private_chat_id()) {
+            return Expected.err("callback chat does not belong to the user");
+        }
+        if (query.from.id !== message.chat.id) {
+            return Expected.err("callback sender does not match the chat owner");
+        }
+        if (!Number.isSafeInteger(message.message_id) || message.message_id <= 0) {
+            return Expected.err("callback message id is invalid");
+        }
+        return Expected.ok(message);
+    }
 }
