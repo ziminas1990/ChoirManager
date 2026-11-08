@@ -1,4 +1,4 @@
-import { Role } from "@src/entities/user.js";
+import { Role, user_has_role } from "@src/entities/user.js";
 import { MANAGERS_MEMORY_GROUP_ID } from "@src/entities/memory.js";
 import { IAdministrationService } from "@src/interfaces/administration_service.js";
 import { IToolchain } from "@src/interfaces/llm.js";
@@ -94,7 +94,8 @@ export class ChoristerToolsManager {
             }
             // Track successful registrations so an interrupted update can be retried.
             while (state.registered < state.tools.length) {
-                const status = this.multiplexer.add_tool(state.tools[state.registered]);
+                const status = this.multiplexer.add_tool(
+                    state.tools[state.registered], () => this.check_access(role));
                 if (!status.ok) {
                     return status.wrap_error(`failed to add tools for role '${role}'`);
                 }
@@ -104,15 +105,45 @@ export class ChoristerToolsManager {
         return Expected.ok(undefined);
     }
 
+    private check_access(required_roles?: Role | readonly Role[]): Status {
+        try {
+            if (!this.services.users) {
+                return Expected.err("user service is not configured");
+            }
+            const resolved = this.services.users.resolve_user({
+                system_id: this.user.userid()
+            });
+            if (!resolved.ok) {
+                return resolved.wrap_error("failed to resolve current user permissions");
+            }
+            if (!resolved.value) {
+                return Expected.err(`user '${this.user.userid()}' not found`);
+            }
+
+            if (resolved.value.roles.length === 0) {
+                return Expected.err("user has no permission to use membership tools");
+            }
+            if (required_roles !== undefined && !user_has_role(resolved.value, required_roles)) {
+                return Expected.err("user has no permission to use this tool");
+            }
+            return Expected.ok(undefined);
+        } catch (error) {
+            return Expected.exception("failed to resolve current user permissions", error);
+        }
+    }
+
     private register_base_tools(dependencies: ChoristerToolsDependencies): Status {
-        const tools = [
-            new MessengerTools({ send_message: dependencies.send_message }),
-            new ScoresTools(this.user, this.journal),
-            new DepositManagerTools(this.user, this.journal),
-            new FeedbackTools(dependencies.start_feedback),
+        const tools: { toolchain: IToolchain; roles?: Role[] }[] = [
+            { toolchain: new MessengerTools({ send_message: dependencies.send_message }) },
+            {
+                toolchain: new ScoresTools(this.user, this.journal),
+                roles: [Role.Chorister, Role.Conductor, Role.Manager],
+            },
+            { toolchain: new DepositManagerTools(this.user, this.journal), roles: [Role.Chorister] },
+            { toolchain: new FeedbackTools(dependencies.start_feedback) },
         ];
-        for (const tool of tools) {
-            const status = this.multiplexer.add_tool(tool);
+        for (const { toolchain, roles } of tools) {
+            const status = this.multiplexer.add_tool(toolchain, () => this.check_access(roles));
             if (!status.ok) {
                 return status.wrap_error("failed to register assistant tool");
             }

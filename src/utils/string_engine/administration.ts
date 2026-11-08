@@ -21,6 +21,16 @@ export function render_confirmation(operation: AdministrationOperation): string 
         ].join("\n");
     }
 
+    if (operation.what === "remove_member") {
+        return [
+            "Подтвердите исключение участника:",
+            "",
+            escape_html(format_identity(operation.target)),
+            format_labeled_value("Текущие роли", format_roles_list(operation.target.roles)),
+            "Все роли будут отозваны. Профиль и история сохранятся.",
+        ].join("\n");
+    }
+
     // Roleless profiles already exist. Adding one is neither a new user nor a
     // change to a member, so the header says which case this is.
     const header = is_guest_user(operation.target)
@@ -55,6 +65,15 @@ export function render_result(result: OperationResult): string {
             "Пользователь создан:",
             "",
             ...format_user_lines(result.user, true),
+        ].join("\n");
+    }
+
+    if (result.what === "member_removed") {
+        return [
+            "Участник исключён:",
+            "",
+            escape_html(format_identity(result.after)),
+            "Все роли отозваны. Профиль и история сохранены.",
         ].join("\n");
     }
 

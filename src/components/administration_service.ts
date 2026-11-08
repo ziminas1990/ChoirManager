@@ -82,6 +82,29 @@ export class AdministrationService extends Logic<void> implements IAdministratio
         return this.enqueue(actor.value, now, operation.value);
     }
 
+    async request_remove_member(
+        actor_id: string,
+        system_id: string,
+    ): Promise<Expected<PendingOperation>> {
+        const now = new Date();
+        const actor = await this.require_admin(actor_id);
+        if (!actor.ok) {
+            return actor.cast_error();
+        }
+
+        const limit_status = this.ensure_pending_capacity(actor_id, now);
+        if (!limit_status.ok) {
+            return limit_status.cast_error();
+        }
+
+        const operation = await this.plan_remove_member(actor_id, system_id);
+        if (!operation.ok) {
+            return operation.cast_error();
+        }
+
+        return this.enqueue(actor.value, now, operation.value);
+    }
+
     async confirm(actor_id: string, operation_id: string): Promise<Expected<OperationResult>> {
         const actor = await this.require_admin(actor_id);
         if (!actor.ok) {
@@ -89,17 +112,15 @@ export class AdministrationService extends Logic<void> implements IAdministratio
             if (!actor.is_error([AdministrationError.ActorResolveFailed])) {
                 this.drop_pending_if_initiator(actor_id, operation_id);
             }
-            return actor.cast_error<OperationResult>();
+            return actor.cast_error();
         }
 
         const pending = this.take_if_actionable(actor_id, operation_id, new Date());
         if (!pending.ok) {
-            return pending.cast_error<OperationResult>();
+            return pending.cast_error();
         }
 
-        const applied = pending.value.operation.what === "create_user"
-            ? await this.apply_create(pending.value.operation)
-            : await this.apply_update(actor_id, pending.value.operation);
+        const applied = await this.apply_operation(actor_id, pending.value.operation);
         if (!applied.ok) {
             this.journal.log().warn(
                 `Failed to apply ${pending.value.operation.what} ${pending.value.id}: ${applied.error}`,
@@ -262,6 +283,45 @@ export class AdministrationService extends Logic<void> implements IAdministratio
         });
     }
 
+    private async plan_remove_member(
+        actor_id: string,
+        system_id: string,
+    ): Promise<Expected<AdministrationOperation>> {
+        if (actor_id === system_id) {
+            return Expected.err("cannot remove yourself from membership");
+        }
+
+        const target = await this.users.resolve_user({ system_id });
+        if (!target.ok) {
+            return target.wrap_error("failed to resolve target user");
+        }
+        if (!target.value) {
+            return Expected.err(`user '${system_id}' not found`);
+        }
+        if (is_guest_user(target.value)) {
+            return Expected.err("user is not a member");
+        }
+
+        return Expected.ok({
+            what: "remove_member",
+            target: Helpers.clone_user(target.value),
+        });
+    }
+
+    private async apply_operation(
+        actor_id: string,
+        operation: AdministrationOperation,
+    ): Promise<Expected<OperationResult>> {
+        switch (operation.what) {
+            case "create_user":
+                return this.apply_create(operation);
+            case "update_user":
+                return this.apply_update(actor_id, operation);
+            case "remove_member":
+                return this.apply_remove_member(actor_id, operation);
+        }
+    }
+
     private async apply_create(
         operation: Extract<AdministrationOperation, { what: "create_user" }>,
     ): Promise<Expected<OperationResult>> {
@@ -308,6 +368,38 @@ export class AdministrationService extends Logic<void> implements IAdministratio
             before: Helpers.clone_user(preview.value.current),
             after: Helpers.clone_user(updated.value),
             patch: structuredClone(operation.patch),
+        });
+    }
+
+    private async apply_remove_member(
+        actor_id: string,
+        operation: Extract<AdministrationOperation, { what: "remove_member" }>,
+    ): Promise<Expected<OperationResult>> {
+        const system_id = operation.target.id.system_id;
+        if (actor_id === system_id) {
+            return Expected.err("cannot remove yourself from membership");
+        }
+
+        const patch: UserCasPatch = {
+            roles: {
+                expected: [...operation.target.roles],
+                remove: operation.target.roles.map((value, index) => ({ index, value })),
+            },
+        };
+        const preview = await this.preview_update(system_id, patch);
+        if (!preview.ok) {
+            return preview.wrap_error("cannot remove member; create a new removal request");
+        }
+
+        const updated = await this.users.update(system_id, patch);
+        if (!updated.ok) {
+            return updated.wrap_error("failed to remove member; create a new removal request");
+        }
+
+        return Expected.ok({
+            what: "member_removed",
+            before: Helpers.clone_user(preview.value.current),
+            after: Helpers.clone_user(updated.value),
         });
     }
 
@@ -523,6 +615,12 @@ class Helpers {
             return {
                 what: "create_user",
                 user: Helpers.clone_user(operation.user),
+            };
+        }
+        if (operation.what === "remove_member") {
+            return {
+                what: "remove_member",
+                target: Helpers.clone_user(operation.target),
             };
         }
         return {

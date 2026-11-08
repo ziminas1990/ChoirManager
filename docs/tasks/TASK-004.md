@@ -2,7 +2,7 @@
 
 ## Background
 
-After [release 3](TASK-003.md), migration and membership management work. Technical gaps remain in linking historical data to users and handling the lifecycle of administrative actions. Close these gaps while preserving the behavior delivered in previous releases.
+After [release 3](./closed/TASK-003.md), migration and membership management work. Technical gaps remain in linking historical data to users and handling the lifecycle of administrative actions. Close these gaps while preserving the behavior delivered in previous releases.
 
 ## Require
 

@@ -12,12 +12,9 @@ export type PackedUserLogic = {
 };
 
 export class UserLogic extends Logic<void> {
-    private static readonly USER_REFRESH_INTERVAL_MS = 10_000;
-
     private journal: Journal;
 
     private agents: IUserAgent[] = [];
-    private last_user_refresh_at_ms: number | undefined;
 
     constructor(
         private readonly system_id: string,
@@ -30,7 +27,7 @@ export class UserLogic extends Logic<void> {
         super(proceed_interval_ms);
 
         const additional_tags: Record<string, any> = {};
-        if (this.has_no_roles()) {
+        if (is_guest_user(this.data)) {
             additional_tags.no_roles = true;
         }
 
@@ -45,27 +42,28 @@ export class UserLogic extends Logic<void> {
     }
 
     has_no_roles(): boolean {
-        return is_guest_user(this.data);
+        const current = this.refresh_user_data();
+        return !current || is_guest_user(current);
     }
 
     is_admin(): boolean {
-        return user_has_role(this.data, Role.Admin);
+        return this.has_role(Role.Admin);
     }
 
     is_accountant(): boolean {
-        return user_has_role(this.data, Role.Accountant);
+        return this.has_role(Role.Accountant);
     }
 
     is_member(): boolean {
-        return user_has_role(this.data, Role.Chorister) || user_has_role(this.data, Role.Conductor);
+        return this.has_role([Role.Chorister, Role.Conductor]);
     }
 
     is_chorister(): boolean {
-        return user_has_role(this.data, Role.Chorister);
+        return this.has_role(Role.Chorister);
     }
 
     is_ex_chorister(): boolean {
-        return user_has_role(this.data, Role.ExChorister);
+        return this.has_role(Role.ExChorister);
     }
 
     all_agents(): IUserAgent[] {
@@ -117,7 +115,7 @@ export class UserLogic extends Logic<void> {
     }
 
     async proceed_impl(now: Date, _interval_ms: number): Promise<Expected<void[]>> {
-        this.refresh_user_data_if_due(now);
+        this.refresh_user_data();
 
         for (const agent of this.agents) {
             await agent.proceed(now);
@@ -154,22 +152,26 @@ export class UserLogic extends Logic<void> {
         return Expected.ok(logic);
     }
 
-    // Reads UserServiceReplica at most once per USER_REFRESH_INTERVAL_MS.
-    private refresh_user_data_if_due(now: Date): void {
-        const now_ms = now.getTime();
-        if (this.last_user_refresh_at_ms !== undefined
-            && now_ms - this.last_user_refresh_at_ms < UserLogic.USER_REFRESH_INTERVAL_MS)
-        {
-            return;
-        }
+    private has_role(roles: Role | readonly Role[]): boolean {
+        const current = this.refresh_user_data();
+        return current !== undefined && user_has_role(current, roles);
+    }
 
-        this.last_user_refresh_at_ms = now_ms;
-
-        const resolved = this.users.resolve_user({
-            system_id: this.system_id,
-        });
-        if (resolved.ok && resolved.value) {
+    // Reads the local replica; failed lookups never authorize cached roles.
+    private refresh_user_data(): UserData | undefined {
+        try {
+            const resolved = this.users.resolve_user({ system_id: this.system_id });
+            if (!resolved.ok || !resolved.value) {
+                this.journal.log().warn({
+                    error: resolved.ok ? "user not found" : resolved.error,
+                }, "Failed to refresh current user data");
+                return undefined;
+            }
             this.data = resolved.value;
+            return this.data;
+        } catch (error) {
+            this.journal.log().warn({ error }, "Failed to refresh current user data");
+            return undefined;
         }
     }
 }

@@ -21,6 +21,10 @@ export type AdministrationOperation = {
     // Profile captured when the request was created. Display and CAS use it.
     target: UserData;
     patch: UserCasPatch;
+} | {
+    what: "remove_member";
+    // Profile and roles captured for confirmation and application checks.
+    target: UserData;
 };
 
 export type OperationResult =
@@ -32,6 +36,10 @@ export type OperationResult =
     before: UserData;
     after: UserData;
     patch: UserCasPatch;
+} | {
+    what: "member_removed";
+    before: UserData;
+    after: UserData;
 };
 
 export type PendingOperation = {
@@ -54,6 +62,11 @@ export interface IAdministrationService {
         actor_id: string,
         system_id: string,
         patch: UserCasPatch,
+    ): Promise<Expected<PendingOperation>>;
+
+    request_remove_member(
+        actor_id: string,
+        system_id: string,
     ): Promise<Expected<PendingOperation>>;
 
     confirm(actor_id: string, operation_id: string): Promise<Expected<OperationResult>>;

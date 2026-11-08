@@ -4,6 +4,13 @@ import { Expected, Status } from "@src/utils/expected.js";
 
 const LOG_RESULT_MAX_LEN = 500;
 
+type ToolAccessCheck = () => Status | Promise<Status>;
+
+type ToolRegistration = {
+    toolchain: IToolchain;
+    check_access?: ToolAccessCheck;
+};
+
 function truncate_for_log(text: string, max_len = LOG_RESULT_MAX_LEN): string {
     if (text.length <= max_len) {
         return text;
@@ -22,14 +29,16 @@ function validate_tool_name(name: string): Status {
 }
 
 export class ToolsMultiplexer implements IToolchain {
-    private name2toolchain: Map<string, IToolchain> = new Map();
-    private function2toolchain: Map<string, IToolchain> = new Map();
+    private name2toolchain: Map<string, ToolRegistration> = new Map();
+    private function2toolchain: Map<string, ToolRegistration> = new Map();
 
     private get_tools_cache?: Map<string, Tool>;
 
     constructor(private journal: Journal) {}
 
-    add_tool(toolchain: IToolchain): Status {
+    // The optional check runs before every function call in this toolchain.
+    // Omitting it leaves access unrestricted.
+    add_tool(toolchain: IToolchain, check_access?: ToolAccessCheck): Status {
         const status = validate_tool_name(toolchain.get_name());
         if (!status.ok) {
             return status.wrap_error("Invalid tool name");
@@ -46,9 +55,10 @@ export class ToolsMultiplexer implements IToolchain {
             }
         }
 
-        this.name2toolchain.set(toolchain.get_name(), toolchain);
+        const registration: ToolRegistration = { toolchain, check_access };
+        this.name2toolchain.set(toolchain.get_name(), registration);
         for (const tool of tools) {
-            this.function2toolchain.set(tool.name, toolchain);
+            this.function2toolchain.set(tool.name, registration);
         }
         this.get_tools_cache = undefined;
         return Expected.ok(undefined);
@@ -61,7 +71,7 @@ export class ToolsMultiplexer implements IToolchain {
             return Expected.err(`Toolchain '${name}' is not registered`);
         }
 
-        for (const tool of registered.get_tools().values()) {
+        for (const tool of registered.toolchain.get_tools().values()) {
             this.function2toolchain.delete(tool.name);
         }
         this.name2toolchain.delete(name);
@@ -75,6 +85,7 @@ export class ToolsMultiplexer implements IToolchain {
 
     get_readme(): string {
         const all = Array.from(this.name2toolchain.values())
+            .map(registration => registration.toolchain)
             .sort((a, b) => a.get_name().localeCompare(b.get_name()));
 
         const readme = [
@@ -91,6 +102,7 @@ export class ToolsMultiplexer implements IToolchain {
 
     get_use_cases(): string {
         const all = Array.from(this.name2toolchain.values())
+            .map(registration => registration.toolchain)
             .sort((a, b) => a.get_name().localeCompare(b.get_name()));
 
         const use_cases = all
@@ -129,7 +141,7 @@ export class ToolsMultiplexer implements IToolchain {
 
         const all = Array.from(this.name2toolchain.values());
         this.get_tools_cache = new Map<string, Tool>();
-        for (const toolchain of all) {
+        for (const { toolchain } of all) {
             toolchain.get_tools().forEach((tool) => {
                 this.get_tools_cache!.set(tool.name, tool);
             });
@@ -140,12 +152,29 @@ export class ToolsMultiplexer implements IToolchain {
     async call_tool(name: string, parameters: Record<string, unknown>)
     : Promise<Expected<string>>
     {
-        const toolchain = this.function2toolchain.get(name);
-        if (toolchain === undefined) {
+        const registration = this.function2toolchain.get(name);
+        if (registration === undefined) {
             this.journal.log().error({ tool: name, parameters }, `tool '${name}' not found`);
             return Expected.err(`Function '${name}' not found`);
         }
 
+        if (registration.check_access) {
+            let authorized: Status;
+            try {
+                authorized = await registration.check_access();
+            } catch (error) {
+                authorized = Expected.exception("tool access check failed", error);
+            }
+            if (!authorized.ok) {
+                this.journal.log().warn({ tool: name, error: authorized.error }, "tool access denied");
+                return authorized.cast_error();
+            }
+            if (this.function2toolchain.get(name) !== registration) {
+                return Expected.err(`Function '${name}' is no longer registered`);
+            }
+        }
+
+        const toolchain = registration.toolchain;
         const started_at = Date.now();
         this.journal.log().info(
             { tool: name, toolchain: toolchain.get_name(), parameters },

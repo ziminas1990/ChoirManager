@@ -3,6 +3,8 @@ import { Expected, Status } from "@src/utils/expected.js";
 type CAS<T> = [expected: T, next: T];
 
 export type ArrayCAS<T> = {
+    // When provided, compare the entire array before applying any changes.
+    expected?: T[];
     remove?: { index: number, value: T }[];
     append?: T[];
     replace?: { index: number, patch: CAS<T> }[];
@@ -172,6 +174,12 @@ function apply_array<T, K extends keyof T>(
     path: string
 ): Status {
     const current_array = current[key] as ArrayElement<T[K]>[];
+
+    if (patch.expected !== undefined && !equal(current_array, patch.expected)) {
+        return Expected.err(
+            `${path}: conflict, expected ${describe(patch.expected)}, got ${describe(current_array)}`
+        );
+    }
 
     const claimed = new Map<number, string>();
     const claim = (index: number, op: string): Status => {

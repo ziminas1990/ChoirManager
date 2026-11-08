@@ -115,6 +115,34 @@ export class AdministratorWorkflows {
         return pending;
     }
 
+    // Creates a pending removal request. Confirmation runs separately.
+    static async request_remove_member(
+        env: {
+            agent: IUserAgent;
+            admin_svc?: IAdministrationService;
+        },
+        system_id: string,
+        journal: Journal,
+    ): Promise<Expected<PendingOperation>> {
+        const wf = journal.child("request_remove_member");
+        const agent = env.agent;
+        wf.log().info(`started by ${agent.userid()} for ${system_id}`);
+
+        const admin_svc = env.admin_svc
+            ?? Environment.global.maybe_administration_service;
+        if (!admin_svc) {
+            return return_fail("administration service is not configured", wf.log());
+        }
+
+        const pending = await admin_svc.request_remove_member(agent.userid(), system_id);
+        if (!pending.ok) {
+            wf.log().error(`request_remove_member failed: ${pending.error}`);
+            return pending.cast_error();
+        }
+        wf.log().info(`pending created: ${pending.value.id}`);
+        return pending;
+    }
+
     // Asks for confirmation, applies or rejects the request, and tells the admin
     // whether it was applied, rejected, expired, or failed.
     static async run_confirmation(

@@ -12,7 +12,7 @@ AI may search for users and create change requests. A change may be applied only
 
 Report whether a request was applied, rejected, expired, or failed. Granted permissions must take effect in the current session. A user with the Admin role must be able to access the administrative dialog without also holding Chorister or Manager roles.
 
-Requests may remain in memory for this release: a restart invalidates old requests. Full removal from membership is delivered in [release 3](../TASK-003.md). A general workflow engine and protection against concurrent writes are not required for this release.
+Requests may remain in memory for this release: a restart invalidates old requests. Full removal from membership is delivered in [release 3](./TASK-003.md). A general workflow engine and protection against concurrent writes are not required for this release.
 
 ## Acceptance
 

@@ -37,6 +37,7 @@ export class TelegramUser implements IUserAgent {
     private queue: IcomingItem[] = [];
     private bot?: TelegramBot;
     private callbacks_registry: TelegramCallbacks
+    private callback_roles: Set<Role>;
 
     private deposit_owner_dialog?: DepositOwnerDialog;
     private accounter_dialog?: AccounterDialog;
@@ -60,6 +61,7 @@ export class TelegramUser implements IUserAgent {
     ) {
         this.journal = parent_journal.child(`@${user_tg_username(this.user_info)}`);
         this.callbacks_registry = new TelegramCallbacks(this.journal);
+        this.callback_roles = new Set(user_info.roles);
         this.timings = {};
     }
 
@@ -80,7 +82,10 @@ export class TelegramUser implements IUserAgent {
 
     set_private_chat_id(chat_id: number) { this.chat_id = chat_id; }
 
-    set_user_info(user_info: UserData) { this.user_info = user_info; }
+    set_user_info(user_info: UserData): void {
+        this.maybe_invalidate_callbacks(user_info.roles);
+        this.user_info = user_info;
+    }
 
     put_incoming_item(item: IcomingItem) {
         this.queue.push(item);
@@ -288,6 +293,7 @@ export class TelegramUser implements IUserAgent {
             const refresh_status = this.refresh_user_info_from_cache();
             if (!refresh_status.ok) {
                 this.journal.log().warn({ error: refresh_status.error }, "Failed to refresh user info");
+                this.set_user_info({ ...this.user_info, roles: [] });
             }
             if (item.what == "message") {
                 const main_dialog = this.get_main_dialog();
@@ -326,7 +332,7 @@ export class TelegramUser implements IUserAgent {
         if (!resolved.ok || !resolved.value) {
             return;
         }
-        this.user_info = resolved.value;
+        this.set_user_info(resolved.value);
     }
 
     private refresh_user_info_from_cache(): Status {
@@ -338,7 +344,7 @@ export class TelegramUser implements IUserAgent {
             if (!resolved.value) {
                 return Expected.err(`user '${this.userid()}' not found in cache`);
             }
-            this.user_info = resolved.value;
+            this.set_user_info(resolved.value);
             const refreshed = this.chorister_dialog?.update_roles(resolved.value.roles);
             if (refreshed && !refreshed.ok) {
                 return refreshed.wrap_error("failed to refresh role tools");
@@ -347,6 +353,16 @@ export class TelegramUser implements IUserAgent {
         } catch (error) {
             return Expected.exception("exception", error);
         }
+    }
+
+    private maybe_invalidate_callbacks(new_roles: Role[]): void {
+        const roles = new Set(new_roles);
+        if (roles.size !== this.callback_roles.size
+            || [...roles].some(role => !this.callback_roles.has(role)))
+        {
+            this.callbacks_registry.clear();
+        }
+        this.callback_roles = roles;
     }
 
     private async handle_callback(query: TelegramBot.CallbackQuery, now: Date): Promise<Status> {

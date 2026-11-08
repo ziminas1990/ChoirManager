@@ -69,9 +69,9 @@ async function click(context, data, now = new Date()) {
     await context.user.proceed(now);
 }
 
-test("each queued callback reads current roles from the injected user replica", async () => {
-    // Motivation: a supplied replica must drive role refresh even without a
-    // global user service, including changes between events in the same queue.
+test("a role change between queued clicks invalidates the remaining callbacks", async () => {
+    // Motivation: an earlier callback can change roles, so later queued clicks
+    // must not run saved actions with permissions that have since changed.
 
     // 1. create a session with an injected replica and no global user service
     let context;
@@ -97,9 +97,8 @@ test("each queued callback reads current roles from the injected user replica", 
         }).callback_data;
     }
 
-    // 3. change the cached profile and process both clicks in one queue
+    // 3. process both clicks while the first changes the cached profile
     {
-        context.state.user = { ...context.state.user, roles: [Role.Chorister] };
         context.user.put_incoming_item({ what: "callback",
             callback: { id: "first", data: first, from: { id: 456 } } });
         context.user.put_incoming_item({ what: "callback",
@@ -107,11 +106,151 @@ test("each queued callback reads current roles from the injected user replica", 
         await context.user.proceed(new Date());
     }
 
-    // 4. verify each handler received the latest profile from the same replica
+    // 4. verify only the first handler ran and the next event refreshed roles
     {
-        assert.deepEqual(roles_seen, [[Role.Chorister], [Role.Manager]]);
+        assert.deepEqual(roles_seen, [[Role.Admin]]);
         assert.strictEqual(context.user.info(), context.state.user);
         assert.deepEqual(context.state.answers, ["first", "second"]);
+    }
+});
+
+for (const roles of [[], [Role.Manager], [Role.Admin, Role.Chorister]]) {
+    test(`saved callbacks are invalidated when roles change to ${JSON.stringify(roles)}`, async () => {
+        // Motivation: losing or gaining roles must invalidate saved closures
+        // before the first click, without affecting another user's buttons.
+
+        // 1. create independent sessions with saved callback buttons
+        let context;
+        let unaffected;
+        let old_button;
+        let unaffected_button;
+        let calls = 0;
+        let unaffected_calls = 0;
+        {
+            context = fixture();
+            unaffected = fixture();
+            old_button = context.user.create_keyboard_button("Old", "old", async () => {
+                calls += 1;
+                return Expected.ok(undefined);
+            });
+            unaffected_button = unaffected.user.create_keyboard_button(
+                "Unchanged", "unchanged", async () => {
+                    unaffected_calls += 1;
+                    return Expected.ok(undefined);
+                });
+        }
+
+        // 2. change only the target's roles and click both existing buttons
+        {
+            context.state.user = { ...context.state.user, roles };
+            await click(context, old_button.callback_data);
+            await click(unaffected, unaffected_button.callback_data);
+            assert.equal(calls, 0);
+            assert.equal(unaffected_calls, 1);
+            assert.equal(context.state.answers.length, 1);
+        }
+
+        // 3. restore the original roles and verify the old button stays invalid
+        {
+            context.state.user = { ...context.state.user, roles: [Role.Admin] };
+            await click(context, old_button.callback_data);
+            assert.equal(calls, 0);
+        }
+
+        // 4. issue a new button and verify the current session can use it
+        {
+            const button = context.user.create_keyboard_button("New", "new", async () => {
+                calls += 1;
+                return Expected.ok(undefined);
+            });
+            await click(context, button.callback_data);
+            assert.equal(calls, 1);
+            assert.deepEqual(context.state.messages, []);
+        }
+    });
+}
+
+for (const update of ["set_user_info", "periodic refresh"]) {
+    test(`${update} invalidates old buttons and preserves newly issued buttons`, async () => {
+        // Motivation: profile updates outside queue processing must invalidate
+        // old callbacks immediately without clearing subsequent registrations.
+
+        // 1. register a button and arm the periodic profile refresh
+        let context;
+        let old_button;
+        let old_calls = 0;
+        let new_calls = 0;
+        const now = new Date();
+        {
+            context = fixture();
+            await context.user.maybe_update_user_info(now);
+            old_button = context.user.create_keyboard_button("Old", "old", async () => {
+                old_calls += 1;
+                return Expected.ok(undefined);
+            });
+        }
+
+        // 2. update the profile through the selected path before the next event
+        {
+            context.state.user = { ...context.state.user, roles: [Role.Manager] };
+            if (update === "set_user_info") {
+                context.user.set_user_info(context.state.user);
+            } else {
+                await context.user.maybe_update_user_info(new Date(now.getTime() + 10_000));
+            }
+        }
+
+        // 3. register a button under the new roles and try both buttons
+        {
+            const button = context.user.create_keyboard_button("New", "new", async () => {
+                new_calls += 1;
+                return Expected.ok(undefined);
+            });
+            await click(context, old_button.callback_data);
+            await click(context, button.callback_data);
+        }
+
+        // 4. verify only the newly issued callback ran
+        {
+            assert.equal(old_calls, 0);
+            assert.equal(new_calls, 1);
+        }
+    });
+}
+
+test("profile edits and reordered or duplicate roles preserve saved callbacks", async () => {
+    // Motivation: refreshing a profile must not break working buttons when
+    // permissions are unchanged, even if the role array has a different shape.
+
+    // 1. create a session with two roles and a saved button
+    let context;
+    let button;
+    let calls = 0;
+    {
+        context = fixture();
+        context.state.user = { ...context.state.user, roles: [Role.Admin, Role.Manager] };
+        context.user.set_user_info(context.state.user);
+        button = context.user.create_keyboard_button("Keep", "keep", async () => {
+            calls += 1;
+            return Expected.ok(undefined);
+        });
+    }
+
+    // 2. change profile fields and reorder the same roles with a duplicate
+    {
+        context.state.user = {
+            ...context.state.user,
+            name: "Updated",
+            lang: Language.RU,
+            roles: [Role.Manager, Role.Admin, Role.Manager],
+        };
+        await click(context, button.callback_data);
+    }
+
+    // 3. verify the profile refreshed without invalidating the callback
+    {
+        assert.equal(calls, 1);
+        assert.strictEqual(context.user.info(), context.state.user);
     }
 });
 

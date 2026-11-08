@@ -3,7 +3,9 @@ description: TypeScript class structure and Helpers extraction
 alwaysApply: true
 ---
 
-# TypeScript class structure
+# TypeScript code style
+
+## TypeScript class structure
 
 Inside a class, declare members in this order:
 
@@ -12,7 +14,13 @@ Inside a class, declare members in this order:
 3. Public methods
 4. Private methods
 
-# Extract helpers
+## Type inference for errors
+
+Call `Expected.cast_error()` without an explicit type argument when the result
+type is inferred from context, such as a function's return type. Prefer
+`return result.cast_error();` over `return result.cast_error<T>();`.
+
+## Extract helpers
 
 Move a method into a file-local `Helpers` class when **all** of the following hold:
 

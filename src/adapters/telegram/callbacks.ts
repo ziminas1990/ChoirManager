@@ -81,6 +81,10 @@ export class TelegramCallbacks extends Logic<void> {
         return this.callbacks.delete(id);
     }
 
+    clear(): void {
+        this.callbacks.clear();
+    }
+
     private generate_id(): string {
         let id = "";
         do {
