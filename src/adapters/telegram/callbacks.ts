@@ -48,7 +48,7 @@ export class TelegramCallbacks extends Logic<void> {
         return this.callbacks.has(id);
     }
 
-    async on_callback(tg_callback: TelegramBot.CallbackQuery): Promise<Status> {
+    async on_callback(tg_callback: TelegramBot.CallbackQuery, now = new Date()): Promise<Status> {
         this.journal.log().info(`On callback ${tg_callback.id} received (${tg_callback.data})`);
         if (tg_callback.data == undefined) {
             this.journal.log().error(`Callback query has no data: ${tg_callback.id}`);
@@ -57,6 +57,11 @@ export class TelegramCallbacks extends Logic<void> {
         const id = tg_callback.data;
         const callback = this.callbacks.get(id);
         if (callback) {
+            if (callback.valid_until && callback.valid_until < now.getTime()) {
+                this.remove_callback(id);
+                this.journal.log().info(`callback ${id} expired`);
+                return Expected.ok(undefined);
+            }
             try {
                 const status = await callback.fn();
                 if (callback.single_shot) {

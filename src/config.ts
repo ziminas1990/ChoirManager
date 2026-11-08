@@ -249,7 +249,7 @@ export type BotConfigJson = {
     deposit_service?: DepositServiceConfigJson;
     attendance_tracker?: AttendanceTrackerConfigJson;
     rehersals_tracker?: RehersalsTrackerConfigJson;
-    assistant?: AssistantConfigJson;
+    assistant: AssistantConfigJson;
     feedback_storage?: FeedbackStorageConfig;
     rehersals_storage?: RehersalsStorageConfig;
     managers_chat?: ChatConfigJson;
@@ -270,7 +270,7 @@ export class BotConfig {
     public readonly deposit_service?: DepositServiceConfig;
     public readonly attendance_tracker?: AttendanceTrackerConfig;
     public readonly rehersals_tracker?: RehersalsTrackerConfig;
-    public readonly assistant?: AssistantConfig;
+    public readonly assistant: AssistantConfig;
     public readonly task_tracker?: TaskTrackerServiceConfig;
     public readonly administration_service?: AdministrationServiceConfig;
     public readonly simple_memory: SimpleMemoryServiceConfig;
@@ -307,9 +307,7 @@ export class BotConfig {
         if (json.rehersals_tracker != undefined) {
             this.rehersals_tracker = new RehersalsTrackerConfig(json.rehersals_tracker);
         }
-        if (json.assistant != undefined) {
-            this.assistant = new AssistantConfig(json.assistant);
-        }
+        this.assistant = new AssistantConfig(json.assistant);
         if (json.task_tracker != undefined) {
             this.task_tracker = new TaskTrackerServiceConfig(json.task_tracker);
         }
@@ -385,18 +383,16 @@ export class BotConfig {
             console.warn("'deposit_service' is not specifed, feature will be DISABLED");
         }
 
-        if (this.assistant) {
-            status = this.assistant.verify();
-            if (!status.ok) {
-                return status;
-            }
-        } else {
-            console.warn("'assistant' is not specifed, feature will be DISABLED");
+        if (!this.json.assistant) {
+            return Expected.err("'assistant' MUST be specified");
         }
-
-        if (this.assistant && !this.json.openai_api_key_file) {
-            console.warn(
-                "'assistant' is specifed, but 'openai_api_key_file' is not specifed, feature will be DISABLED"
+        status = this.assistant.verify();
+        if (!status.ok) {
+            return status;
+        }
+        if (!this.json.openai_api_key_file) {
+            return Expected.err(
+                "'assistant' is specified, but 'openai_api_key_file' is not specified"
             );
         }
 
@@ -449,10 +445,6 @@ export class BotConfig {
             if (!status.ok) {
                 return status.wrap_error("'administration_service' misconfiguration");
             }
-            console.warn(
-                "'administration_service' is configured but disabled in this release; "
-                + "the bot will not create users, remove users, or change roles",
-            );
         }
 
         if (!this.json.simple_memory) {
@@ -544,10 +536,6 @@ export class Config {
         return this.data.openai_api_key_file != undefined;
     }
 
-    static HasAssistant(): boolean {
-        return this.current_config().assistant != undefined;
-    }
-
     static HasScoresService(): boolean {
         return this.current_config().scores_service != undefined;
     }
@@ -589,11 +577,7 @@ export class Config {
     }
 
     static Assistant(): AssistantConfig {
-        const cfg = this.current_config().assistant;
-        if (!cfg) {
-            throw new Error("assistant is not specified!");
-        }
-        return cfg;
+        return this.current_config().assistant;
     }
 
     private static current_config(): BotConfig {

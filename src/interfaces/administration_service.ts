@@ -2,6 +2,15 @@ import { UserData } from "@src/entities/user.js";
 import { UserPatch } from "@src/interfaces/user_service.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
+// Codes on errors returned by IAdministrationService.
+export enum AdministrationError {
+    ActorResolveFailed = 1,
+    ActorNotFound,
+    ActorNotAdmin,
+    PendingNotFound,
+    PendingExpired,
+}
+
 export type UserCasPatch = UserPatch;
 
 export type AdministrationOperation = {
@@ -9,7 +18,8 @@ export type AdministrationOperation = {
     user: UserData;
 } | {
     what: "update_user";
-    system_id: string;
+    // Profile captured when the request was created. Display and CAS use it.
+    target: UserData;
     patch: UserCasPatch;
 };
 

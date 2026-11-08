@@ -1,6 +1,6 @@
 import { Role, UserData, UserId } from "@src/entities/user.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { CasPatch } from "@src/utils/patching.js";
+import { CasPatch } from "@src/utils/cas_patch.js";
 
 
 export type NewUserData = Omit<UserData, "id"> & {
@@ -38,8 +38,9 @@ export interface IUserService {
 }
 
 // Sync local-cache view for in-process callers (Runtime, etc.).
-// Mental model: it should be implemented over IUserService and keep local copy of all
-// users. Trade-off here is that local copy is not always up-to-date
+// Mental model: it should be implemented over IUserService and provide non-blocking
+// access to it's internal cache or have it's own cache. Trade-off here is that local
+// copy is not always up-to-date
 export interface IUserServiceReplica {
     // Refresh the cache from the collection.
     sync(): Promise<Status>;

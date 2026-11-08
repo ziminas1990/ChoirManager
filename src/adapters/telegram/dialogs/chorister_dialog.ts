@@ -10,15 +10,16 @@ import { AdminActions } from "@src/use_cases/admin_actions.js";
 import { GlobalFormatter, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
 import { ChoristerAgent } from "@src/components/ai/agents/chorister_agent.js";
 import { Score } from "@src/entities/score.js";
-import { Language } from "@src/entities/user.js";
+import { Language, Role } from "@src/entities/user.js";
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
 import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/chorister_statistics.js";
-import { register_user_assistant_tools } from "@src/components/ai/user_agent_tools_factory.js";
-import { Runtime, RuntimeConfig } from "@src/runtime.js";
+import { ChoristerToolsManager } from "@src/components/ai/chorister_tools_manager.js";
+import { RuntimeConfig } from "@src/runtime.js";
 import { AssistantConfig } from "@src/config.js";
+import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { Environment } from "@src/components/environment.js";
 import { ScoreDownloads } from "@src/adapters/telegram/score_downloads.js";
 
@@ -29,59 +30,59 @@ export class ChoristerDialog implements IChorister {
 
     private widgets: AbstractWidget[] = [];
 
-    static create(
-        user: TelegramUser,
-        runtime_config: RuntimeConfig,
-        parent_journal: Journal,
-        assistant_config?: AssistantConfig,
-    ): Expected<ChoristerDialog> {
-        const journal = parent_journal.child("chorister_dialog");
-        let dialog!: ChoristerDialog;
-
-        let assistant: ChoristerAgent | undefined;
-        if (assistant_config) {
-            try {
-                assistant = new ChoristerAgent(
-                    assistant_config,
-                    journal.child("assistant"),
-                );
-            } catch (e) {
-                return Expected.exception("failed to create chorister assistant", e);
-            }
-
-            const tools_status = register_user_assistant_tools(
-                assistant,
-                user,
-                user.info(),
-                journal,
-                {
-                    send_message: async (message: string) => dialog.send_assistant_message(message),
-                    start_feedback: async (details?: string) => dialog.start_feedback_activity(details),
-                },
-                {
-                    task_tracker: Environment.global.maybe_task_tracker_service,
-                    simple_memory: Environment.global.simple_memory_service,
-                    users: Runtime.get_instance().get_user_service_replica(),
-                    administration: Environment.global.maybe_administration_service,
-                },
-            );
-            if (!tools_status.ok) {
-                return tools_status.wrap_error("failed to create assistant tools");
-            }
-        }
-
-        dialog = new ChoristerDialog(user, runtime_config, journal, assistant);
-        return Expected.ok(dialog);
-    }
-
     constructor(
         private user: TelegramUser,
         private readonly runtime_config: RuntimeConfig,
         journal: Journal,
-        private readonly assistant?: ChoristerAgent,
+        private readonly assistant: ChoristerAgent,
+        private readonly tools_manager: ChoristerToolsManager,
     )
     {
         this.journal = journal;
+    }
+
+    static create(
+        user: TelegramUser,
+        runtime_config: RuntimeConfig,
+        users: IUserServiceReplica,
+        parent_journal: Journal,
+        assistant_config: AssistantConfig,
+    ): Expected<ChoristerDialog> {
+        const journal = parent_journal.child("chorister_dialog");
+        let dialog!: ChoristerDialog;
+
+        const tools = ChoristerToolsManager.create(
+            user,
+            user.info().roles,
+            journal,
+            {
+                send_message: async (message: string) => dialog.send_assistant_message(message),
+                start_feedback: async (details?: string) => dialog.start_feedback_activity(details),
+            },
+            {
+                task_tracker: Environment.global.maybe_task_tracker_service,
+                simple_memory: Environment.global.maybe_simple_memory_service,
+                users,
+                administration: Environment.global.maybe_administration_service,
+            },
+        );
+        if (!tools.ok) {
+            return tools.wrap_error("failed to create assistant tools");
+        }
+
+        let assistant: ChoristerAgent;
+        try {
+            assistant = new ChoristerAgent(
+                assistant_config,
+                tools.value.get_toolchain(),
+                journal.child("assistant"),
+            );
+        } catch (e) {
+            return Expected.exception("failed to create chorister assistant", e);
+        }
+
+        dialog = new ChoristerDialog(user, runtime_config, journal, assistant, tools.value);
+        return Expected.ok(dialog);
     }
 
     base(): IUserAgent {
@@ -144,7 +145,7 @@ export class ChoristerDialog implements IChorister {
         }
 
         return await this.with_typing_indicator(
-            async () => await this.dialog_with_assistant(text));
+            async () => await this.assistant.send_message(text));
     }
 
     // From IChorister
@@ -170,6 +171,10 @@ export class ChoristerDialog implements IChorister {
             {
                 reply_markup: keyboard,
             })).as_status();
+    }
+
+    update_roles(roles: readonly Role[]): Status {
+        return this.tools_manager.update_roles(roles);
     }
 
     // From IChorister
@@ -220,13 +225,6 @@ export class ChoristerDialog implements IChorister {
             reply_markup: this.get_keyboard(),
         });
         return status.as_status();
-    }
-
-    private async dialog_with_assistant(message: string): Promise<Status> {
-        if (!this.assistant) {
-            return Expected.ok(undefined);
-        }
-        return this.assistant.send_message(message);
     }
 
     private async on_service_message(text: string): Promise<Status> {
@@ -406,3 +404,4 @@ class Messages {
         return message.join("\n");
     }
 }
+

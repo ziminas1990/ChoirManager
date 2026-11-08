@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import { Language, Role, UserData, UserFields, Voice } from "@src/entities/user.js";
-import { IAdministrationService } from "@src/interfaces/administration_service.js";
+import {
+    IAdministrationService,
+    PendingOperation,
+} from "@src/interfaces/administration_service.js";
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { IUserServiceReplica, UserFindQuery } from "@src/interfaces/user_service.js";
@@ -100,15 +103,20 @@ If user asks to find, list, or identify a user:
 - never invent system_id; only use system_id values returned by users_find
 - never show system_id to the user unless they explicitly asked for it
 
-If user asks to create a user:
-- call user_create_request with the known fields
-- after that, do nothing until the next user request; the system handles all further communication
+If user asks to add or create a user:
+- always call users_find first, by telegram username or by name
+- if more than one user matches, ask a clarifying question instead of guessing
+- if one matching user is the intended person, call user_update_request with that system_id and the fields or roles to set
+- if no user matches, call user_create_request with the known fields
+- status "awaiting_confirmation" means the request was created; it does not mean the change was applied
+- after the request is created, do nothing until the next user request; the system handles confirmation and reports the outcome
 
 If user asks to change a user's profile or roles:
 - call users_find first unless system_id is already known from an earlier users_find in this conversation
 - if more than one user matches, ask a clarifying question instead of guessing
 - once identified, call user_update_request with that system_id and only the fields or roles that should change
-- after user_update_request, do nothing until the next user request; the system handles all further communication
+- status "awaiting_confirmation" means the request was created; it does not mean the change was applied
+- after the request is created, do nothing until the next user request; the system handles confirmation and reports the outcome
 
 If any administration tool call fails:
 - send a short message that the request could not be completed and include the error reason
@@ -134,7 +142,10 @@ export class AdministrationTools implements IToolchain {
         return [
             "Tools for looking up users and requesting create/update operations.",
             "users_find is read-only and returns system_id for later mutations.",
-            "user_create_request and user_update_request start a confirmation workflow.",
+            "Always call users_find by telegram username or name before adding a user.",
+            "If several users match, ask a clarifying question instead of guessing.",
+            "user_create_request and user_update_request only create a confirmation request.",
+            "A result status of awaiting_confirmation means the request was created, not that the change was applied.",
             "Never invent system_id; take it only from users_find.",
         ].join("\n");
     }
@@ -157,7 +168,9 @@ export class AdministrationTools implements IToolchain {
             ["user_create_request", tool_from_schema(
                 "user_create_request",
                 [
-                    "Request creating a user. Sends confirmation buttons to the admin.",
+                    "Request creating a user. Does not apply the change.",
+                    "Returns status awaiting_confirmation when the confirmation request is created.",
+                    "The bot then asks the admin to confirm and reports whether it was applied, rejected, expired, or failed.",
                 ].join("\n"),
                 user_create_request_schema,
             )],
@@ -165,8 +178,9 @@ export class AdministrationTools implements IToolchain {
                 "user_update_request",
                 [
                     "Request updating a user identified by system_id from users_find.",
-                    "Pass only fields and roles that should change.",
-                    "Sends confirmation buttons to the admin.",
+                    "Pass only fields and roles that should change. Does not apply the change.",
+                    "Returns status awaiting_confirmation when the confirmation request is created.",
+                    "The bot then asks the admin to confirm and reports whether it was applied, rejected, expired, or failed.",
                 ].join("\n"),
                 user_update_request_schema,
             )],
@@ -188,15 +202,17 @@ export class AdministrationTools implements IToolchain {
                 if (!parsed.ok) {
                     return Expected.err(parsed.error);
                 }
-                void AdministratorWorkflows.create_user(
+                const pending = await AdministratorWorkflows.request_create_user(
                     { agent: this.agent, admin_svc: this.admin_svc },
                     Helpers.to_user_fields(parsed.value),
                     parsed.value.roles ?? [],
                     this.journal,
-                ).catch((error) => {
-                    this.journal.log().error(error, "create_user workflow crashed");
-                });
-                return Expected.ok(return_success(true));
+                );
+                if (!pending.ok) {
+                    return Expected.err(pending.error);
+                }
+                this.start_confirmation(pending.value);
+                return Expected.ok(return_success({ status: "awaiting_confirmation" }));
             }
 
             if (name === "user_update_request") {
@@ -204,23 +220,45 @@ export class AdministrationTools implements IToolchain {
                 if (!parsed.ok) {
                     return Expected.err(parsed.error);
                 }
-                void AdministratorWorkflows.update_user(
+                const pending = await AdministratorWorkflows.request_update_user(
                     { agent: this.agent, admin_svc: this.admin_svc },
                     parsed.value.system_id,
                     Helpers.to_user_fields(parsed.value),
                     parsed.value.add_roles ?? [],
                     parsed.value.remove_roles ?? [],
                     this.journal,
-                ).catch((error) => {
-                    this.journal.log().error(error, "update_user workflow crashed");
-                });
-                return Expected.ok(return_success(true));
+                );
+                if (!pending.ok) {
+                    return Expected.err(pending.error);
+                }
+                this.start_confirmation(pending.value);
+                return Expected.ok(return_success({ status: "awaiting_confirmation" }));
             }
 
             return Expected.err(`Unknown tool: ${name}`);
         } catch (error) {
             return Expected.exception(`administration tool '${name}' failed`, error);
         }
+    }
+
+    private start_confirmation(pending: PendingOperation): void {
+        void AdministratorWorkflows.run_confirmation(
+            pending,
+            this.agent,
+            this.admin_svc,
+            this.journal,
+        ).then((status) => {
+            if (!status.ok) {
+                this.journal.log().error(
+                    `confirmation workflow failed for ${pending.id}: ${status.error}`,
+                );
+            }
+        }).catch((error: unknown) => {
+            this.journal.log().error(
+                error,
+                `confirmation workflow crashed for ${pending.id}`,
+            );
+        });
     }
 
     private find_users(query: UserFindQuery): Expected<string> {

@@ -2,7 +2,7 @@ import { Expected, Status } from "@src/utils/expected.js";
 
 type CAS<T> = [expected: T, next: T];
 
-type ArrayCAS<T> = {
+export type ArrayCAS<T> = {
     remove?: { index: number, value: T }[];
     append?: T[];
     replace?: { index: number, patch: CAS<T> }[];
@@ -19,26 +19,57 @@ export type CasPatch<T> = {
         : never;
 };
 
-export type PlainPatch<T> = {
-    [K in keyof T]?:
-        T[K] extends Atomic ? T[K]
-        : T[K] extends Array<infer U> ? U[]
-        : T[K] extends object ? PlainPatch<T[K]>
-        : never;
-};
+// Build a CAS array patch that turns `current` into the same *set* of atomics as
+// `desired`. Surviving values keep their slots; removed slots are reused via
+// replace when possible. Final order may differ from `desired`.
+export function build_array_cas_patch<T extends Atomic>(
+    current: readonly T[],
+    desired: readonly T[],
+): ArrayCAS<T> {
+    const current_set = new Set(current);
+    const desired_set = new Set(desired);
 
-export function apply_plain_patch<T extends object>(current: T, patch: PlainPatch<T>)
-: Expected<T> {
-    try {
-        const next = structuredClone(current);
-        const applied = apply_plain_object(next, patch, "");
-        if (!applied.ok) {
-            return applied.cast_error();
+    // A': values to add, in desired order (unique).
+    const to_add: T[] = [];
+    const seen_add = new Set<T>();
+    for (const value of desired) {
+        if (!current_set.has(value) && !seen_add.has(value)) {
+            to_add.push(value);
+            seen_add.add(value);
         }
-        return Expected.ok(next);
-    } catch (error) {
-        return Expected.exception("got exception", error);
     }
+
+    // D': values to remove, in current order (unique, with original indices).
+    const to_remove: { index: number, value: T }[] = [];
+    const seen_remove = new Set<T>();
+    for (let index = 0; index < current.length; index++) {
+        const value = current[index];
+        if (!desired_set.has(value) && !seen_remove.has(value)) {
+            to_remove.push({ index, value });
+            seen_remove.add(value);
+        }
+    }
+
+    const paired = Math.min(to_add.length, to_remove.length);
+    const replace: { index: number, patch: CAS<T> }[] = [];
+    for (let i = 0; i < paired; i++) {
+        replace.push({
+            index: to_remove[i].index,
+            patch: [to_remove[i].value, to_add[i]],
+        });
+    }
+
+    const patch: ArrayCAS<T> = {};
+    if (replace.length > 0) {
+        patch.replace = replace;
+    }
+    if (to_add.length > paired) {
+        patch.append = to_add.slice(paired);
+    }
+    if (to_remove.length > paired) {
+        patch.remove = to_remove.slice(paired);
+    }
+    return patch;
 }
 
 export function apply_cas_patch<T extends object>(current: T, patch: CasPatch<T>)
@@ -80,45 +111,6 @@ const patch: TestPatch = {
 };
 
 void patch;
-
-function apply_plain_object<T extends object>(current: T, patch: PlainPatch<T>, path: string)
-: Status
-{
-    for (const key of Object.keys(patch) as Array<keyof T>) {
-        const field_patch = patch[key];
-        if (field_patch === undefined) {
-            continue;
-        }
-
-        const field_path = path === "" ? String(key) : `${path}.${String(key)}`;
-        const applied = apply_plain_field(current, key, field_patch, field_path);
-        if (!applied.ok) {
-            return applied;
-        }
-    }
-    return Expected.ok(undefined);
-}
-
-function apply_plain_field<T extends object, K extends keyof T>(
-    current: T,
-    key: K,
-    patch: NonNullable<PlainPatch<T>[K]>,
-    path: string
-): Status {
-    const value = current[key];
-    if (Array.isArray(value) || Array.isArray(patch)) {
-        current[key] = patch as T[K];
-        return Expected.ok(undefined);
-    }
-    if (value !== null && typeof value === "object" && !is_atomic(value)) {
-        if (patch === null || typeof patch !== "object") {
-            return Expected.err(`${path}: expected a nested object patch`);
-        }
-        return apply_plain_object(value, patch as PlainPatch<typeof value>, path);
-    }
-    current[key] = patch as T[K];
-    return Expected.ok(undefined);
-}
 
 function apply_object<T extends object>(current: T, patch: CasPatch<T>, path: string)
 : Status

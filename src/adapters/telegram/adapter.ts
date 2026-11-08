@@ -22,6 +22,7 @@ import { RuntimeConfig } from "@src/runtime.js";
 import { Environment } from "@src/components/environment.js";
 import { PlainCollectionConfig, PlainCollectionFactory } from "@src/adapters/plain_collection/factory.js";
 import { IPlainCollection } from "@src/interfaces/plain_collection.js";
+import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { telegram_user_firestore_converter } from "@src/adapters/telegram/telegram_user_mapper.js";
 import {
     TelegramUserRecord,
@@ -43,10 +44,14 @@ export type IcomingItem = {
     callback: TelegramBot.CallbackQuery;
 }
 
-type TgAdapterDependencies = {
+type TgAdapterCfg = {
     deposit_presentation?: DepositPresentationConfig;
     runtime: RuntimeConfig;
-    assistant?: AssistantConfig;
+    assistant: AssistantConfig;
+}
+
+type TgAdapterEnv = {
+    users: IUserServiceReplica;
 }
 
 type PackedTgAdapter = {
@@ -73,12 +78,13 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
     public static unpack(
         cfg: Config,
-        dependencies: TgAdapterDependencies,
+        adapter_cfg: TgAdapterCfg,
+        env: TgAdapterEnv,
         packed: PackedTgAdapter,
         parent_journal: Journal)
     : TgAdapter
     {
-        const adapter = new TgAdapter(cfg, dependencies, parent_journal)
+        const adapter = new TgAdapter(cfg, adapter_cfg, env, parent_journal)
         adapter.unpack(packed);
         return adapter;
     }
@@ -99,7 +105,8 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
     constructor(
         private cfg: Config,
-        private readonly dependencies: TgAdapterDependencies,
+        private readonly adapter_cfg: TgAdapterCfg,
+        private readonly env: TgAdapterEnv,
         parent_journal: Journal,
     ) {
         super(50);
@@ -526,7 +533,8 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return resolved.cast_error();
         }
         const agent = new TelegramUser(
-            resolved.value, record.private_chat_id, this.dependencies, this.journal);
+            resolved.value, record.private_chat_id,
+            this.adapter_cfg, this.env, this.journal);
         this.users.set(telegram_id, agent);
 
         const telegram_username = record.telegram_username
@@ -558,7 +566,8 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
         this.journal.log().info(`Creating telegram agent for ${telegram_id}...`);
 
-        const new_user = new TelegramUser(user_data, chat_id, this.dependencies, this.journal);
+        const new_user = new TelegramUser(
+            user_data, chat_id, this.adapter_cfg, this.env, this.journal);
         const status = new_user.init(this.bot);
         if (!status.ok) {
             return status.wrap_error("initialization error");

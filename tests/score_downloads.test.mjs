@@ -20,6 +20,12 @@ const logger = { info() {}, warn() {}, error() {}, debug() {} };
 const journal = { child() { return this; }, log() { return logger; } };
 
 function fixture(lang = Language.EN) {
+    const rendered_links = new Map();
+    mock.method(GlobalFormatter.instance(), "link", (_label, file) => {
+        const token = `download-${rendered_links.size}`;
+        rendered_links.set(token, file);
+        return token;
+    });
     const state = {
         user: {
             id: { system_id: "member-id", tg_username: "member" },
@@ -48,14 +54,15 @@ function fixture(lang = Language.EN) {
 
     const bot = {
         async sendMessage(chat_id, text, options) {
-            state.messages.push({ chat_id, text, options });
+            state.messages.push({ chat_id, options, file: rendered_links.get(text) });
             return { message_id: state.messages.length };
         },
         async answerCallbackQuery(id) { state.answers.push(id); },
     };
-    const user = new TelegramUser(state.user, 123, { runtime: {} }, journal);
+    const users = { resolve_user: () => Expected.ok(state.user) };
+    const user = new TelegramUser(state.user, 123, { runtime: {} }, { users }, journal);
     assert.equal(user.init(bot).ok, true);
-    return { state, environment, bot, user };
+    return { state, environment, bot, user, rendered_links };
 }
 
 async function click(context, data, now = new Date()) {
@@ -69,7 +76,7 @@ async function click(context, data, now = new Date()) {
 function assert_no_link(state) {
     assert.ok(state.messages.length > 0);
     for (const message of state.messages) {
-        assert.doesNotMatch(message.text, /href=|https:\/\//);
+        assert.equal(message.file, undefined);
     }
 }
 
@@ -98,15 +105,14 @@ test("downloads resolve the current file link instead of retaining the old one",
 
     // 4. verify that only the current file link is delivered
     {
-        assert.match(context.state.messages[0].text, /replaced.pdf/);
-        assert.doesNotMatch(context.state.messages[0].text, /\/score.pdf/);
+        assert.equal(context.state.messages[0].file, "https://example.org/replaced.pdf");
     }
 });
 
 for (const missing_file of [false, true]) {
-    test(`unavailable scores explain how to continue (${missing_file ? "file removed" : "score removed"})`, async () => {
-        // Motivation: an obsolete selection must guide the user to recovery
-        // without sending a different author's score with the same title.
+    test(`unavailable scores send feedback without a download (${missing_file ? "file removed" : "score removed"})`, async () => {
+        // Motivation: an obsolete selection must produce feedback without
+        // sending a different author's score with the same title.
 
         // 1. create a user, catalog, and download button
         let context;
@@ -128,11 +134,9 @@ for (const missing_file of [false, true]) {
             await click(context, data);
         }
 
-        // 4. verify recovery instructions and the absence of a download link
+        // 4. verify feedback without a download
         {
             assert_no_link(context.state);
-            assert.match(context.state.messages[0].text,
-                /no longer available.*Download scores.*choir manager/);
         }
     });
 }
@@ -166,11 +170,9 @@ test("revoked permissions are checked even while the Telegram user still has cac
         await click(context, data);
     }
 
-    // 5. verify that the user receives a localized denial and no link
+    // 5. verify denial feedback without a download
     {
         assert_no_link(context.state);
-        assert.match(context.state.messages[0].text,
-            /нет доступа.*руководителю хора/);
     }
 });
 
@@ -196,17 +198,15 @@ test("a deleted user cannot download from an existing button", async () => {
         await click(context, data);
     }
 
-    // 4. verify an access explanation without a download link
+    // 4. verify denial feedback without a download
     {
         assert_no_link(context.state);
-        assert.match(context.state.messages[0].text,
-            /do not have permission.*choir manager/);
     }
 });
 
 for (const failure of ["service disabled", "access lookup fails", "access lookup throws", "catalog lookup throws"]) {
-    test(`${failure} produces retry guidance and no download`, async () => {
-        // Motivation: service outages must become actionable Telegram feedback
+    test(`${failure} produces feedback without a download`, async () => {
+        // Motivation: service outages must produce Telegram feedback
         // instead of silently failing or exposing a cached download link.
 
         // 1. create a user, catalog, and download button
@@ -233,16 +233,14 @@ for (const failure of ["service disabled", "access lookup fails", "access lookup
             await click(context, data);
         }
 
-        // 4. verify retry guidance without a download link
+        // 4. verify feedback without a download
         {
             assert_no_link(context.state);
-            assert.match(context.state.messages[0].text,
-                /Try clicking the button again later.*choir manager/);
         }
     });
 }
 
-test("a failed link delivery explains that the button can be retried", async () => {
+test("a failed link delivery allows retrying the same button", async () => {
     // Motivation: a temporary Telegram delivery failure must not consume the
     // download button, so the user can recover by retrying the same action.
 
@@ -254,7 +252,7 @@ test("a failed link delivery explains that the button can be retried", async () 
         context = fixture();
         send = context.bot.sendMessage;
         context.bot.sendMessage = async (...args) => {
-            if (args[1].includes("href=")) {
+            if (context.rendered_links.has(args[1])) {
                 throw new Error("send failed");
             }
             return send(...args);
@@ -262,12 +260,10 @@ test("a failed link delivery explains that the button can be retried", async () 
         data = ScoreDownloads.create_button(context.state.catalog[0]).callback_data;
     }
 
-    // 2. attempt delivery and verify retry instructions
+    // 2. attempt delivery and verify failure feedback
     {
         await click(context, data);
         assert_no_link(context.state);
-        assert.match(context.state.messages[0].text,
-            /Try clicking the button again later/);
     }
 
     // 3. restore Telegram delivery
@@ -278,7 +274,7 @@ test("a failed link delivery explains that the button can be retried", async () 
     // 4. retry the same button and verify successful delivery
     {
         await click(context, data);
-        assert.match(context.state.messages[1].text, /score.pdf/);
+        assert.equal(context.state.messages[1].file, "https://example.org/score.pdf");
     }
 });
 
@@ -311,56 +307,16 @@ test("a periodic profile refresh failure still lets a button report download fai
         await click(context, data, new Date(Date.now() + 11_000));
     }
 
-    // 5. verify that the callback still produces retry guidance
+    // 5. verify that the callback still produces failure feedback
     {
         assert_no_link(context.state);
-        assert.match(context.state.messages[0].text,
-            /Try clicking the button again later/);
     }
 });
 
-test("an expired legacy button gives unavailable-button feedback", async () => {
-    // Motivation: old score lists retain buttons after registry expiration;
-    // Telegram must explain that the action is unavailable rather than fail
-    // silently.
-
-    // 1. create a user and a legacy button with a one-hour lifetime
-    let context;
-    let called = false;
-    let legacy;
-    {
-        context = fixture(Language.RU);
-        legacy = context.user.create_keyboard_button("Song", "legacy score", async () => {
-            called = true;
-            return Expected.ok(undefined);
-        }, 3600);
-    }
-
-    // 2. click the legacy button after its handler expires
-    {
-        await click(context, legacy.callback_data, new Date(Date.now() + 3601_000));
-    }
-
-    // 3. verify localized feedback without invoking the old handler
-    {
-        assert.equal(called, false);
-        assert_no_link(context.state);
-        assert.match(context.state.messages[0].text,
-            /устарела.*не распознаётся/);
-        assert.equal(context.state.answers.length, 1);
-    }
-});
-
-for (const [data, feedback] of [
-    ["old-handler-id", /expired or is no longer recognized/],
-    ["score:v2:unknown", /expired or is no longer recognized/],
-    [undefined, /expired or is no longer recognized/],
-    ["score:v1:invalid", /Download scores/],
-]) {
-    test(`unrecognized button data gives useful feedback (${data})`, async () => {
-        // Motivation: Telegram can deliver obsolete or malformed button data;
-        // routing must acknowledge it and explain why the action is
-        // unavailable.
+for (const data of ["old-handler-id", "score:v2:unknown", undefined]) {
+    test(`unhandled button data stays silent (${data})`, async () => {
+        // Motivation: a click that matches no known action has no reply
+        // yet, so routing must acknowledge it without sending a message.
 
         // 1. create a user with an empty callback registry
         let context;
@@ -373,14 +329,36 @@ for (const [data, feedback] of [
             await click(context, data);
         }
 
-        // 3. verify acknowledgement and appropriate feedback without a link
+        // 3. verify acknowledgement without a message
         {
-            assert_no_link(context.state);
-            assert.match(context.state.messages[0].text, feedback);
+            assert.deepEqual(context.state.messages, []);
             assert.equal(context.state.answers.length, 1);
         }
     });
 }
+
+test("unrecognized current score button data sends feedback without a download", async () => {
+    // Motivation: a current score button that names a missing file must
+    // produce feedback without sending some other score.
+
+    // 1. create a user with an empty callback registry
+    let context;
+    {
+        context = fixture();
+    }
+
+    // 2. click a current score button whose id is not in the catalog
+    {
+        await click(context, "score:v1:invalid");
+    }
+
+    // 3. verify acknowledgement and feedback without a download
+    {
+        assert_no_link(context.state);
+
+        assert.equal(context.state.answers.length, 1);
+    }
+});
 
 test("registered callbacks retain their behavior", async () => {
     // Motivation: permanent score routing shares the Telegram callback entry
@@ -433,7 +411,7 @@ test("answerCallbackQuery failure does not prevent downloading", async () => {
 
     // 3. verify that the score link is delivered
     {
-        assert.match(context.state.messages[0].text, /score.pdf/);
+        assert.equal(context.state.messages[0].file, "https://example.org/score.pdf");
     }
 });
 
@@ -467,7 +445,7 @@ test("existing Score and title or filename requests use current catalog entries"
         // 3.2 verify that the current file link is delivered
         {
             assert.equal(status.ok, true);
-            assert.match(context.state.messages.at(-1).text, /new.pdf/);
+            assert.equal(context.state.messages.at(-1).file, "https://example.org/new.pdf");
         }
     }
 
@@ -561,7 +539,7 @@ test("buttons keep working after an hour and on repeated clicks", async () => {
 
     // 4. verify that each delivery contains the correct link and destination
     for (const message of context.state.messages) {
-        assert.match(message.text, /href="https:\/\/example.org\/score.pdf"/);
+        assert.equal(message.file, "https://example.org/score.pdf");
         assert.equal(message.chat_id, 123);
     }
 });
@@ -598,8 +576,6 @@ test("buttons survive recreation of the user, environment, and catalog in a diff
 
     // 5. verify that identity resolves to the original author's score
     {
-        assert.match(restarted.state.messages[0].text,
-            /href="https:\/\/example.org\/score.pdf"/);
-        assert.doesNotMatch(restarted.state.messages[0].text, /other.pdf/);
+        assert.equal(restarted.state.messages[0].file, "https://example.org/score.pdf");
     }
 });

@@ -30,6 +30,11 @@
             }
         }
     },
+    "administration_service": {
+        "type": "local",
+        "confirmation_ttl_sec": 300,
+        "max_pending_per_user": 5
+    },
     "messages_provider": {
         "sheet_id": "",
         "table_name": "Messages"

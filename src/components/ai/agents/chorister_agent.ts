@@ -12,6 +12,7 @@ export class ChoristerAgent {
 
     constructor(
         config: AssistantConfig,
+        tools: IToolchain,
         journal: Journal,
     ) {
         const instruction = fs.readFileSync(config.prompt_file, "utf-8").trim();
@@ -25,12 +26,9 @@ export class ChoristerAgent {
                 output_format: "json",
             },
             OpenaiAPI.get_llm(config.model),
+            tools,
             journal,
         );
-    }
-
-    public add_tool(toolchain: IToolchain): Status {
-        return this.agent.add_tool(toolchain);
     }
 
     public async send_message(message: string): Promise<Status> {

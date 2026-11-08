@@ -2,6 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
+import { ConfirmationError } from "@src/interfaces/user_agent.js";
 import { Journal } from "@src/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { return_fail } from "@src/utils.js";
@@ -107,7 +108,11 @@ export class ConfirmationWidget implements AbstractWidget {
 
     private async on_timeout(): Promise<void> {
         await this.release();
-        this.settle(return_fail("confirmation timed out", this.journal.log()));
+        const timed_out = return_fail<"positive" | "negative">(
+            "confirmation timed out",
+            this.journal.log(),
+        ).set_error_code(ConfirmationError.TimedOut);
+        this.settle(timed_out);
     }
 
     private async release(): Promise<void> {

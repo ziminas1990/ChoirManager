@@ -3,9 +3,11 @@ import crypto from "crypto";
 import {
     Role,
     UserData,
+    is_guest_user,
     user_has_role,
 } from "@src/entities/user.js";
 import {
+    AdministrationError,
     AdministrationOperation,
     IAdministrationService,
     OperationResult,
@@ -16,8 +18,8 @@ import { IUserService, NewUserData } from "@src/interfaces/user_service.js";
 import { Journal } from "@src/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { apply_cas_patch } from "@src/utils/patching.js";
-
+import { apply_cas_patch } from "@src/utils/cas_patch.js";
+import { build_user_data_patch } from "@src/utils/patching/user_data_patch.js";
 
 export class AdministrationService extends Logic<void> implements IAdministrationService {
     private readonly journal: Journal;
@@ -48,12 +50,12 @@ export class AdministrationService extends Logic<void> implements IAdministratio
             return limit_status.cast_error<PendingOperation>();
         }
 
-        const operation: AdministrationOperation = {
-            what: "create_user",
-            user: Helpers.clone_user(user),
-        };
+        const operation = await this.plan_create(actor_id, user);
+        if (!operation.ok) {
+            return operation.cast_error<PendingOperation>();
+        }
 
-        return this.enqueue(actor.value, now, operation);
+        return this.enqueue(actor.value, now, operation.value);
     }
 
     async request_update_user(
@@ -72,18 +74,21 @@ export class AdministrationService extends Logic<void> implements IAdministratio
             return limit_status.cast_error<PendingOperation>();
         }
 
-        const operation: AdministrationOperation = {
-            what: "update_user",
-            system_id,
-            patch: structuredClone(patch),
-        };
+        const operation = await this.plan_update(actor_id, system_id, patch);
+        if (!operation.ok) {
+            return operation.cast_error<PendingOperation>();
+        }
 
-        return this.enqueue(actor.value, now, operation);
+        return this.enqueue(actor.value, now, operation.value);
     }
 
     async confirm(actor_id: string, operation_id: string): Promise<Expected<OperationResult>> {
         const actor = await this.require_admin(actor_id);
         if (!actor.ok) {
+            // A demoted initiator must not leave the request pending until expiry.
+            if (!actor.is_error([AdministrationError.ActorResolveFailed])) {
+                this.drop_pending_if_initiator(actor_id, operation_id);
+            }
             return actor.cast_error<OperationResult>();
         }
 
@@ -160,6 +165,103 @@ export class AdministrationService extends Logic<void> implements IAdministratio
         return Expected.ok(Helpers.clone_pending(pending));
     }
 
+    private async plan_create(
+        actor_id: string,
+        user: UserData,
+    ): Promise<Expected<AdministrationOperation>> {
+        const shape = this.validate_create_shape(user);
+        if (!shape.ok) {
+            return shape.cast_error<AdministrationOperation>();
+        }
+
+        // Match only tg_username. A shared name does not merge two profiles.
+        if (user.id.tg_username) {
+            const existing = await this.users.resolve_user({
+                tg_username: user.id.tg_username
+            });
+            if (!existing.ok) {
+                return existing.wrap_error("failed to resolve tg_username");
+            }
+            if (existing.value) {
+                if (!is_guest_user(existing.value)) {
+                    return Expected.err(
+                        `tg_username '${user.id.tg_username}' is already a member, use update`,
+                    );
+                }
+                return this.plan_promote_guest(actor_id, existing.value, user);
+            }
+        }
+
+        if (is_guest_user(user)) {
+            return Expected.err("resulting role set must not be empty");
+        }
+
+        return Expected.ok({
+            what: "create_user",
+            user: Helpers.clone_user(user),
+        });
+    }
+
+    // Turn "add this telegram user" into an update that keeps system_id and the binding.
+    private async plan_promote_guest(
+        actor_id: string,
+        existing: UserData,
+        requested: UserData,
+    ): Promise<Expected<AdministrationOperation>> {
+        const target = Helpers.clone_user(existing);
+        const desired: UserData = {
+            id: { ...target.id },
+            name: requested.name,
+            surname: requested.surname,
+            lang: requested.lang,
+            voice: requested.voice,
+            roles: [...requested.roles],
+        };
+        const patch = build_user_data_patch(target, desired);
+        const after = apply_cas_patch(target, patch);
+        if (!after.ok) {
+            return after.wrap_error("failed to apply user patch");
+        }
+
+        const rules = await this.inspect_update(actor_id, target, after.value);
+        if (!rules.ok) {
+            return rules.cast_error();
+        }
+
+        this.journal.log().info(
+            `Reusing roleless profile ${target.id.system_id} ` +
+            `for tg_username '${target.id.tg_username}'`,
+        );
+        return Expected.ok({
+            what: "update_user",
+            target,
+            patch,
+        });
+    }
+
+    private async plan_update(
+        actor_id: string,
+        system_id: string,
+        patch: UserCasPatch,
+    ): Promise<Expected<AdministrationOperation>> {
+        const preview = await this.preview_update(system_id, patch);
+        if (!preview.ok) {
+            return preview.cast_error<AdministrationOperation>();
+        }
+
+        const rules = await this.inspect_update(
+            actor_id, preview.value.current, preview.value.after);
+        if (!rules.ok) {
+            return rules.cast_error<AdministrationOperation>();
+        }
+
+        return Expected.ok({
+            what: "update_user",
+            target: Helpers.clone_user(preview.value.current),
+            patch: structuredClone(patch),
+        });
+    }
+
     private async apply_create(
         operation: Extract<AdministrationOperation, { what: "create_user" }>,
     ): Promise<Expected<OperationResult>> {
@@ -183,44 +285,68 @@ export class AdministrationService extends Logic<void> implements IAdministratio
         actor_id: string,
         operation: Extract<AdministrationOperation, { what: "update_user" }>,
     ): Promise<Expected<OperationResult>> {
-        const current = await this.users.resolve_user({ system_id: operation.system_id });
-        if (!current.ok) {
-            return current.wrap_error("failed to resolve target user");
-        }
-        if (!current.value) {
-            return Expected.err(`user '${operation.system_id}' not found`);
+        const preview = await this.preview_update(
+            operation.target.id.system_id, operation.patch);
+        if (!preview.ok) {
+            return preview.cast_error();
         }
 
-        const after = apply_cas_patch(current.value, operation.patch);
-        if (!after.ok) {
-            return after.wrap_error("failed to apply user patch");
-        }
-
-        const rules = await this.validate_update_result(
-            actor_id, current.value, after.value);
+        const rules = await this.inspect_update(
+            actor_id, preview.value.current, preview.value.after);
         if (!rules.ok) {
-            return rules.cast_error<OperationResult>();
+            return rules.cast_error();
         }
 
-        const updated = await this.users.update(operation.system_id, operation.patch);
+        const updated = await this.users.update(
+            operation.target.id.system_id, operation.patch);
         if (!updated.ok) {
             return updated.wrap_error("failed to update user");
         }
 
         return Expected.ok({
             what: "user_updated",
-            before: Helpers.clone_user(current.value),
+            before: Helpers.clone_user(preview.value.current),
             after: Helpers.clone_user(updated.value),
             patch: structuredClone(operation.patch),
         });
     }
 
-    private async prepare_create(user: UserData): Promise<Expected<UserData>> {
+    private async preview_update(
+        system_id: string,
+        patch: UserCasPatch,
+    ): Promise<Expected<{ current: UserData, after: UserData }>> {
+        const current = await this.users.resolve_user({ system_id });
+        if (!current.ok) {
+            return current.wrap_error("failed to resolve target user");
+        }
+        if (!current.value) {
+            return Expected.err(`user '${system_id}' not found`);
+        }
+
+        const after = apply_cas_patch(current.value, patch);
+        if (!after.ok) {
+            return after.wrap_error("failed to apply user patch");
+        }
+        return Expected.ok({ current: current.value, after: after.value });
+    }
+
+    private validate_create_shape(user: UserData): Status {
         if (user.id.system_id !== "") {
             return Expected.err("system_id must be empty when creating a user");
         }
         if (user.id.tg_username !== undefined && user.id.tg_username.length === 0) {
             return Expected.err("tg_username must be non-empty when set");
+        }
+        return Expected.ok(undefined);
+    }
+
+    private async prepare_create(user: UserData): Promise<Expected<UserData>> {
+        const shape = this.validate_create_shape(user);
+        if (!shape.ok) {
+            return shape.cast_error<UserData>();
+        }
+        if (is_guest_user(user)) {
+            return Expected.err("resulting role set must not be empty");
         }
         if (user.id.tg_username) {
             const taken = await this.username_taken(user.id.tg_username);
@@ -234,13 +360,16 @@ export class AdministrationService extends Logic<void> implements IAdministratio
         return Expected.ok(Helpers.clone_user(user));
     }
 
-    private async validate_update_result(
+    private async inspect_update(
         actor_id: string,
         before: UserData,
         after: UserData,
     ): Promise<Status> {
         if (after.id.system_id !== before.id.system_id) {
             return Expected.err("cannot change system_id");
+        }
+        if (is_guest_user(after)) {
+            return Expected.err("resulting role set must not be empty");
         }
         if (Helpers.drops_own_admin(actor_id, before.id.system_id, before.roles, after.roles)) {
             return Expected.err("cannot remove admin role from yourself");
@@ -252,7 +381,8 @@ export class AdministrationService extends Logic<void> implements IAdministratio
             return Expected.err("tg_username must be non-empty when set");
         }
         if (after.id.tg_username && after.id.tg_username !== before.id.tg_username) {
-            const taken = await this.username_taken(after.id.tg_username, before.id.system_id);
+            const taken = await this.username_taken(
+                after.id.tg_username, before.id.system_id);
             if (!taken.ok) {
                 return taken.as_status();
             }
@@ -266,13 +396,16 @@ export class AdministrationService extends Logic<void> implements IAdministratio
     private async require_admin(actor_id: string): Promise<Expected<UserData>> {
         const actor = await this.users.resolve_user({ system_id: actor_id });
         if (!actor.ok) {
-            return actor.wrap_error("failed to resolve actor");
+            return actor.wrap_error<UserData>("failed to resolve actor")
+                .set_error_code(AdministrationError.ActorResolveFailed);
         }
         if (!actor.value) {
-            return Expected.err(`actor '${actor_id}' not found`);
+            return Expected.err(`actor '${actor_id}' not found`)
+                .set_error_code(AdministrationError.ActorNotFound);
         }
         if (!user_has_role(actor.value, Role.Admin)) {
-            return Expected.err("actor is not an admin");
+            return Expected.err("actor is not an admin")
+                .set_error_code(AdministrationError.ActorNotAdmin);
         }
         return Expected.ok(actor.value);
     }
@@ -313,17 +446,31 @@ export class AdministrationService extends Logic<void> implements IAdministratio
     ): Expected<PendingOperation> {
         const pending = this.pending.get(operation_id);
         if (!pending) {
-            return Expected.err("pending operation not found");
+            return Expected.err("pending operation not found")
+                .set_error_code(AdministrationError.PendingNotFound);
         }
         if (pending.expires_at <= now) {
             this.pending.delete(operation_id);
-            return Expected.err("pending operation expired");
+            return Expected.err("pending operation expired")
+                .set_error_code(AdministrationError.PendingExpired);
         }
         if (pending.requested_by !== actor_id) {
             return Expected.err("only the initiator can confirm or reject this operation");
         }
         this.pending.delete(operation_id);
         return Expected.ok(pending);
+    }
+
+    private drop_pending_if_initiator(actor_id: string, operation_id: string): void {
+        const pending = this.pending.get(operation_id);
+        if (!pending || pending.requested_by !== actor_id) {
+            return;
+        }
+        this.pending.delete(operation_id);
+        this.journal.log().info(
+            `Dropped pending ${pending.operation.what} ${pending.id}: ` +
+            `${actor_id} is not allowed to confirm`,
+        );
     }
 }
 
@@ -380,7 +527,7 @@ class Helpers {
         }
         return {
             what: "update_user",
-            system_id: operation.system_id,
+            target: Helpers.clone_user(operation.target),
             patch: structuredClone(operation.patch),
         };
     }

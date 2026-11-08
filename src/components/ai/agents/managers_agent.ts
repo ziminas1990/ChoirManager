@@ -3,6 +3,7 @@ import fs from "fs";
 import { OpenaiAPI } from "@src/api/openai.js";
 import { Agent } from "@src/components/ai/agent.js";
 import { MessengerTools } from "@src/components/ai/tools/messenger_tools.js";
+import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 import { SimpleMemoryTools } from "@src/components/ai/tools/simple_memory_tools.js";
 import { ManagersChatAgentConfig } from "@src/config.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
@@ -91,6 +92,26 @@ export class ManagersAgent {
             return instruction_status.wrap_error("failed to read managers agent prompt");
         }
 
+        const tools = new ToolsMultiplexer(this.journal.child("mux"));
+        let status = tools.add_tool(new MessengerTools({
+            send_message: async (html_text) => (await this.publish_message(html_text)).as_status(),
+        }));
+        if (!status.ok) {
+            return status.wrap_error("failed to register managers messenger tools");
+        }
+        if (this.extra_tools) {
+            status = tools.add_tool(this.extra_tools);
+            if (!status.ok) {
+                return status.wrap_error("failed to register extra managers agent tools");
+            }
+        }
+        if (this.simple_memory_tools) {
+            status = tools.add_tool(this.simple_memory_tools);
+            if (!status.ok) {
+                return status.wrap_error("failed to register simple memory tools");
+            }
+        }
+
         this.agent = new Agent(
             {
                 instruction: instruction_status.value,
@@ -100,27 +121,9 @@ export class ManagersAgent {
                 output_format: "json",
             },
             OpenaiAPI.get_llm(this.config.model),
+            tools,
             this.journal,
         );
-
-        let status = this.agent.add_tool(new MessengerTools({
-            send_message: async (html_text) => (await this.publish_message(html_text)).as_status(),
-        }));
-        if (!status.ok) {
-            return status.wrap_error("failed to register managers messenger tools");
-        }
-        if (this.extra_tools) {
-            status = this.agent.add_tool(this.extra_tools);
-            if (!status.ok) {
-                return status.wrap_error("failed to register extra managers agent tools");
-            }
-        }
-        if (this.simple_memory_tools) {
-            status = this.agent.add_tool(this.simple_memory_tools);
-            if (!status.ok) {
-                return status.wrap_error("failed to register simple memory tools");
-            }
-        }
 
         const now = new Date();
         const from = new Date(now.getTime() - this.config.context_days * 24 * 60 * 60 * 1000);

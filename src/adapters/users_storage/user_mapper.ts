@@ -6,7 +6,7 @@ import { FirestoreValidatingConverter } from "@src/adapters/plain_collection/fir
 import { UserData } from "@src/entities/user.js";
 import { UserPatch } from "@src/interfaces/user_service.js";
 import { Expected } from "@src/utils/expected.js";
-import { apply_cas_patch } from "@src/utils/patching.js";
+import { apply_cas_patch } from "@src/utils/cas_patch.js";
 import { UserRecord } from "./user_record.js";
 import {
     parse_language,

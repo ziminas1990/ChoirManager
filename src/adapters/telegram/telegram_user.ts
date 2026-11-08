@@ -3,7 +3,8 @@ import TelegramBot from "node-telegram-bot-api";
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
-import { Language, Role, UserData, is_guest_user, user_has_role, user_tg_username } from "@src/entities/user.js";
+import { Role, UserData, is_guest_user, user_has_role, user_tg_username } from "@src/entities/user.js";
+import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { return_exception, return_fail } from "@src/utils.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { Environment } from "@src/components/environment.js";
@@ -21,10 +22,14 @@ import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory
 import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
 
-type TelegramUserDependencies = {
+export type TelegramUserCfg = {
     deposit_presentation?: DepositPresentationConfig;
     runtime: RuntimeConfig;
-    assistant?: AssistantConfig;
+    assistant: AssistantConfig;
+}
+
+export type TelegramUserEnv = {
+    users: IUserServiceReplica;
 }
 
 export class TelegramUser implements IUserAgent {
@@ -49,7 +54,8 @@ export class TelegramUser implements IUserAgent {
     constructor(
         private user_info: UserData,
         private chat_id: number,
-        private readonly dependencies: TelegramUserDependencies,
+        private readonly cfg: TelegramUserCfg,
+        private readonly env: TelegramUserEnv,
         parent_journal: Journal,
     ) {
         this.journal = parent_journal.child(`@${user_tg_username(this.user_info)}`);
@@ -98,7 +104,7 @@ export class TelegramUser implements IUserAgent {
     as_deposit_owner(): IDepositOwnerAgent {
         if (!this.deposit_owner_dialog) {
             this.deposit_owner_dialog = new DepositOwnerDialog(
-                this, this.journal, this.dependencies.deposit_presentation);
+                this, this.journal, this.cfg.deposit_presentation);
         }
         return this.deposit_owner_dialog;
     }
@@ -276,12 +282,13 @@ export class TelegramUser implements IUserAgent {
         } catch (error) {
             this.journal.log().warn({ error }, "Failed to refresh user info");
         }
-        await this.callbacks_registry.proceed(now);
-
-        if (this.queue.length == 0) {
-            return;
-        }
+        // Handle clicks before registry cleanup so valid_until is checked on
+        // the click itself, even when background expiry has not run yet.
         for (const item of this.queue) {
+            const refresh_status = this.refresh_user_info_from_cache();
+            if (!refresh_status.ok) {
+                this.journal.log().warn({ error: refresh_status.error }, "Failed to refresh user info");
+            }
             if (item.what == "message") {
                 const main_dialog = this.get_main_dialog();
                 if (main_dialog) {
@@ -293,13 +300,15 @@ export class TelegramUser implements IUserAgent {
                     this.journal.log().warn("ignoring message: no main dialog");
                 }
             } else if (item.what == "callback") {
-                const status = await this.handle_callback(item.callback);
+                const status = await this.handle_callback(item.callback, now);
                 if (!status.ok) {
                     this.journal.log().error(`Failed to handle callback: ${status.error}`);
                 }
             }
         }
         this.queue = [];
+
+        await this.callbacks_registry.proceed(now);
     }
 
     async maybe_update_user_info(now: Date) {
@@ -320,7 +329,27 @@ export class TelegramUser implements IUserAgent {
         this.user_info = resolved.value;
     }
 
-    private async handle_callback(query: TelegramBot.CallbackQuery): Promise<Status> {
+    private refresh_user_info_from_cache(): Status {
+        try {
+            const resolved = this.env.users.resolve_user({ system_id: this.userid() });
+            if (!resolved.ok) {
+                return resolved.wrap_error("failed to resolve user from cache");
+            }
+            if (!resolved.value) {
+                return Expected.err(`user '${this.userid()}' not found in cache`);
+            }
+            this.user_info = resolved.value;
+            const refreshed = this.chorister_dialog?.update_roles(resolved.value.roles);
+            if (refreshed && !refreshed.ok) {
+                return refreshed.wrap_error("failed to refresh role tools");
+            }
+            return Expected.ok(undefined);
+        } catch (error) {
+            return Expected.exception("exception", error);
+        }
+    }
+
+    private async handle_callback(query: TelegramBot.CallbackQuery, now: Date): Promise<Status> {
         try {
             await this.bot?.answerCallbackQuery(query.id);
         } catch (error) {
@@ -334,13 +363,11 @@ export class TelegramUser implements IUserAgent {
             return await ScoreDownloads.on_callback(query.data!, this, this.journal);
         }
         if (query.data && this.callbacks_registry.has_callback(query.data)) {
-            return await this.callbacks_registry.on_callback(query);
+            return await this.callbacks_registry.on_callback(query, now);
         }
 
-        const message = this.user_info.lang === Language.RU
-            ? "Эта кнопка устарела или больше не распознаётся."
-            : "This button has expired or is no longer recognized.";
-        return (await this.send_message(message)).as_status();
+        // No registered action for this click. Send no message for now.
+        return Expected.ok(undefined);
     }
 
     private get_or_create_chorister_dialog(): Expected<ChoristerDialog> {
@@ -349,9 +376,10 @@ export class TelegramUser implements IUserAgent {
         }
         const created = ChoristerDialog.create(
             this,
-            this.dependencies.runtime,
+            this.cfg.runtime,
+            this.env.users,
             this.journal,
-            this.dependencies.assistant,
+            this.cfg.assistant,
         );
         if (!created.ok) {
             return created.wrap_error("failed to create chorister dialog");
@@ -366,7 +394,7 @@ export class TelegramUser implements IUserAgent {
                 this.guest_dialog = new GuestDialog(this, this.journal);
             }
             return this.guest_dialog;
-        } else if (user_has_role(this.user_info, Role.Chorister) || user_has_role(this.user_info, Role.Manager)) {
+        } else if (user_has_role(this.user_info, [Role.Chorister, Role.Manager, Role.Admin])) {
             const dialog = this.get_or_create_chorister_dialog();
             if (!dialog.ok) {
                 this.journal.log().error(`Failed to create chorister dialog: ${dialog.error}`);

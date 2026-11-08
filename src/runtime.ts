@@ -17,6 +17,7 @@ import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
 import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
 import { TaskTrackerServiceFactory } from "./adapters/task_tracker_service/factory.js";
+import { AdministrationServiceFactory } from "./adapters/administration_service/factory.js";
 import { SimpleMemoryServiceFactory } from "./adapters/simple_memory_service/factory.js";
 import { DepositServiceFactory } from "./adapters/deposit_service/factory.js";
 import { ScoresServiceFactory } from "./adapters/scores_service/factory.js";
@@ -32,6 +33,7 @@ import { GroupChat } from "./logic/group_chat.js";
 import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
 import { AttendanceTracker } from "./logic/attendance_tracker.js";
 import { TaskTrackerService } from "./components/task_tracker_service.js";
+import { AdministrationService } from "./components/administration_service.js";
 import { TaskTrackerEvent } from "./interfaces/task_tracker_service.js";
 import { DepositService } from "./components/deposit_service.js";
 import { DepositEvent } from "./interfaces/deposit_service.js";
@@ -141,6 +143,7 @@ export class Runtime {
     private attendance_tracker?: AttendanceTracker;
     private rehersals_tracker?: RehersalsTracker;
     private task_tracker?: TaskTrackerService;
+    private administration_service?: AdministrationService;
     private deposit_service?: DepositService;
 
     private tg_adapter?: TgAdapter;
@@ -188,6 +191,20 @@ export class Runtime {
     async start(): Promise<Status> {
         this.journal.log().info("Starting runtime");
 
+        if (this.config.administration_service) {
+            this.journal.log().info("Initializing administration service...");
+            const create_status = AdministrationServiceFactory.create(
+                this.config.administration_service,
+                this.user_service,
+                this.journal,
+            );
+            if (!create_status.ok) {
+                return create_status.wrap_error("Failed to create administration service");
+            }
+            this.administration_service = create_status.value;
+            Environment.setup.administration_service = this.administration_service;
+        }
+
         if (this.config.tg_adapter) {
             this.journal.log().info("Starting Telegram adapter");
             if (!this.tg_adapter) {
@@ -197,6 +214,9 @@ export class Runtime {
                         deposit_presentation: this.config.deposit_service,
                         runtime: this.config.runtime,
                         assistant: this.config.assistant,
+                    },
+                    {
+                        users: this.user_service.as_replica(),
                     },
                     this.journal);
             }
@@ -334,13 +354,6 @@ export class Runtime {
                 return init_status.wrap_error("Failed to initialize task tracker");
             }
             Environment.setup.task_tracker_service = this.task_tracker;
-        }
-
-        if (this.config.administration_service) {
-            this.journal.log().warn(
-                "administration_service is configured but disabled in this release; "
-                + "the bot will not create users, remove users, or change roles",
-            );
         }
 
         if (this.config.deposit_service) {
@@ -575,6 +588,15 @@ export class Runtime {
             }
         }
 
+        if (this.administration_service) {
+            const administration_status = await this.administration_service.proceed(now);
+            if (!administration_status.ok) {
+                this.journal.log().error(
+                    `Administration service proceed failed: ${administration_status.error}`,
+                );
+            }
+        }
+
         if (this.deposit_service) {
             const deposit_status = await this.deposit_service.proceed(now);
             if (!deposit_status.ok) {
@@ -721,6 +743,9 @@ export class Runtime {
                     deposit_presentation: config.deposit_service,
                     runtime: config.runtime,
                     assistant: config.assistant,
+                },
+                {
+                    users: replica,
                 },
                 packed.tg_adapter,
                 journal,

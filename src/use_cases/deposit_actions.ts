@@ -6,7 +6,7 @@ import { return_fail } from "@src/utils.js";
 import { UserLogic } from "@src/logic/user.js";
 import { DepositEvent } from "@src/interfaces/deposit_service.js";
 import { Deposit, DepositChange } from "@src/entities/deposit.js";
-import { is_guest_user, user_tg_username } from "@src/entities/user.js";
+import { Role, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { Environment } from "@src/components/environment.js";
 
 
@@ -21,7 +21,7 @@ export class DepositActions {
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
-        if (is_guest_user(resolved.value)) {
+        if (!user_has_role(resolved.value, Role.Chorister)) {
             return return_fail(`user ${userid} has no permissions`, journal.log());
         }
 
@@ -49,7 +49,7 @@ export class DepositActions {
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${userid} not found`, journal.log());
         }
-        if (is_guest_user(resolved.value)) {
+        if (!user_has_role(resolved.value, Role.Chorister)) {
             return return_fail(`user ${userid} has no permissions`, journal.log());
         }
 
@@ -76,7 +76,7 @@ export class DepositActions {
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${user_id} not found`, journal.log());
         }
-        if (is_guest_user(resolved.value)) {
+        if (!user_has_role(resolved.value, Role.Chorister)) {
             return return_fail(`user ${user_id} has no permissions`, journal.log());
         }
         const user = resolved.value;
@@ -122,6 +122,9 @@ export class DepositActions {
         const resolved = await Environment.global.user_service.resolve_user({ system_id: user_id });
         if (!resolved.ok || !resolved.value) {
             return return_fail(`user ${user_id} not found`, journal.log());
+        }
+        if (!user_has_role(resolved.value, Role.Chorister)) {
+            return return_fail(`user ${user_id} has no permissions`, journal.log());
         }
         const user = resolved.value;
 

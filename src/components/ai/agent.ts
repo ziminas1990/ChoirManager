@@ -1,7 +1,6 @@
 import { ILLM, IToolchain, Message, ToolsOption } from "@src/interfaces/llm.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Journal } from "@src/journal.js";
-import { ToolsMultiplexer } from "./tools/multiplexer.js";
 
 type ContextItem = {
     time: Date;
@@ -20,72 +19,19 @@ export type AgentCfg = {
 const TOOLS_LIMIT_REACHED_MESSAGE =
     "Tools usage limit is reached, provide a response based on what you have.";
 
-function build_tools_context(tools: IToolchain): ContextItem[] {
-    if (tools.get_tools().size === 0) {
-        return [];
-    }
-
-    const tools_context: ContextItem[] = [];
-
-    tools_context.push({
-        time: new Date(),
-        message: {
-            role: "system",
-            content: tools.get_readme(),
-        },
-        retention: "persistent",
-    });
-
-    const use_cases = tools.get_use_cases().trim();
-    if (use_cases !== "") {
-        tools_context.push({
-            time: new Date(),
-            message: {
-                role: "system",
-                content: use_cases,
-            },
-            retention: "persistent",
-        });
-    }
-
-    const tools_list: string[] = ["## Available tools"];
-    for (const tool of tools.get_tools().values()) {
-        tools_list.push([
-            `### ${tool.name}\n`,
-            tool.description,
-        ].join("\n"));
-    }
-
-    tools_context.push({
-        time: new Date(),
-        message: {
-            role: "system",
-            content: tools_list.join("\n"),
-        },
-        retention: "persistent",
-    });
-
-    return tools_context;
-}
-
 export class Agent {
     private static next_agent_id = 1;
 
     private journal: Journal;
     private context: ContextItem[] = [];
-    private tools_context: ContextItem[] = [];
-    private tools: ToolsMultiplexer;
     private last_activity?: Date;
 
     private busy: boolean = false;
 
-    public static get_next_agent_id(): number {
-        return Agent.next_agent_id++;
-    }
-
     constructor(
         private cfg: AgentCfg,
         private llm: ILLM,
+        private readonly tools: IToolchain,
         parent_journal: Journal,
     ) {
         if (cfg.tool_calls_limit <= 0) {
@@ -94,7 +40,6 @@ export class Agent {
 
         const agent_id = Agent.get_next_agent_id();
         this.journal = parent_journal.child(`agent.${agent_id}`);
-        this.tools = new ToolsMultiplexer(this.journal.child("mux"));
 
         this.context.push({
             time: new Date(),
@@ -106,22 +51,8 @@ export class Agent {
         });
     }
 
-    add_tool(toolchain: IToolchain): Status {
-        const status = this.tools.add_tool(toolchain);
-        if (!status.ok) {
-            return status;
-        }
-        this.tools_context = build_tools_context(this.tools);
-        return Expected.ok(undefined);
-    }
-
-    remove_tool(toolchain: IToolchain): Status {
-        const status = this.tools.remove_tool(toolchain);
-        if (!status.ok) {
-            return status;
-        }
-        this.tools_context = build_tools_context(this.tools);
-        return Expected.ok(undefined);
+    public static get_next_agent_id(): number {
+        return Agent.next_agent_id++;
     }
 
     add_user_messages(messages: Message[], time?: Date): void {
@@ -172,13 +103,10 @@ export class Agent {
                 });
             }
 
-            const has_tools = this.tools.get_tools().size > 0;
-            const tools_option = has_tools
-                ? {
-                    toolchain: this.tools,
-                    choice: tools_limit_reached ? "none" : "auto",
-                } as ToolsOption
-                : undefined;
+            const tools_option: ToolsOption = {
+                toolchain: this.tools,
+                choice: tools_limit_reached ? "none" : "auto",
+            };
 
             const response = await this.llm.generate_response(
                 context,
@@ -207,8 +135,9 @@ export class Agent {
     }
 
     private get_context_messages(): Message[] {
+        // TODO: do not recompile tools context on each request?
         return [
-            ...this.tools_context.map(item => item.message),
+            ...Helpers.build_tools_context(this.tools),
             ...this.context.map(item => item.message),
         ];
     }
@@ -329,5 +258,34 @@ export class Agent {
                 retention: "ttl",
             });
         }
+    }
+}
+
+class Helpers {
+    static build_tools_context(tools: IToolchain): Message[] {
+        const available_tools = tools.get_tools();
+        if (available_tools.size === 0) {
+            return [];
+        }
+
+        const context: Message[] = [{
+            role: "system",
+            content: tools.get_readme(),
+        }];
+
+        const use_cases = tools.get_use_cases().trim();
+        if (use_cases !== "") {
+            context.push({ role: "system", content: use_cases });
+        }
+
+        const tools_list: string[] = ["## Available tools"];
+        for (const tool of available_tools.values()) {
+            tools_list.push([
+                `### ${tool.name}\n`,
+                tool.description,
+            ].join("\n"));
+        }
+        context.push({ role: "system", content: tools_list.join("\n") });
+        return context;
     }
 }

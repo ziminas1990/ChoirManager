@@ -31,7 +31,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
         return this.user;
     }
 
-    async send_deposit_info(info: Deposit | undefined): Promise<Status> {        
+    async send_deposit_info(info: Deposit | undefined): Promise<Status> {
         const get_transactions_button = this.user.create_keyboard_button(
                 this.orator.get_transactions_button(this.user.info().lang),
                 `open transactions for ${user_tg_username(this.user.info())}`,
@@ -236,14 +236,14 @@ export class Orator {
 
     transactions_info(transactions: Transaction[] | undefined, lang: Language): string {
         if (!transactions?.length) {
-            return lang == Language.RU 
-            ? "Нет транзакций для твоего депозита." 
+            return lang == Language.RU
+            ? "Нет транзакций для твоего депозита."
             : "No transactions found for your deposit.";
         }
 
         const currency = "GEL";
         const lblTop = lang === Language.RU ? "Список транзакций:" : "List of transactions:";
-                
+
         const lines: string[] = [];
         lines.push(lblTop);
         for (const tx of transactions) {

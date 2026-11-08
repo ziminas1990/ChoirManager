@@ -1,5 +1,5 @@
 import { Score } from "@src/entities/score.js";
-import { is_guest_user } from "@src/entities/user.js";
+import { Role, user_has_role } from "@src/entities/user.js";
 import { Environment } from "@src/components/environment.js";
 import { IScoresService } from "@src/interfaces/scores_service.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
@@ -113,8 +113,7 @@ export class ScoresActions {
             return return_fail<IScoresService>(`user ${userid} not found`, journal.log())
                 .set_error_code(ScoresError.AccessDenied);
         }
-        if (is_guest_user(resolved.value)) {
-            // Users without roles are not allowed to access scores
+        if (!user_has_role(resolved.value, [Role.Chorister, Role.Conductor, Role.Manager])) {
             return return_fail<IScoresService>(`user ${userid} has no permissions`, journal.log())
                 .set_error_code(ScoresError.AccessDenied);
         }

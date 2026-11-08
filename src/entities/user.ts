@@ -49,8 +49,13 @@ export function user_tg_username(user: UserData): string {
     return user.id.tg_username ?? "";
 }
 
-export function user_has_role(user: UserData, role: Role): boolean {
-    return user.roles.includes(role);
+// Accepts a single role or an array of roles. Returns true if the user has
+// at least one of the specified roles; an empty array returns false.
+export function user_has_role(user: UserData, roles: Role | readonly Role[]): boolean {
+    if (typeof roles === "string") {
+        return user.roles.includes(roles);
+    }
+    return roles.some(role => user.roles.includes(role));
 }
 
 export function is_guest_user(user: UserData): boolean {

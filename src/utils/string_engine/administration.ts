@@ -3,7 +3,8 @@ import {
     OperationResult,
     UserCasPatch,
 } from "@src/interfaces/administration_service.js";
-import { Role, UserData } from "@src/entities/user.js";
+import { is_guest_user, Role, UserData } from "@src/entities/user.js";
+import { apply_cas_patch } from "@src/utils/cas_patch.js";
 
 type ChangedField = {
     label: string;
@@ -20,13 +21,32 @@ export function render_confirmation(operation: AdministrationOperation): string 
         ].join("\n");
     }
 
-    const lines = [
-        "Подтвердите изменение пользователя:",
+    // Roleless profiles already exist. Adding one is neither a new user nor a
+    // change to a member, so the header says which case this is.
+    const header = is_guest_user(operation.target)
+        ? "Подтвердите добавление существующего профиля:"
+        : "Подтвердите изменение пользователя:";
+    const preview = apply_cas_patch(operation.target, operation.patch);
+    if (!preview.ok) {
+        return [
+            header,
+            "",
+            format_identity(operation.target),
+            "",
+            "Не удалось показать предлагаемые изменения:",
+            preview.error,
+        ].join("\n");
+    }
+
+    const after = preview.value;
+    return [
+        header,
         "",
-        `${bold("ID:")} ${escape_html(operation.system_id)}`,
-        ...format_change_lines(collect_patch_changes(operation.patch)),
-    ];
-    return lines.join("\n");
+        format_identity(operation.target),
+        "",
+        ...format_change_lines(collect_profile_changes(operation.target, after)),
+        format_resulting_roles(operation.target.roles, after.roles),
+    ].join("\n");
 }
 
 export function render_result(result: OperationResult): string {
@@ -55,6 +75,14 @@ export function render_timeout(): string {
     return "Время подтверждения истекло.";
 }
 
+export function render_failure(reason: string): string {
+    const detail = reason.trim();
+    if (detail.length === 0) {
+        return "Не удалось выполнить операцию.";
+    }
+    return `Не удалось выполнить операцию: ${escape_html(detail)}`;
+}
+
 function escape_html(text: string): string {
     return text
         .replace(/&/g, "&amp;")
@@ -69,17 +97,54 @@ function bold(text: string): string {
 function format_user_lines(user: UserData, include_system_id: boolean): string[] {
     const lines: string[] = [];
     if (include_system_id && user.id.system_id.length > 0) {
-        lines.push(`${bold("ID:")} ${escape_html(user.id.system_id)}`);
+        lines.push(format_labeled_value("ID", user.id.system_id));
     }
     lines.push(
-        `${bold("Имя:")} ${escape_html(user.name)}`,
-        `${bold("Фамилия:")} ${escape_html(user.surname)}`,
-        `${bold("Telegram:")} ${escape_html(format_username(user.id.tg_username))}`,
-        `${bold("Язык:")} ${escape_html(user.lang)}`,
-        `${bold("Голос:")} ${escape_html(user.voice)}`,
-        `${bold("Роли:")} ${escape_html(format_roles_list(user.roles))}`,
+        format_identity(user),
+        format_labeled_value("Язык", format_text(user.lang)),
+        format_labeled_value("Голос", format_text(user.voice)),
+        format_labeled_value("Роли", format_roles_list(user.roles)),
     );
     return lines;
+}
+
+// Who the confirmation is about. system_id is never included.
+function format_identity(user: UserData): string {
+    return [
+        format_text(user.name),
+        user.surname ? format_text(user.surname) : "",
+        format_username(user.id.tg_username),
+    ].filter(line => line.length > 0).join(" ");
+}
+
+function format_labeled_value(label: string, value: string): string {
+    return `${bold(`${label}:`)} ${escape_html(value)}`;
+}
+
+function collect_profile_changes(before: UserData, after: UserData): ChangedField[] {
+    const changes: ChangedField[] = [];
+    push_value_change(changes, "Имя", before.name, after.name, format_text);
+    push_value_change(changes, "Фамилия", before.surname, after.surname, format_text);
+    push_value_change(
+        changes,
+        "Telegram",
+        before.id.tg_username,
+        after.id.tg_username,
+        format_username,
+    );
+    push_value_change(changes, "Язык", before.lang, after.lang, format_text);
+    push_value_change(changes, "Голос", before.voice, after.voice, format_text);
+    return changes;
+}
+
+// Always the full role set. An arrow appears only when the set changes,
+// and the right-hand side is the complete result, not a +/- delta.
+function format_resulting_roles(before: Role[], after: Role[]): string {
+    return format_change_lines([{
+        label: "Роли",
+        old_value: format_roles_list(before),
+        new_value: format_roles_list(after),
+    }])[0];
 }
 
 function format_change_lines(changes: ChangedField[]): string[] {

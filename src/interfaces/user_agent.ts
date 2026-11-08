@@ -5,6 +5,10 @@ import { UserData } from "@src/entities/user.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { Transaction } from "./transactions_storage.js";
 
+// ask_confirmation failures a caller can distinguish from other prompt errors.
+export enum ConfirmationError {
+    TimedOut = 1,
+}
 
 export interface IUserAgent
 {

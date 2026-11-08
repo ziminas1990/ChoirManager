@@ -2,7 +2,7 @@
 
 ## Background
 
-After [release 2](TASK-002.md), administrators can add members and manage their roles. A separate confirmed removal flow is needed to revoke access while preserving the person's data.
+After [release 2](./closed/TASK-002.md), administrators can add members and manage their roles. A separate confirmed removal flow is needed to revoke access while preserving the person's data.
 
 ## Require
 
