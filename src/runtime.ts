@@ -30,7 +30,7 @@ import { GoogleSpreadsheetMessagesProvider } from "./adapters/messages_provider/
 import { MessagesStorageFactory } from "./adapters/messages_storage/factory.js";
 import { LocalBroadcaster } from "./adapters/local_message_queue/local_broadcaster.js";
 import { GroupChat } from "./logic/group_chat.js";
-import { NewRecordsFetcher } from "./fetchers/new_records_fetcher.js";
+import { NewRecordsFetcher } from "./components/new_records_fetcher.js";
 import { AttendanceTracker } from "./logic/attendance_tracker.js";
 import { TaskTrackerService } from "./components/task_tracker_service.js";
 import { AdministrationService } from "./components/administration_service.js";
