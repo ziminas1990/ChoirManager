@@ -9,6 +9,7 @@ import { user_tg_username } from "./entities/user.js";
 import { UserLogic, PackedUserLogic } from "./logic/user.js";
 import { pack_map, PackedMap, return_exception } from "./utils.js";
 import { Proceeder } from "./logic/abstracts.js";
+import { ManagersAgentLogic } from "./logic/managers_agent.js";
 import { UserService } from "./components/user_service.js";
 import { IUserServiceReplica } from "./interfaces/user_service.js";
 import { Journal } from "./journal.js";
@@ -29,7 +30,7 @@ import { RehersalsTracker } from "./logic/rehersals_tracker.js";
 import { GoogleSpreadsheetMessagesProvider } from "./adapters/messages_provider/google_spreadsheet.js";
 import { MessagesStorageFactory } from "./adapters/messages_storage/factory.js";
 import { LocalBroadcaster } from "./adapters/local_message_queue/local_broadcaster.js";
-import { GroupChat } from "./logic/group_chat.js";
+import { IMessagesBacklog } from "./interfaces/messages_backlog.js";
 import { NewRecordsFetcher } from "./components/new_records_fetcher.js";
 import { AttendanceTracker } from "./logic/attendance_tracker.js";
 import { TaskTrackerService } from "./components/task_tracker_service.js";
@@ -132,9 +133,10 @@ export class Runtime {
     private feedback_storage?: IFeedbackStorage;
     private rehersals_storage?: IRehersalsStorage;
 
-    private managers_chat?: GroupChat;
+    private managers_backlog?: IMessagesBacklog;
     private managers_agent?: ManagersAgent;
-    private announce_chat?: GroupChat;
+    private managers_agent_proceeder?: Proceeder<void>;
+    private announce_backlog?: IMessagesBacklog;
     private readonly task_tracker_broadcaster = new LocalBroadcaster<TaskTrackerEvent>();
     private readonly deposit_broadcaster = new LocalBroadcaster<DepositEvent>();
     private deposit_events_handler?: DepositEventsHandler;
@@ -396,9 +398,8 @@ export class Runtime {
 
         if (this.config.json.managers_chat) {
             this.journal.log().info("Initializing managers chat...");
-            this.managers_chat = new GroupChat(this.journal);
             if (this.config.json.managers_chat.backlog) {
-                const backlog = MessagesStorageFactory.create(this.config.json.managers_chat.backlog);
+                const backlog = MessagesStorageFactory.create(this.config.json.managers_chat.backlog, this.journal);
                 if (!backlog.ok) {
                     return backlog.wrap_error("Failed to create managers chat backlog");
                 }
@@ -406,11 +407,14 @@ export class Runtime {
                 if (!status.ok) {
                     return status.wrap_error("Failed to initialize managers chat backlog");
                 }
-                this.managers_chat.attach_to_backlog(backlog.value);
+                this.managers_backlog = backlog.value;
             }
         }
 
-        if (this.config.managers_chat_agent && this.managers_chat) {
+        if (this.config.managers_chat_agent && this.config.json.managers_chat) {
+            if (!this.managers_backlog) {
+                return Expected.err("Managers chat agent requires a messages backlog");
+            }
             this.journal.log().info("Initializing managers chat agent...");
             const task_tracker_tools = Environment.global.maybe_task_tracker_service
                 ? new TaskTrackerTools(Environment.global.task_tracker_service)
@@ -428,7 +432,7 @@ export class Runtime {
             );
             this.managers_agent = new ManagersAgent(
                 this.config.managers_chat_agent,
-                this.managers_chat,
+                this.managers_backlog,
                 this.task_tracker_broadcaster,
                 {
                     get_managers_chat: async () => {
@@ -449,9 +453,8 @@ export class Runtime {
 
         if (this.config.json.announce_chat) {
             this.journal.log().info("Initializing announce chat...");
-            this.announce_chat = new GroupChat(this.journal);
             if (this.config.json.announce_chat.backlog) {
-                const backlog = MessagesStorageFactory.create(this.config.json.announce_chat.backlog);
+                const backlog = MessagesStorageFactory.create(this.config.json.announce_chat.backlog, this.journal);
                 if (!backlog.ok) {
                     return backlog.wrap_error("Failed to create announce chat backlog");
                 }
@@ -459,7 +462,7 @@ export class Runtime {
                 if (!status.ok) {
                     return status.wrap_error("Failed to initialize announce chat backlog");
                 }
-                this.announce_chat.attach_to_backlog(backlog.value);
+                this.announce_backlog = backlog.value;
             }
         }
 
@@ -486,16 +489,16 @@ export class Runtime {
         return this.feedback_storage;
     }
 
-    get_managers_chat(): GroupChat | undefined {
-        return this.managers_chat;
+    get_managers_backlog(): IMessagesBacklog | undefined {
+        return this.managers_backlog;
     }
 
     get_managers_agent(): ManagersAgent | undefined {
         return this.managers_agent;
     }
 
-    get_announce_chat(): GroupChat | undefined {
-        return this.announce_chat;
+    get_announce_backlog(): IMessagesBacklog | undefined {
+        return this.announce_backlog;
     }
 
     // Existing runtime session for this system_id, if any.
@@ -618,31 +621,16 @@ export class Runtime {
             }
         }
 
-        if (this.managers_chat) {
-            const managers_status = await this.managers_chat.proceed(now);
-            if (!managers_status.ok) {
-                this.journal.log().error(`Managers chat proceed failed: ${managers_status.error}`);
-            }
-        }
-
-        if (this.managers_agent) {
-            const managers_agent_status = await this.managers_agent.proceed();
-            if (!managers_agent_status.ok) {
-                this.journal.log().error(`Managers agent proceed failed: ${managers_agent_status.error}`);
-            }
+        if (this.managers_agent && !this.managers_agent_proceeder) {
+            const logic = new ManagersAgentLogic(this.managers_agent, this.journal);
+            this.managers_agent_proceeder = new Proceeder(logic, 250);
+            void this.managers_agent_proceeder.run();
         }
 
         if (this.deposit_events_handler) {
             const deposit_events_status = await this.deposit_events_handler.proceed();
             if (!deposit_events_status.ok) {
                 this.journal.log().error(`Deposit events handler proceed failed: ${deposit_events_status.error}`);
-            }
-        }
-
-        if (this.announce_chat) {
-            const announce_status = await this.announce_chat.proceed(now);
-            if (!announce_status.ok) {
-                this.journal.log().error(`Announce chat proceed failed: ${announce_status.error}`);
             }
         }
 

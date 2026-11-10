@@ -14,7 +14,7 @@ import { IGroupChat } from "@src/interfaces/group_chat.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { ManagersGroup } from "@src/adapters/telegram/dialogs/managers_group.js";
 import { ManagersChat } from "@src/use_cases/managers_chat.js";
-import { GroupChatMessage } from "@src/logic/group_chat.js";
+import { Message } from "@src/interfaces/messages_backlog.js";
 import { AnnouncesChat } from "@src/use_cases/announces_chat.js";
 import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { AssistantConfig } from "@src/config.js";
@@ -67,6 +67,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
     // Queue of incoming messages, processed in proceed()
     private messages_queue: TelegramBot.Message[] = [];
+    private edited_messages_queue: TelegramBot.Message[] = [];
 
     private journal: Journal;
 
@@ -136,13 +137,10 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 }
             });
             this.bot.on("edited_message", (msg) => {
-                if (msg.chat.type != "group") {
+                if (msg.chat.type != "group" && msg.chat.type != "supergroup") {
                     return;
                 }
-                const status = this.handle_edited_group_message(msg);
-                if (!status.ok) {
-                    this.journal.log().error(`failed to handle edited message: ${status.error}`);
-                }
+                this.edited_messages_queue.push(msg);
             });
             this.bot.on("callback_query", (query) => {
                 const status = this.handle_callback(query);
@@ -216,6 +214,15 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 : await this.process_group_message(msg);
             if (!status.ok) {
                 this.journal.log().warn(`failed to process message: ${status.error}`);
+            }
+        }
+
+        const edited_messages = this.edited_messages_queue;
+        this.edited_messages_queue = [];
+        for (const msg of edited_messages) {
+            const status = await this.handle_edited_group_message(msg);
+            if (!status.ok) {
+                this.journal.log().error(`failed to handle edited message: ${status.error}`);
             }
         }
 
@@ -311,9 +318,21 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         return Expected.ok(undefined);
     }
 
-    private handle_edited_group_message(msg: TelegramBot.Message): Status {
+    private async handle_edited_group_message(msg: TelegramBot.Message): Promise<Status> {
         this.log_message(msg, "group");
-        return Expected.ok(undefined);
+        if (msg.chat.id !== this.managers_chat_id || msg.message_thread_id !== undefined) {
+            return Expected.ok(undefined);
+        }
+        if (msg.text === undefined || msg.from?.id === undefined) {
+            return Expected.ok(undefined);
+        }
+
+        const user = this.get_user(msg.from.id);
+        if (!user.ok) {
+            return user.as_status();
+        }
+        return await ManagersChat.on_message_edited(
+            Helpers.to_group_message(msg, user.value.userid()), this.journal);
     }
 
     // NOTE: this function must NOT be async, it should return immediately
@@ -360,14 +379,8 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return user.wrap_error(`can't get user ${telegram_id}`);
         }
 
-        const message: GroupChatMessage = {
-            time: new Date(msg.date * 1000),
-            message_id: msg.message_id.toString(),
-            user_id: user.value.userid(),
-            text: msg.text,
-        }
-
-        const status = await ManagersChat.on_new_message(message);
+        const message = Helpers.to_group_message(msg, user.value.userid());
+        const status = await ManagersChat.on_new_message(message, this.journal);
         if (!status.ok) {
             return status;
         }
@@ -387,14 +400,14 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return user.wrap_error(`can't get user ${telegram_id}`);
         }
 
-        const message: GroupChatMessage = {
+        const message: Message = {
             time: new Date(msg.date * 1000),
             message_id: msg.message_id.toString(),
-            user_id: user.value.userid(),
+            sender_id: user.value.userid(),
             text: msg.text,
         }
 
-        const status = await AnnouncesChat.on_new_message(message);
+        const status = await AnnouncesChat.on_new_message(message, this.journal);
         if (!status.ok) {
             return status;
         }
@@ -735,6 +748,16 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 }
 
 class Helpers {
+    static to_group_message(msg: TelegramBot.Message, user_id: string): Message {
+        return {
+            time: new Date(msg.date * 1000),
+            message_id: msg.message_id.toString(),
+            sender_id: user_id,
+            text: msg.text!,
+            reply_to: msg.reply_to_message?.message_id.toString() ?? null,
+        };
+    }
+
     static is_item_not_found(status: Expected<unknown>): boolean {
         return !status.ok && status.error.includes("not found");
     }

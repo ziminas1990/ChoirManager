@@ -2,7 +2,9 @@ import crypto from "crypto";
 
 import { Expected, Status } from "@src/utils/expected.js";
 import { IMessagesBacklog, Message } from "@src/interfaces/messages_backlog.js";
-import { CollectionReference, Firestore } from "@google-cloud/firestore";
+import { CollectionReference, DocumentData, Firestore } from "@google-cloud/firestore";
+import { to_entity, to_record } from "@src/adapters/schemas/message/message_mapper.js";
+import { MessageRecord } from "@src/adapters/schemas/message/message_record.js";
 import { GoogleAuth } from "@src/api/google_auth.js";
 import { TokenBucket } from "@src/utils/token_bucket.js";
 
@@ -47,12 +49,7 @@ export class GoogleFirestore implements IMessagesBacklog {
                 return Expected.err("Read-only mode");
             }
             await this.api_tokens.wait_tokens(1);
-            await this.collection.doc(doc_id).create({
-                time: message.time,
-                message_id: message.message_id,
-                sender: message.sender_id,
-                text: message.text
-            });
+            await this.collection.doc(doc_id).create(to_record(message));
         } catch (error) {
             return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error)));
         }
@@ -65,9 +62,12 @@ export class GoogleFirestore implements IMessagesBacklog {
             if (this.read_only) {
                 return Expected.err("Read-only mode");
             }
+            const record = to_record(message);
             await this.api_tokens.wait_tokens(1);
             await this.collection.doc(doc_id).update({
-                text: message.text
+                // Text edits must preserve the original reply metadata, even if
+                // the edit event has no reply metadata.
+                text: record.text,
             });
         } catch (error) {
             return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error)));
@@ -86,16 +86,41 @@ export class GoogleFirestore implements IMessagesBacklog {
             const result: Message[] = [];
 
             messages.forEach((doc) => {
-                result.push({
-                    time: new Date(doc.data().time._seconds * 1000),
-                    message_id: doc.data().message_id ?? "",
-                    sender_id: doc.data().sender,
-                    text: doc.data().text
-                })
+                result.push(to_entity(Helpers.read_record(doc.data())));
             });
             return Expected.ok(result);
         } catch (error) {
             return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error)));
         }
+    }
+
+    async get_messages_by_ids(ids: string[]): Promise<Expected<Message[]>> {
+        const unique_ids = [...new Set(ids)];
+        const result: Message[] = [];
+        try {
+            for (let offset = 0; offset < unique_ids.length; offset += 100) {
+                const refs = unique_ids.slice(offset, offset + 100)
+                    .map(id => this.collection.doc(message_id_to_doc_id(id)));
+                await this.api_tokens.wait_tokens(1);
+                const documents = await this.db.getAll(...refs);
+                for (const document of documents) {
+                    if (document.exists) {
+                        result.push(to_entity(Helpers.read_record(document.data()!)));
+                    }
+                }
+            }
+            return Expected.ok(result);
+        } catch (error) {
+            return Expected.exception("failed to fetch messages by IDs", error);
+        }
+    }
+}
+
+class Helpers {
+    static read_record(data: DocumentData): MessageRecord {
+        return {
+            ...data,
+            time: data.time.toDate(),
+        } as MessageRecord;
     }
 }

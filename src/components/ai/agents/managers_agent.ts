@@ -1,7 +1,8 @@
 import fs from "fs";
 
 import { OpenaiAPI } from "@src/api/openai.js";
-import { Agent } from "@src/components/ai/agent.js";
+import { Agent, AgentCfg } from "@src/components/ai/agent.js";
+import { ChatContextBuilder } from "@src/components/chat_context_builder.js";
 import { MessengerTools } from "@src/components/ai/tools/messenger_tools.js";
 import { ToolsMultiplexer } from "@src/components/ai/tools/multiplexer.js";
 import { SimpleMemoryTools } from "@src/components/ai/tools/simple_memory_tools.js";
@@ -12,7 +13,8 @@ import { IBroadcaster, ISubscription } from "@src/interfaces/message_queue.js";
 import { Journal } from "@src/journal.js";
 import { render_task_tracker_event } from "@src/utils/string_engine/task_tracker.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { GroupChat, GroupChatMessage } from "@src/logic/group_chat.js";
+import { IMessagesBacklog, Message as ChatMessage } from "@src/interfaces/messages_backlog.js";
+import { save_message } from "@src/utils/messages_backlog.js";
 import { TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 
@@ -67,14 +69,16 @@ function parse_agent_response(text: string): Expected<AgentResponse> {
 export class ManagersAgent {
     private readonly journal: Journal;
     private readonly task_tracker_subscription: ISubscription<TaskTrackerEvent>;
-    private agent?: Agent;
+    private context_builder?: ChatContextBuilder;
+    private agent_config?: AgentCfg;
+    private tools?: IToolchain;
 
     // Queue of incoming messages, processed in proceed()
-    private new_messages_queue: GroupChatMessage[] = [];
+    private new_messages_queue: ChatMessage[] = [];
 
     constructor(
         private readonly config: ManagersChatAgentConfig,
-        private readonly chat: GroupChat,
+        private readonly backlog: IMessagesBacklog,
         task_tracker_events: IBroadcaster<TaskTrackerEvent>,
         private readonly dependencies: ManagersAgentDependencies,
         private readonly extra_tools: IToolchain | undefined,
@@ -112,49 +116,51 @@ export class ManagersAgent {
             }
         }
 
-        this.agent = new Agent(
-            {
-                instruction: instruction_status.value,
-                ttl_ms: this.config.context_days * 24 * 60 * 60 * 1000,
-                inactivity_timeout_ms: 0,
-                tool_calls_limit: 12,
-                output_format: "json",
-            },
-            OpenaiAPI.get_llm(this.config.model),
-            tools,
-            this.journal,
-        );
-
-        const now = new Date();
-        const from = new Date(now.getTime() - this.config.context_days * 24 * 60 * 60 * 1000);
-        const messages = await this.chat.fetch_messages(from, now);
-        if (!messages.ok) {
-            return messages.wrap_error("failed to fetch managers chat backlog");
-        }
-
-        messages.value.sort((a, b) => a.time.getTime() - b.time.getTime());
-        for (const message of messages.value) {
-            await this.add_message_to_context(message);
-        }
+        this.context_builder = new ChatContextBuilder(this.backlog, this.config.context_days);
+        this.agent_config = {
+            instruction: instruction_status.value,
+            ttl_ms: this.config.context_days * 24 * 60 * 60 * 1000,
+            inactivity_timeout_ms: 0,
+            tool_calls_limit: 12,
+            output_format: "json",
+        };
+        this.tools = tools;
 
         return Expected.ok(undefined);
     }
 
     // Queue message for processing in proceed()
     // NOTE: this function must NOT be async, it should return immediately
-    on_new_message(message: GroupChatMessage): void {
+    on_new_message(message: ChatMessage): void {
         this.journal.log().info(`new managers chat message: ${message.text}`);
         this.new_messages_queue.push(message);
     }
 
     async proceed(): Promise<Status> {
-        const messages = this.new_messages_queue;
-        this.new_messages_queue = [];
-        for (const message of messages) {
-            const status = await this.handle_message(message);
+        if (!this.context_builder || !this.agent_config || !this.tools) {
+            return Expected.err("ManagersAgent is not initialized");
+        }
+        while (this.new_messages_queue.length > 0) {
+            const message = this.new_messages_queue.shift();
+            if (!message) {
+                break;
+            }
+            if (!this.is_bot_mentioned(message.text)) {
+                continue;
+            }
+            const context = await this.context_builder.get_context();
+            if (!context.ok) {
+                this.new_messages_queue.unshift(message);
+                return context.wrap_error("failed to prepare managers chat context");
+            }
+            const status = await this.handle_message([
+                ...context.value.originals,
+                ...context.value.window,
+            ]);
             if (!status.ok) {
                 this.journal.log().error(`Failed to handle managers chat message: ${status.error}`);
             }
+            break; // handle one bot's message at a time
         }
 
         while (true) {
@@ -173,20 +179,25 @@ export class ManagersAgent {
         }
     }
 
-    private async handle_message(message: GroupChatMessage): Promise<Status> {
-        if (!this.agent) {
+    private async handle_message(context: ChatMessage[]): Promise<Status> {
+        if (!this.agent_config || !this.tools) {
             return Expected.err("ManagersAgent is not initialized");
         }
 
-        await this.add_message_to_context(message);
-
-        if (!this.is_bot_mentioned(message.text)) {
-            return Expected.ok(undefined);
+        const agent = new Agent(
+            this.agent_config,
+            OpenaiAPI.get_llm(this.config.model),
+            this.tools,
+            this.journal,
+        );
+        const loaded_at = new Date(Date.now());
+        for (const message of context) {
+            agent.add_context_message(await this.to_context_message(message), loaded_at);
         }
 
         return await this.with_typing_indicator(async () => {
             this.journal.log().info("Requesting managers agent response");
-            const response = await this.agent!.generate_response();
+            const response = await agent.generate_response();
             if (!response.ok) {
                 return response.wrap_error("failed to generate managers chat response").as_status();
             }
@@ -215,11 +226,6 @@ export class ManagersAgent {
         return text.includes(`@${this.dependencies.bot_id}`);
     }
 
-    private async add_message_to_context(message: GroupChatMessage): Promise<void> {
-        const context_message = await this.to_context_message(message);
-        this.agent!.add_context_message(context_message, message.time);
-    }
-
     private async on_task_tracker_event(event: TaskTrackerEvent): Promise<Status> {
         const message = render_task_tracker_event(event, new Date());
         const sent = await this.publish_message(message);
@@ -229,31 +235,35 @@ export class ManagersAgent {
         return Expected.ok(undefined);
     }
 
-    private async to_context_message(message: GroupChatMessage): Promise<Message> {
+    private async to_context_message(message: ChatMessage): Promise<Message> {
         const author = this.format_author(message);
+        const reply_to = typeof message.reply_to === "string"
+            ? [`reply_to: ${message.reply_to}`]
+            : [];
         return {
             role: this.is_bot_message(message) ? "assistant" : "user",
             content: [
                 `id: ${message.message_id}`,
                 `time: ${format_message_time(message.time)}`,
-                `user_id: ${message.user_id}`,
+                `user_id: ${message.sender_id}`,
                 `name: ${author}`,
+                ...reply_to,
                 "text:",
                 message.text,
             ].join("\n"),
         };
     }
 
-    private format_author(message: GroupChatMessage): string {
+    private format_author(message: ChatMessage): string {
         if (this.is_bot_message(message)) {
             return "Ursa Major Bot";
         }
 
         const resolved = this.users.resolve_user({
-            system_id: message.user_id,
+            system_id: message.sender_id,
         });
         if (!resolved.ok || !resolved.value) {
-            return `@${message.user_id}`;
+            return `@${message.sender_id}`;
         }
 
         const user = resolved.value;
@@ -263,8 +273,8 @@ export class ManagersAgent {
         return name.length > 0 ? name : `(unknown)`;
     }
 
-    private is_bot_message(message: GroupChatMessage): boolean {
-        return message.user_id === this.dependencies.bot_id;
+    private is_bot_message(message: ChatMessage): boolean {
+        return message.sender_id === this.dependencies.bot_id;
     }
 
     private async publish_message(html_text: string): Promise<Expected<string>> {
@@ -278,14 +288,14 @@ export class ManagersAgent {
             return sent.wrap_error("failed to send message to managers chat");
         }
 
-        const outgoing: GroupChatMessage = {
+        const outgoing: ChatMessage = {
             time: new Date(),
             message_id: sent.value,
-            user_id: this.dependencies.bot_id,
+            sender_id: this.dependencies.bot_id,
             text: html_text,
+            reply_to: null,
         };
-        this.chat.on_new_message(outgoing);
-        this.add_message_to_context(outgoing);
+        await save_message(this.backlog, outgoing, "add", this.journal);
         return Expected.ok(sent.value);
     }
 

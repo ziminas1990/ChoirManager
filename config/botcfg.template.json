@@ -99,15 +99,19 @@
     },
     "managers_chat": {
         "backlog": {
-            "type": "google_firestore",
-            "read_only": true,
-            "database_id": "",
-            "collection_name": "managers_chat_backlog"
+            "type": "local_cache",
+            "window_days": 30,
+            "underlying": {
+                "type": "firestore",
+                "read_only": true,
+                "database_id": "",
+                "collection_name": "managers_chat_backlog"
+            }
         }
     },
     "managers_chat_agent": {
         "model": "gpt-6.1-terra",
-        "context_days": 3,
+        "context_days": 14,
         "prompt_file": "./config/managers_chat_agent_prompt.txt"
     },
     "announce_chat": {
