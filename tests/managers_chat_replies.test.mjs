@@ -11,12 +11,12 @@ import { GoogleAuth } from "../dist/api/google_auth.js";
 import { OpenaiAPI } from "../dist/api/openai.js";
 import { GoogleFirestore } from "../dist/adapters/messages_storage/google_firestore.js";
 import { MessagesStorageFactory } from "../dist/adapters/messages_storage/factory.js";
-import { PlainCollectionFactory } from "../dist/adapters/plain_collection/factory.js";
 import { TgAdapter } from "../dist/adapters/telegram/adapter.js";
 import { ManagersAgent } from "../dist/components/ai/agents/managers_agent.js";
 import { Runtime } from "../dist/runtime.js";
 import { Expected } from "../dist/utils/expected.js";
 import { TokenBucket } from "../dist/utils/token_bucket.js";
+import { read_only_plain_collection } from "./helpers/read_only_plain_collection.mjs";
 
 afterEach(() => { mock.restoreAll(); journal.clear(); });
 
@@ -156,16 +156,14 @@ async function fixture(t, respond) {
     mock.method(Runtime, "get_instance", () => ({
         get_managers_backlog: () => backlog, get_managers_agent: () => agent,
     }));
-    mock.method(PlainCollectionFactory, "create", () => Expected.ok({
-        get_all: async () => Expected.ok([]), proceed: async () => Expected.ok([]),
-    }));
+    const users_collection = read_only_plain_collection();
     mock.method(TelegramBot.prototype, "startPolling", async () => {});
     const directory = mkdtempSync(join(tmpdir(), "managers-replies-"));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
     const token_file = join(directory, "token");
     writeFileSync(token_file, "test-only-token");
-    const adapter = TgAdapter.unpack({ token_file, users_storage: {} }, {}, {},
-        { managers_chat_id }, journal);
+    const adapter = TgAdapter.unpack({ token_file, formatting: "html" }, {}, {},
+        users_collection, { managers_chat_id }, journal);
     mock.method(adapter, "get_user", () => Expected.ok({ userid: () => "reply-author" }));
     mock.method(adapter, "resolve_group_user_info", async () => Expected.ok({ roles: [] }));
     assert.equal((await adapter.init()).ok, true);

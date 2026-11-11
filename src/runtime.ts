@@ -17,6 +17,7 @@ import { AdminActions } from "./use_cases/admin_actions.js";
 import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
 import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
 import { TgAdapter } from "./adapters/telegram/adapter.js";
+import { TgAdapterFactory } from "./adapters/telegram/factory.js";
 import { TaskTrackerServiceFactory } from "./adapters/task_tracker_service/factory.js";
 import { AdministrationServiceFactory } from "./adapters/administration_service/factory.js";
 import { SimpleMemoryServiceFactory } from "./adapters/simple_memory_service/factory.js";
@@ -210,7 +211,7 @@ export class Runtime {
         if (this.config.tg_adapter) {
             this.journal.info("Starting Telegram adapter");
             if (!this.tg_adapter) {
-                this.tg_adapter = new TgAdapter(
+                const created = TgAdapterFactory.create(
                     this.config.tg_adapter,
                     {
                         deposit_presentation: this.config.deposit_service,
@@ -221,6 +222,10 @@ export class Runtime {
                         users: this.user_service.as_replica(),
                     },
                     this.journal);
+                if (!created.ok) {
+                    return created.wrap_error("Failed to start Telegram adapter");
+                }
+                this.tg_adapter = created.value;
             }
             const status = await this.tg_adapter.init();
             if (!status.ok) {
@@ -722,10 +727,9 @@ export class Runtime {
         const replica = user_service.as_replica();
         const users = unpack_runtime_users(packed.users, replica, journal);
 
-        const runtime = new Runtime(config, database, user_service, runtime_hash, users, journal);
-
+        let tg_adapter: TgAdapter | undefined;
         if (packed.tg_adapter && config.tg_adapter) {
-            runtime.tg_adapter = TgAdapter.unpack(
+            const created = TgAdapterFactory.create(
                 config.tg_adapter,
                 {
                     deposit_presentation: config.deposit_service,
@@ -735,11 +739,17 @@ export class Runtime {
                 {
                     users: replica,
                 },
-                packed.tg_adapter,
                 journal,
+                packed.tg_adapter,
             );
+            if (!created.ok) {
+                return created.wrap_error("Failed to restore Telegram adapter");
+            }
+            tg_adapter = created.value;
         }
 
+        const runtime = new Runtime(config, database, user_service, runtime_hash, users, journal);
+        runtime.tg_adapter = tg_adapter;
         return Expected.ok(runtime);
     }
 

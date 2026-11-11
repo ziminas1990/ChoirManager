@@ -19,7 +19,6 @@ WORKDIR /app
 
 # Copy compiled and bundled file from builder
 COPY --from=builder /app/dist/app.cjs ./app.cjs
-COPY --from=builder /app/dist/migrate.cjs ./migrate.cjs
 
 # Optionally link config dir (your original intent)
 RUN npm install request && ln -s /mnt/config ./config

@@ -20,10 +20,8 @@ import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory
 import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { Environment } from "@src/components/environment.js";
-import { PlainCollectionConfig, PlainCollectionFactory } from "@src/adapters/plain_collection/factory.js";
 import { IPlainCollection } from "@src/interfaces/plain_collection.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
-import { telegram_user_firestore_converter } from "@src/adapters/telegram/telegram_user_mapper.js";
 import {
     TelegramUserRecord,
     telegram_id_from_record,
@@ -33,7 +31,6 @@ import {
 export type Config = {
     token_file: string;
     formatting: Formatting;
-    users_storage: PlainCollectionConfig;
 }
 
 export type IcomingItem = {
@@ -44,17 +41,17 @@ export type IcomingItem = {
     callback: TelegramBot.CallbackQuery;
 }
 
-type TgAdapterCfg = {
+export type TgAdapterCfg = {
     deposit_presentation?: DepositPresentationConfig;
     runtime: RuntimeConfig;
     assistant: AssistantConfig;
 }
 
-type TgAdapterEnv = {
+export type TgAdapterEnv = {
     users: IUserServiceReplica;
 }
 
-type PackedTgAdapter = {
+export type PackedTgAdapter = {
     choir_chat_id?: number;
     announce_thread_id?: number;
     managers_chat_id?: number;
@@ -63,7 +60,6 @@ type PackedTgAdapter = {
 export class TgAdapter extends Logic<void> implements IAdapter {
     private bot?: TelegramBot;
     private users: Map<number, TelegramUser> = new Map();
-    private readonly users_collection: IPlainCollection<TelegramUserRecord>;
 
     // Queue of incoming messages, processed in proceed()
     private messages_queue: TelegramBot.Message[] = [];
@@ -77,15 +73,27 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
     private managers_chat?: IManagersChat;
 
+    constructor(
+        private cfg: Config,
+        private readonly adapter_cfg: TgAdapterCfg,
+        private readonly env: TgAdapterEnv,
+        private readonly users_collection: IPlainCollection<TelegramUserRecord>,
+        parent_journal: IJournal,
+    ) {
+        super(50);
+        this.journal = parent_journal.child("adapter.telegram");
+    }
+
     public static unpack(
         cfg: Config,
         adapter_cfg: TgAdapterCfg,
         env: TgAdapterEnv,
+        users_collection: IPlainCollection<TelegramUserRecord>,
         packed: PackedTgAdapter,
         parent_journal: IJournal)
     : TgAdapter
     {
-        const adapter = new TgAdapter(cfg, adapter_cfg, env, parent_journal)
+        const adapter = new TgAdapter(cfg, adapter_cfg, env, users_collection, parent_journal);
         adapter.unpack(packed);
         return adapter;
     }
@@ -96,31 +104,6 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             announce_thread_id: adapter.announce_thread_id,
             managers_chat_id: adapter.managers_chat_id,
         } as const;
-    }
-
-    private unpack(packed: PackedTgAdapter) {
-        this.choir_chat_id = packed.choir_chat_id;
-        this.announce_thread_id = packed.announce_thread_id;
-        this.managers_chat_id = packed.managers_chat_id;
-    }
-
-    constructor(
-        private cfg: Config,
-        private readonly adapter_cfg: TgAdapterCfg,
-        private readonly env: TgAdapterEnv,
-        parent_journal: IJournal,
-    ) {
-        super(50);
-        this.journal = parent_journal.child("adapter.telegram");
-        const collection = PlainCollectionFactory.create(
-            cfg.users_storage,
-            telegram_user_firestore_converter(),
-            this.journal,
-        );
-        if (!collection.ok) {
-            throw new Error(`telegram users collection: ${collection.error}`);
-        }
-        this.users_collection = collection.value;
     }
 
     async init(): Promise<Status> {
@@ -227,6 +210,12 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         }
 
         return Expected.ok([]);
+    }
+
+    private unpack(packed: PackedTgAdapter) {
+        this.choir_chat_id = packed.choir_chat_id;
+        this.announce_thread_id = packed.announce_thread_id;
+        this.managers_chat_id = packed.managers_chat_id;
     }
 
     // NOTE: this function must NOT be async, it should return immediately
