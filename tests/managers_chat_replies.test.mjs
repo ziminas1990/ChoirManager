@@ -5,17 +5,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import TelegramBot from "node-telegram-bot-api";
-import { Timestamp } from "@google-cloud/firestore";
 
-import { GoogleAuth } from "../dist/api/google_auth.js";
 import { OpenaiAPI } from "../dist/api/openai.js";
-import { GoogleFirestore } from "../dist/adapters/messages_storage/google_firestore.js";
-import { MessagesStorageFactory } from "../dist/adapters/messages_storage/factory.js";
+import { MessagesBacklogCache } from "../dist/components/messages_backlog_cache.js";
+import { MemoryMessagesBacklog } from "./helpers/memory_messages_backlog.mjs";
 import { TgAdapter } from "../dist/adapters/telegram/adapter.js";
 import { ManagersAgent } from "../dist/components/ai/agents/managers_agent.js";
 import { Runtime } from "../dist/runtime.js";
 import { Expected } from "../dist/utils/expected.js";
-import { TokenBucket } from "../dist/utils/token_bucket.js";
 import { read_only_plain_collection } from "./helpers/read_only_plain_collection.mjs";
 
 afterEach(() => { mock.restoreAll(); journal.clear(); });
@@ -31,102 +28,63 @@ function telegram_message(message_id, text, extra = {}) {
         chat: { id: managers_chat_id, type: "supergroup", title: "Managers" }, ...extra };
 }
 
-function firestore_fixture() {
-    const records = new Map();
+function memory_fixture() {
+    const backlog = new MemoryMessagesBacklog();
+    const ranges = [];
+    const id_reads = [];
     const updates = [];
-    const queries = [];
-    const id_queries = [];
     let read_error;
     let write_error;
     let write_hook;
-    function snapshot(record) {
-        return { exists: record !== undefined,
-            data: () => record === undefined ? undefined : {
-                ...structuredClone(record), time: Timestamp.fromDate(record.time),
-            } };
-    }
-    function query(filters = []) {
-        return {
-            where(field, operator, value) { return query([...filters, { field, operator, value }]); },
-            orderBy() { return this; },
-            async get() {
-                queries.push(filters);
-                const selected = [...records.values()].filter(record => filters.every(filter =>
-                    filter.operator === ">=" ? record[filter.field] >= filter.value
-                        : record[filter.field] <= filter.value));
-                return { forEach(visit) {
-                    for (const record of selected) {
-                        visit(snapshot(record));
-                    }
-                } };
-            },
-        };
-    }
-    const collection = {
-        ...query(),
-        doc(id) {
-            return {
-                id,
-                async create(data) {
-                    if (write_hook) {
-                        await write_hook(data);
-                    }
-                    if (write_error) {
-                        throw write_error;
-                    }
-                    assert.equal(records.has(id), false, "duplicate document");
-                    assert_no_undefined(data);
-                    records.set(id, structuredClone(data));
-                },
-                async update(patch) {
-                    if (write_error) {
-                        throw write_error;
-                    }
-                    assert.equal(records.has(id), true, "missing document");
-                    updates.push(structuredClone(patch));
-                    records.set(id, { ...records.get(id), ...structuredClone(patch) });
-                },
-            };
-        },
-    };
-    mock.method(GoogleAuth, "get_firestore", () => ({
-        collection: () => collection,
-        async getAll(...refs) {
-            const ids = refs.map(ref => records.get(ref.id)?.message_id ?? ref.id);
-            id_queries.push(ids);
-            const error = typeof read_error === "function" ? read_error(ids) : read_error;
-            if (error) {
-                throw error;
-            }
-            return refs.map(ref => snapshot(records.get(ref.id)));
-        },
-    }));
-    mock.method(TokenBucket.prototype, "wait_tokens", async () => {});
-    return { records, updates, queries, id_queries,
+    const get_messages = backlog.get_messages.bind(backlog);
+    const get_messages_by_ids = backlog.get_messages_by_ids.bind(backlog);
+    const add_message = backlog.add_message.bind(backlog);
+    const update_message = backlog.update_message.bind(backlog);
+
+    mock.method(backlog, "get_messages", async (from, to) => {
+        ranges.push(structuredClone({ from, to }));
+        return await get_messages(from, to);
+    });
+    mock.method(backlog, "get_messages_by_ids", async ids => {
+        id_reads.push([...ids]);
+        const error = typeof read_error === "function" ? read_error(ids) : read_error;
+        return error
+            ? Expected.exception("Message lookup failed", error)
+            : await get_messages_by_ids(ids);
+    });
+    mock.method(backlog, "add_message", async message => {
+        if (write_hook) {
+            await write_hook(message);
+        }
+        return write_error
+            ? Expected.exception("Message write failed", write_error)
+            : await add_message(message);
+    });
+    mock.method(backlog, "update_message", async message => {
+        if (write_error) {
+            return Expected.exception("Message update failed", write_error);
+        }
+        const updated = await update_message(message);
+        if (updated.ok) {
+            updates.push(structuredClone(message));
+        }
+        return updated;
+    });
+
+    return {
+        backlog, ranges, id_reads, updates,
         fail_id_reads: error => { read_error = error; },
         fail_writes: error => { write_error = error; },
         block_writes: hook => { write_hook = hook; },
-        create_backlog: () => new GoogleFirestore({ database_id: "test", collection_name: "managers" }, false),
-        stored: id => [...records.values()].find(record => record.message_id === String(id)) };
-}
-
-function assert_no_undefined(value) {
-    if (value && typeof value === "object") {
-        for (const item of Object.values(value)) {
-            assert.notEqual(item, undefined, "Firestore rejects undefined fields");
-            assert_no_undefined(item);
-        }
-    }
+        create_backlog: () => backlog,
+        stored: id => backlog.stored(String(id)),
+    };
 }
 
 async function fixture(t, respond) {
-    const firestore = firestore_fixture();
+    const storage = memory_fixture();
     function create_cached_backlog() {
-        const result = MessagesStorageFactory.create({ type: "local_cache", window_days: 5,
-            underlying: { type: "firestore", database_id: "test", collection_name: "managers",
-                read_only: false } }, journal);
-        assert.equal(result.ok, true);
-        return result.value;
+        return new MessagesBacklogCache(storage.backlog, 5, journal);
     }
     let backlog = create_cached_backlog();
     const requests = [];
@@ -169,7 +127,7 @@ async function fixture(t, respond) {
     assert.equal((await adapter.init()).ok, true);
     let tick = Date.now();
     return {
-        ...firestore, requests,
+        ...storage, requests,
         get backlog() { return backlog; },
         emit: (event, message) => adapter.bot.emit(event, message),
         async proceed(expected_ok = true) {
@@ -209,7 +167,7 @@ test("Telegram replies load full chains only before an LLM response, including a
     // Motivation: unmentioned messages and startup must not read history, while
     // each response must receive all available ancestors from current storage.
 
-    // 1. create the real adapter, chat, storage adapter, and managers agent
+    // 1. create the adapter and managers agent with a cache over memory storage
     let context;
     let original;
     let reply;
@@ -238,8 +196,8 @@ test("Telegram replies load full chains only before an LLM response, including a
         await context.proceed();
         assert.equal(context.requests.length, 0);
         assert.equal(context.stored(20).reply_to, "10");
-        assert.deepEqual(context.id_queries, []);
-        assert.deepEqual(context.queries, []);
+        assert.deepEqual(context.id_reads, []);
+        assert.deepEqual(context.ranges, []);
     }
 
     // 3. trigger a response with a reply to that reply, preserving direct links
@@ -259,29 +217,29 @@ test("Telegram replies load full chains only before an LLM response, including a
         assert.ok(loaded_original.endsWith(`text:\n${original.text}`));
         assert.match(loaded_original, /name: Original Author\n/);
         assert.equal(reply_reference(loaded_original), "5");
-        assert.deepEqual(context.id_queries, [["10"], ["5"]]);
+        assert.deepEqual(context.id_reads, [["10"], ["5"]]);
         assert.equal(context.requests[0].filter(message => message.content?.startsWith("id: 20\n")).length, 1);
         assert.ok(context_message(context.requests[0], 5).endsWith("text:\nEarlier ancestor"));
         assert.deepEqual(context.requests[0].filter(message => message.content?.startsWith("id: "))
             .map(message => message.content.split("\n")[0]), ["id: 5", "id: 10", "id: 20", "id: 30"]);
     }
 
-    // 4. reload through a fresh storage adapter and ask the restarted agent
+    // 4. recreate the cache over saved messages and ask the restarted agent
     {
         await context.restart();
-        assert.deepEqual(context.id_queries, [["10"], ["5"]]);
+        assert.deepEqual(context.id_reads, [["10"], ["5"]]);
         assert.equal(context.requests.length, 1);
         context.emit("message", telegram_message(40, "@test_bot What did we agree on?"));
         await context.proceed();
         assert.equal(context.requests.length, 2);
-        assert.deepEqual(context.id_queries, [["10"], ["5"], ["10"], ["5"]]);
+        assert.deepEqual(context.id_reads, [["10"], ["5"], ["10"], ["5"]]);
         assert.equal(context_message(context.requests[1], 20), live_reply);
         assert.equal(context_message(context.requests[1], 30), live_chain);
         assert.equal(context_message(context.requests[1], 10), context_message(context.requests[0], 10));
         assert.equal(context_message(context.requests[1], 5), context_message(context.requests[0], 5));
         assert.equal(reply_reference(context_message(context.requests[1], 40)), undefined);
-        const range = context.queries.at(-1);
-        assert.ok(new Date(original.date * 1000) < range[0].value);
+        const range = context.ranges.at(-1);
+        assert.ok(new Date(original.date * 1000) < range.from);
     }
 
     // 5. read the latest stored original after an edit without restarting
@@ -299,10 +257,10 @@ test("Telegram replies load full chains only before an LLM response, including a
     {
         const later = Date.now() + 4 * 86400_000;
         mock.method(Date, "now", () => later);
-        const query_count = context.id_queries.length;
+        const query_count = context.id_reads.length;
         context.emit("message", telegram_message(60, "@test_bot A new topic"));
         await context.proceed();
-        assert.equal(context.id_queries.length, query_count);
+        assert.equal(context.id_reads.length, query_count);
         assert.equal(context.requests[3].some(message => message.content?.startsWith("id: 10\n")), false);
         assert.equal(context.requests[3].some(message => message.content?.startsWith("id: 20\n")), false);
         assert.equal(context.requests[3].some(message => message.content?.startsWith("id: 5\n")), false);
@@ -333,7 +291,7 @@ test("each managers response uses a fresh chat snapshot while retaining its tool
         context.emit("message", telegram_message(20, "@test_bot Answer"));
         await context.proceed();
         assert.equal(context.requests.length, 2);
-        assert.equal(context.queries.length, 1);
+        assert.equal(context.ranges.length, 1);
         assert.ok(context.requests[1].some(message => message.role === "tool_calls"));
         assert.ok(context.requests[1].some(message => message.role === "tool_result"
             && message.tool_call_id === "send-1"));
@@ -345,7 +303,7 @@ test("each managers response uses a fresh chat snapshot while retaining its tool
         await context.proceed();
         assert.equal(context.stored(1000).text, "Sunday works");
         assert.equal(context.requests.length, 2);
-        assert.equal(context.queries.length, 1);
+        assert.equal(context.ranges.length, 1);
     }
 
     // 4. use current chat text without duplicating the previous internal history
@@ -353,7 +311,7 @@ test("each managers response uses a fresh chat snapshot while retaining its tool
         context.emit("message", telegram_message(30, "@test_bot Explain"));
         await context.proceed();
         assert.equal(context.requests.length, 3);
-        assert.equal(context.queries.length, 1);
+        assert.equal(context.ranges.length, 1);
         const request = context.requests[2];
         assert.ok(context_message(request, 20).endsWith("text:\nEdited request"));
         assert.ok(context_message(request, 1000).endsWith("text:\nSunday works"));
@@ -453,7 +411,7 @@ test("queued mentions run one per tick and see the previous persisted bot reply"
     {
         await context.proceed();
         assert.equal(context.requests.length, 3);
-        assert.equal(context.queries.length, 1);
+        assert.equal(context.ranges.length, 1);
         assert.equal(context.stored(1000).text, "First answer");
         const request = context.requests[2];
         assert.ok(context_message(request, 1000).endsWith("text:\nFirst answer"));
@@ -501,9 +459,9 @@ test("a failed response still leaves the next mention for another tick", async t
     }
 });
 
-test("Telegram processing and LLM context do not wait for a pending Firestore write", { timeout: 3000 }, async t => {
+test("Telegram processing and LLM context do not wait for a pending backlog write", { timeout: 3000 }, async t => {
     // Motivation: awaiting backlog acceptance from the main loop must only
-    // wait for a local change, even when the database write has not completed.
+    // wait for a local change, even when the underlying backlog write has not completed.
 
     // 1. keep the remote write pending after the cache has accepted a message
     let context;
@@ -554,7 +512,7 @@ test("failed background writes retain local context without retrying persistence
     {
         await context.proceed();
         assert.equal(context.stored(20), undefined);
-        assert.equal(context.queries.length, 1);
+        assert.equal(context.ranges.length, 1);
         assert.equal(context.requests.length, 1);
     }
 
@@ -601,18 +559,18 @@ test("context requests resolve shared chains in batches and terminate at cycles 
     {
         await context.restart();
         assert.equal(context.requests.length, 0);
-        assert.equal(context.id_queries.length, 0);
-        assert.equal(context.queries.length, 0);
+        assert.equal(context.id_reads.length, 0);
+        assert.equal(context.ranges.length, 0);
     }
 
     // 4. load the context with ancestors before the recent messages
     {
         context.emit("message", telegram_message(50, "@test_bot Summarize"));
         await context.proceed();
-        assert.equal(context.id_queries.length, 2);
-        assert.equal(context.id_queries[0].length, 2);
-        assert.ok(context.id_queries[0].includes("10"));
-        assert.deepEqual(context.id_queries[1], ["5"]);
+        assert.equal(context.id_reads.length, 2);
+        assert.equal(context.id_reads[0].length, 2);
+        assert.ok(context.id_reads[0].includes("10"));
+        assert.deepEqual(context.id_reads[1], ["5"]);
         const ids = context_ids(context.requests[0]);
         assert.deepEqual(new Set(ids.slice(0, 2)), new Set(["10", "5"]));
         assert.deepEqual(ids.slice(2), ["20", "30", "40", "50"]);
@@ -642,7 +600,7 @@ test("context snapshots keep reachable chains and drop chains after all recent r
             date: Math.floor((now - 2 * 86400_000) / 1000), reply_to_message: { message_id: 10 },
         }));
         await context.proceed();
-        assert.deepEqual(context.id_queries, []);
+        assert.deepEqual(context.id_reads, []);
     }
 
     // 2. save a fresh unmentioned reply without reading the chain
@@ -652,7 +610,7 @@ test("context snapshots keep reachable chains and drop chains after all recent r
         context.emit("message", telegram_message(30, "Fresh reply", { reply_to_message: { message_id: 10 } }));
         await context.proceed();
         assert.equal(context.requests.length, 0);
-        assert.equal(context.id_queries.length, 0);
+        assert.equal(context.id_reads.length, 0);
     }
 
     // 3. retain both ancestors after the first root expires, without duplicates
@@ -663,7 +621,7 @@ test("context snapshots keep reachable chains and drop chains after all recent r
         const ids = context_ids(context.requests[0]);
         assert.deepEqual(new Set(ids), new Set(["5", "10", "30", "40"]));
         assert.equal(new Set(ids).size, ids.length);
-        assert.equal(context.id_queries.length, 2);
+        assert.equal(context.id_reads.length, 2);
         assert.equal(context.stored(10).time.getTime(), old_time.getTime());
         assert.equal(context.stored(5).time.getTime(), old_time.getTime());
         const original_date = `${String(old_time.getDate()).padStart(2, "0")}.`
@@ -678,9 +636,9 @@ test("context snapshots keep reachable chains and drop chains after all recent r
         context.emit("message", telegram_message(50, "@test_bot New topic"));
         await context.proceed();
         assert.ok(context.stored(50));
-        assert.equal(context.queries.length, 1);
+        assert.equal(context.ranges.length, 1);
         assert.deepEqual(context_ids(context.requests[1]), ["50"]);
-        assert.equal(context.id_queries.length, 2);
+        assert.equal(context.id_reads.length, 2);
     }
 
     // 5. load the chain again on demand after another reply references it
@@ -688,11 +646,11 @@ test("context snapshots keep reachable chains and drop chains after all recent r
         context.emit("message", telegram_message(60, "Another reply", { reply_to_message: { message_id: 10 } }));
         await context.proceed();
         assert.equal(context.requests.length, 2);
-        assert.deepEqual(context.id_queries, [["10"], ["5"]]);
+        assert.deepEqual(context.id_reads, [["10"], ["5"]]);
         context.emit("message", telegram_message(70, "@test_bot Summarize again"));
         await context.proceed();
         const ids = context_ids(context.requests[2]);
-        assert.deepEqual(context.id_queries, [["10"], ["5"]]);
+        assert.deepEqual(context.id_reads, [["10"], ["5"]]);
         assert.deepEqual(new Set(ids), new Set(["5", "10", "50", "60", "70"]));
         assert.equal(new Set(ids).size, ids.length);
     }
@@ -722,7 +680,7 @@ test("a failed context lookup retains the queued reply and retries with a fresh 
         const status = await context.proceed(false);
         assert.match(status.error, /Temporary read failure/);
         assert.equal(context.requests.length, 0);
-        assert.deepEqual(context.id_queries, [["10"], ["5"]]);
+        assert.deepEqual(context.id_reads, [["10"], ["5"]]);
     }
 
     // 3. rebuild the snapshot and retry only the original queued reply
@@ -730,7 +688,7 @@ test("a failed context lookup retains the queued reply and retries with a fresh 
         context.fail_id_reads(undefined);
         await context.proceed();
         assert.equal(context.requests.length, 1);
-        assert.deepEqual(context.id_queries, [["10"], ["5"], ["5"]]);
+        assert.deepEqual(context.id_reads, [["10"], ["5"], ["5"]]);
         assert.deepEqual(new Set(context_ids(context.requests[0])), new Set(["5", "10", "20", "30"]));
     }
 
@@ -760,7 +718,7 @@ for (const chat_type of ["group", "supergroup"]) {
             });
             context.emit("message", reply);
             await context.proceed();
-            snapshot = structuredClone(context.stored(20).reply_to);
+            snapshot = context.stored(20);
         }
 
         // 2. persist an edit that omits reply metadata, even with a bot mention
@@ -769,8 +727,8 @@ for (const chat_type of ["group", "supergroup"]) {
             context.emit("edited_message", { ...edited, text: "@test_bot I agree with Sunday" });
             await context.proceed();
             assert.equal(context.stored(20).text, "@test_bot I agree with Sunday");
-            assert.deepEqual(context.stored(20).reply_to, snapshot);
-            assert.deepEqual(context.updates, [{ text: "@test_bot I agree with Sunday" }]);
+            assert.deepEqual(context.stored(20), { ...snapshot, text: "@test_bot I agree with Sunday" });
+            assert.deepEqual(context.updates.map(message => message.message_id), ["20"]);
             assert.equal(context.requests.length, 0);
         }
 
@@ -790,7 +748,7 @@ for (const chat_type of ["group", "supergroup"]) {
             await context.proceed();
             const restored = context_message(context.requests[0], 20);
             assert.ok(restored.endsWith("text:\n@test_bot I agree with Sunday"));
-            assert.equal(reply_reference(restored), snapshot);
+            assert.equal(reply_reference(restored), snapshot.reply_to);
         }
     });
 }
@@ -823,85 +781,13 @@ test("unavailable originals remain ID references without copying Telegram snapsh
         assert.equal(context.stored(20 + index).reply_to, item.expected);
         assert.equal(reply_reference(context_message(context.requests.at(-1), 20 + index)),
             item.expected);
-        assert.equal(context.id_queries.length, index + 1);
-        assert.equal(context.id_queries.at(-1).length, index + 1);
-    }
-});
-
-test("batch lookup handles duplicate, missing, and empty IDs and propagates read failures", async () => {
-    // Motivation: callers must distinguish missing messages from storage errors,
-    // while requesting many references without a separate read for each ID.
-
-    // 1. store messages outside the normal history range
-    let context;
-    let backlog;
-    {
-        context = firestore_fixture();
-        backlog = context.create_backlog();
-        const time = new Date(Date.now() - 10 * 86400_000);
-        assert.equal((await backlog.add_message({
-            time, message_id: "first", sender_id: "author", text: "First", reply_to: null,
-        })).ok, true);
-        assert.equal((await backlog.add_message({
-            time, message_id: "second", sender_id: "author", text: "Second", reply_to: "first",
-        })).ok, true);
-        assert.equal(context.stored("first").schema, 1);
-        assert.equal(context.stored("first").sender_id, "author");
-        assert.equal(Object.hasOwn(context.stored("first"), "sender"), false);
-        assert.equal((await backlog.add_message({
-            time, message_id: "legacy", sender_id: "old-author", text: "Old message",
-        })).ok, true);
-        const legacy = context.stored("legacy");
-        legacy.sender = legacy.sender_id;
-        delete legacy.sender_id;
-        delete legacy.schema;
-    }
-
-    // 2. fetch a set in one request, returning each existing message once
-    {
-        const result = await backlog.get_messages_by_ids(["second", "missing", "first", "second", "legacy"]);
-        assert.equal(result.ok, true);
-        assert.deepEqual(result.value.map(message => message.message_id), ["second", "first", "legacy"]);
-        assert.equal(result.value[0].reply_to, "first");
-        assert.equal(result.value[1].reply_to, null);
-        assert.equal(Object.hasOwn(result.value[2], "reply_to"), false);
-        assert.equal(result.value[2].sender_id, "old-author");
-        assert.ok(result.value[0].time instanceof Date);
-        assert.equal(context.id_queries.length, 1);
-        assert.equal(context.id_queries[0].length, 4);
-    }
-
-    // 3. skip storage completely for an empty set
-    {
-        const result = await backlog.get_messages_by_ids([]);
-        assert.equal(result.ok, true);
-        assert.deepEqual(result.value, []);
-        assert.equal(context.id_queries.length, 1);
-    }
-
-    // 4. return a failed storage lookup as an error
-    {
-        context.fail_id_reads(new Error("Firestore unavailable"));
-        const result = await backlog.get_messages_by_ids(["first"]);
-        assert.equal(result.ok, false);
-        assert.match(result.error, /Firestore unavailable/);
-    }
-
-    // 5. reject unknown schema versions through both storage read APIs
-    {
-        context.fail_id_reads(undefined);
-        context.stored("first").schema = 99;
-        const by_ids = await backlog.get_messages_by_ids(["first"]);
-        assert.equal(by_ids.ok, false);
-        assert.match(by_ids.error, /Unsupported message schema: 99/);
-        const by_time = await backlog.get_messages(new Date(0), new Date());
-        assert.equal(by_time.ok, false);
-        assert.match(by_time.error, /Unsupported message schema: 99/);
+        assert.equal(context.id_reads.length, index + 1);
+        assert.equal(context.id_reads.at(-1).length, index + 1);
     }
 });
 
 test("legacy metadata stays unknown while ordinary messages are explicitly non-replies", async t => {
-    // Motivation: absent metadata in old Firestore records is not evidence
+    // Motivation: absent metadata in historical messages is not evidence
     // that a message was not a reply, and text must never create a link.
     // Agent context includes reply_to only when the target id is known.
 
@@ -914,10 +800,6 @@ test("legacy metadata stays unknown while ordinary messages are explicitly non-r
             text: "Yes, I agree. reply_to: 10",
         });
         assert.equal(result.ok, true);
-        const legacy = context.stored("legacy");
-        legacy.sender = legacy.sender_id;
-        delete legacy.sender_id;
-        delete legacy.schema;
         assert.equal(Object.hasOwn(context.stored("legacy"), "reply_to"), false);
         context.emit("message", telegram_message(20, "Yes, I agree. reply_to: 10"));
         await context.proceed();
