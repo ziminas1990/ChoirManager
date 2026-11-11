@@ -89,7 +89,6 @@ The image also contains the release 1 migration command (`node migrate.cjs`). Th
 * ignore all messages, received during the startup
 * notifications about new applications
 * notifications about new feedback
-* use webpack to pack bot into a single js-file and publish docker image with this single file
 * BUG: adding to memberships table
 * configure logs rotation
 * remove "chorister" role, because everyone who is not a guest is chorister
