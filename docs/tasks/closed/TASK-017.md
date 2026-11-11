@@ -6,7 +6,7 @@ Application components depend on the concrete `Journal` class and obtain a
 `pino.Logger` through `log()`. Tests replace these classes with incomplete
 objects, making strict TypeScript checking difficult. Diagnostic logging needs
 a small, backend-independent contract before the test migration in
-[TASK-015](../TASK-015.md).
+[TASK-015](./TASK-015.md).
 
 ## Require
 

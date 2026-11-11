@@ -11,7 +11,9 @@
     "build": "npm run compile && node build.js",
     "app": "node dist/app.cjs",
     "build_and_run": "npm run build && npm run app",
-    "autotests": "npm run compile && node --test tests"
+    "autotests": "npm run typecheck && npm test",
+    "typecheck": "tsc -p tsconfig.tests.json",
+    "test": "node scripts/run-tests.mjs"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.16",

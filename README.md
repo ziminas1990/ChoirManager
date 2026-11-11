@@ -6,6 +6,9 @@ in the [deployment guide](docs/deployment_guide.md#language-models).
 The [diagnostic logging guide](docs/logging.md) describes `IJournal`, production
 output, and in-memory records for tests.
 
+The [testing guide](docs/testing.md) describes TypeScript checks, the full test
+suite, and individual test runs.
+
 To update:
 
 ```bash

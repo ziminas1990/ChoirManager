@@ -5,7 +5,7 @@
 Managers chat tests exercise Telegram processing and agent context through a
 concrete Firestore messages adapter. Their fixtures imitate SDK queries and
 document snapshots even though the components accept `IMessagesBacklog`. This
-complicates the typed test migration in [TASK-015](../TASK-015.md).
+complicates the typed test migration in [TASK-015](./TASK-015.md).
 
 ## Require
 

@@ -6,7 +6,7 @@
 `PlainCollectionFactory` and a Firestore converter. Tests must replace the static
 factory method to supply a test collection, despite the adapter already storing
 it as `IPlainCollection<TelegramUserRecord>`. This hidden dependency complicates
-typed fixtures for [TASK-015](../TASK-015.md).
+typed fixtures for [TASK-015](./TASK-015.md).
 
 ## Require
 
