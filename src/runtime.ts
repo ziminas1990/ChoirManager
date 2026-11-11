@@ -12,7 +12,7 @@ import { Proceeder } from "./logic/abstracts.js";
 import { ManagersAgentLogic } from "./logic/managers_agent.js";
 import { UserService } from "./components/user_service.js";
 import { IUserServiceReplica } from "./interfaces/user_service.js";
-import { Journal } from "./journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { AdminActions } from "./use_cases/admin_actions.js";
 import { IFeedbackStorage } from "./interfaces/feedback_storage.js";
 import { FeedbackStorageFactory } from "./adapters/feedback_storage/factory.js";
@@ -92,14 +92,14 @@ export class Runtime {
         config: BotConfig,
         database: Database,
         user_service: UserService,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ): Expected<Runtime> {
         const journal = parent_journal.child("rt");
         const runtime_cache_filename = path.resolve(config.runtime.runtime_cache_filename);
         try {
-            journal.log().info({ runtime_cache_filename }, "Reading runtime cache");
+            journal.info({ runtime_cache_filename }, "Reading runtime cache");
             const packed_raw = fs.readFileSync(runtime_cache_filename, "utf8");
-            journal.log().info({
+            journal.info({
                 runtime_cache_filename,
                 bytes: Buffer.byteLength(packed_raw, "utf8"),
             }, "Runtime cache read");
@@ -107,14 +107,14 @@ export class Runtime {
             const packed = JSON.parse(packed_raw);
             const runtime = Runtime.unpack(config, database, user_service, packed, journal);
             if (!runtime.ok) {
-                journal.log().error({
+                journal.error({
                     runtime_cache_filename,
                     error: runtime.error,
                 }, "Failed to unpack runtime cache");
             }
             return runtime;
         } catch (e) {
-            journal.log().error({
+            journal.error({
                 runtime_cache_filename,
                 error: e instanceof Error ? e.message : String(e),
                 stack: e instanceof Error ? e.stack : undefined,
@@ -173,7 +173,7 @@ export class Runtime {
         private user_service: UserService,
         private runtime_hash: string,
         private users: Map<string, UserLogic>,
-        private journal: Journal)
+        private journal: IJournal)
     {
         if (Runtime.instance) {
             throw new Error("Runtime is already initialized");
@@ -191,10 +191,10 @@ export class Runtime {
     }
 
     async start(): Promise<Status> {
-        this.journal.log().info("Starting runtime");
+        this.journal.info("Starting runtime");
 
         if (this.config.administration_service) {
-            this.journal.log().info("Initializing administration service...");
+            this.journal.info("Initializing administration service...");
             const create_status = AdministrationServiceFactory.create(
                 this.config.administration_service,
                 this.user_service,
@@ -208,7 +208,7 @@ export class Runtime {
         }
 
         if (this.config.tg_adapter) {
-            this.journal.log().info("Starting Telegram adapter");
+            this.journal.info("Starting Telegram adapter");
             if (!this.tg_adapter) {
                 this.tg_adapter = new TgAdapter(
                     this.config.tg_adapter,
@@ -229,7 +229,7 @@ export class Runtime {
         }
 
         if (this.config.scores_service) {
-            this.journal.log().info("Initializing scores service...");
+            this.journal.info("Initializing scores service...");
             const create_status = ScoresServiceFactory.create(
                 this.config.scores_service,
                 this.journal,
@@ -246,7 +246,7 @@ export class Runtime {
         }
 
         if (this.config.new_records_tracker) {
-            this.journal.log().info("Starting new records tracker");
+            this.journal.info("Starting new records tracker");
             if (!this.new_records_fetcher) {
                 this.new_records_fetcher = new NewRecordsFetcher(
                     this.journal,
@@ -260,7 +260,7 @@ export class Runtime {
             }
         }
 
-        this.journal.log().info("Initializing messages provider...");
+        this.journal.info("Initializing messages provider...");
         this.messages_provider = new GoogleSpreadsheetMessagesProvider(
             this.config.messages_provider!.sheet_id,
             this.config.messages_provider!.table_name,
@@ -286,7 +286,7 @@ export class Runtime {
         );
 
         if (this.config.json.feedback_storage) {
-            this.journal.log().info("Initializing feedback storage...");
+            this.journal.info("Initializing feedback storage...");
             const create_status = FeedbackStorageFactory.create(
                 this.config.json.feedback_storage, this.journal);
             if (!create_status.ok) {
@@ -300,7 +300,7 @@ export class Runtime {
         }
 
         if (this.config.json.rehersals_storage) {
-            this.journal.log().info("Initializing rehersals storage...");
+            this.journal.info("Initializing rehersals storage...");
             const create_status = RehersalsStorageFactory.create(this.config.json.rehersals_storage);
             if (!create_status.ok) {
                 return create_status.wrap_error("Failed to create rehersals storage");
@@ -324,7 +324,7 @@ export class Runtime {
         }
 
         if (this.config.attendance_tracker) {
-            this.journal.log().info("Initializing attendance tracker...");
+            this.journal.info("Initializing attendance tracker...");
             this.attendance_tracker = new AttendanceTracker(
                 this.config.attendance_tracker,
                 this.messages_provider,
@@ -341,7 +341,7 @@ export class Runtime {
         }
 
         if (this.config.task_tracker) {
-            this.journal.log().info("Initializing task tracker...");
+            this.journal.info("Initializing task tracker...");
             const create_status = TaskTrackerServiceFactory.create(
                 this.config.task_tracker,
                 this.task_tracker_broadcaster,
@@ -359,7 +359,7 @@ export class Runtime {
         }
 
         if (this.config.deposit_service) {
-            this.journal.log().info("Initializing deposit service...");
+            this.journal.info("Initializing deposit service...");
             const create_status = DepositServiceFactory.create(
                 this.config.deposit_service,
                 this.deposit_broadcaster,
@@ -381,7 +381,7 @@ export class Runtime {
             );
         }
 
-        this.journal.log().info("Initializing simple memory...");
+        this.journal.info("Initializing simple memory...");
         const create_status = SimpleMemoryServiceFactory.create(
             this.config.simple_memory,
             this.journal,
@@ -397,7 +397,7 @@ export class Runtime {
         Environment.setup.simple_memory_service = simple_memory;
 
         if (this.config.json.managers_chat) {
-            this.journal.log().info("Initializing managers chat...");
+            this.journal.info("Initializing managers chat...");
             if (this.config.json.managers_chat.backlog) {
                 const backlog = MessagesStorageFactory.create(this.config.json.managers_chat.backlog, this.journal);
                 if (!backlog.ok) {
@@ -415,7 +415,7 @@ export class Runtime {
             if (!this.managers_backlog) {
                 return Expected.err("Managers chat agent requires a messages backlog");
             }
-            this.journal.log().info("Initializing managers chat agent...");
+            this.journal.info("Initializing managers chat agent...");
             const task_tracker_tools = Environment.global.maybe_task_tracker_service
                 ? new TaskTrackerTools(Environment.global.task_tracker_service)
                 : undefined;
@@ -452,7 +452,7 @@ export class Runtime {
         }
 
         if (this.config.json.announce_chat) {
-            this.journal.log().info("Initializing announce chat...");
+            this.journal.info("Initializing announce chat...");
             if (this.config.json.announce_chat.backlog) {
                 const backlog = MessagesStorageFactory.create(this.config.json.announce_chat.backlog, this.journal);
                 if (!backlog.ok) {
@@ -516,7 +516,7 @@ export class Runtime {
         const replica = this.user_service.as_replica();
         const resolved = replica.resolve_user({ system_id });
         if (!resolved.ok) {
-            this.journal.log().error(`Failed to resolve user '${system_id}': ${resolved.error}`);
+            this.journal.error(`Failed to resolve user '${system_id}': ${resolved.error}`);
             return undefined;
         }
         if (!resolved.value) {
@@ -552,49 +552,49 @@ export class Runtime {
         if (this.tg_adapter) {
             const status = await this.tg_adapter.proceed(now);
             if (!status.ok) {
-                this.journal.log().error(`Tg adapter proceed failed: ${status.error}`);
+                this.journal.error(`Tg adapter proceed failed: ${status.error}`);
             }
         }
 
         if (this.user_service) {
             const user_service_status = await this.user_service.proceed(now);
             if (!user_service_status.ok) {
-                this.journal.log().error(`User service proceed failed: ${user_service_status.error}`);
+                this.journal.error(`User service proceed failed: ${user_service_status.error}`);
             }
         }
 
         if (this.rehersals_tracker) {
             const rehersals_status = await this.rehersals_tracker.proceed(now);
             if (!rehersals_status.ok) {
-                this.journal.log().error(`Rehersals tracker proceed failed: ${rehersals_status.error}`);
+                this.journal.error(`Rehersals tracker proceed failed: ${rehersals_status.error}`);
             }
         }
 
         if (this.messages_provider) {
             const messages_provider_status = await this.messages_provider.proceed();
             if (!messages_provider_status.ok) {
-                this.journal.log().error(`Messages provider proceed failed: ${messages_provider_status.error}`);
+                this.journal.error(`Messages provider proceed failed: ${messages_provider_status.error}`);
             }
         }
 
         if (this.attendance_tracker) {
             const attendance_status = await this.attendance_tracker.proceed(now);
             if (!attendance_status.ok) {
-                this.journal.log().error(`Attendance tracker proceed failed: ${attendance_status.error}`);
+                this.journal.error(`Attendance tracker proceed failed: ${attendance_status.error}`);
             }
         }
 
         if (this.task_tracker) {
             const task_tracker_status = await this.task_tracker.proceed(now);
             if (!task_tracker_status.ok) {
-                this.journal.log().error(`Task tracker proceed failed: ${task_tracker_status.error}`);
+                this.journal.error(`Task tracker proceed failed: ${task_tracker_status.error}`);
             }
         }
 
         if (this.administration_service) {
             const administration_status = await this.administration_service.proceed(now);
             if (!administration_status.ok) {
-                this.journal.log().error(
+                this.journal.error(
                     `Administration service proceed failed: ${administration_status.error}`,
                 );
             }
@@ -603,21 +603,21 @@ export class Runtime {
         if (this.deposit_service) {
             const deposit_status = await this.deposit_service.proceed(now);
             if (!deposit_status.ok) {
-                this.journal.log().error(`Deposit service proceed failed: ${deposit_status.error}`);
+                this.journal.error(`Deposit service proceed failed: ${deposit_status.error}`);
             }
         }
 
         if (this.scores_service) {
             const scores_status = await this.scores_service.proceed(now);
             if (!scores_status.ok) {
-                this.journal.log().error(`Scores service proceed failed: ${scores_status.error}`);
+                this.journal.error(`Scores service proceed failed: ${scores_status.error}`);
             }
         }
 
         if (this.new_records_fetcher) {
             const new_records_status = await this.new_records_fetcher.proceed();
             if (!new_records_status.ok) {
-                this.journal.log().error(`New records tracker proceed failed: ${new_records_status.error}`);
+                this.journal.error(`New records tracker proceed failed: ${new_records_status.error}`);
             }
         }
 
@@ -630,7 +630,7 @@ export class Runtime {
         if (this.deposit_events_handler) {
             const deposit_events_status = await this.deposit_events_handler.proceed();
             if (!deposit_events_status.ok) {
-                this.journal.log().error(`Deposit events handler proceed failed: ${deposit_events_status.error}`);
+                this.journal.error(`Deposit events handler proceed failed: ${deposit_events_status.error}`);
             }
         }
 
@@ -675,13 +675,13 @@ export class Runtime {
         const bytes = Buffer.byteLength(runtime_data, "utf8");
 
         if (runtime_hash != this.runtime_hash) {
-            this.journal.log().info({
+            this.journal.info({
                 runtime_cache_filename,
                 bytes,
                 hash: runtime_hash,
             }, "Writing runtime dump");
             fs.writeFileSync(runtime_cache_filename, runtime_data);
-            this.journal.log().info({
+            this.journal.info({
                 runtime_cache_filename,
                 bytes,
                 hash: runtime_hash,
@@ -704,7 +704,7 @@ export class Runtime {
         database: Database,
         user_service: UserService,
         packed: ReturnType<typeof Runtime.pack>,
-        journal: Journal
+        journal: IJournal
     )
     : Expected<Runtime>
     {
@@ -715,7 +715,7 @@ export class Runtime {
             try {
                 packed = update_packed_runtime(old_version, packed);
             } catch (e) {
-                return return_exception<Runtime>(e, journal.log(), "failed to update runtime data");
+                return return_exception<Runtime>(e, journal, "failed to update runtime data");
             }
         }
 
@@ -758,7 +758,7 @@ export class Runtime {
 function unpack_runtime_users(
     packed_users: PackedMap<string, PackedUserLogic>,
     replica: IUserServiceReplica,
-    journal: Journal,
+    journal: IJournal,
 ): Map<string, UserLogic> {
     const users = new Map<string, UserLogic>();
     for (const [key, packed] of packed_users) {
@@ -767,13 +767,13 @@ function unpack_runtime_users(
             : replica.resolve_user({ tg_username: packed.tgid ?? key });
         const label = packed.system_id ?? packed.tgid ?? key;
         if (!resolved.ok || !resolved.value) {
-            journal.log().warn(
+            journal.warning(
                 `loading users: ${resolved.ok ? `User '${label}' not found` : resolved.error}`);
             continue;
         }
         const status = UserLogic.unpack(resolved.value, packed, journal, replica);
         if (!status.ok) {
-            journal.log().warn(`loading users: ${status.error}`);
+            journal.warning(`loading users: ${status.error}`);
             continue;
         }
         users.set(resolved.value.id.system_id, status.value);

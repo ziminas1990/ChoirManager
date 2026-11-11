@@ -2,7 +2,7 @@ import { FirestoreDataConverter } from "@google-cloud/firestore";
 
 import { CacheAsideCollection } from "@src/components/collections/cache_aside_collection.js";
 import { IPlainCollection, VersionedPlainItem } from "@src/interfaces/plain_collection.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { FirestorePlainCollection } from "./firestore_plain_collection.js";
 
@@ -62,7 +62,7 @@ export class PlainCollectionFactory {
     static create<T extends VersionedPlainItem>(
         config: PlainCollectionConfig,
         data_converter: FirestoreDataConverter<T>,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ): Expected<IPlainCollection<T>>
     {
         const verified = PlainCollectionFactory.verify(config);

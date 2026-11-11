@@ -1,5 +1,5 @@
 import { Expected } from "@src/utils/expected.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import crypto from "crypto";
 
 function pad_2(value: number): string {
@@ -34,15 +34,15 @@ export function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function return_fail<T>(what: string | Expected<T>, logger?: Journal): Expected<T> {
+export function return_fail<T>(what: string | Expected<T>, logger?: IJournal): Expected<T> {
     if (what instanceof Expected) {
         if (logger) {
-            logger.log().error(what.error);
+            logger.error(what.error);
         }
         return what;
     }
     if (logger) {
-        logger.log().error(what);
+        logger.error(what);
     }
     return Expected.err(what);
 }

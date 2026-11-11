@@ -1,12 +1,12 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { Runtime } from "@src/runtime.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 
 export class CoreAPI {
-    private static journal?: Journal;
+    private static journal?: IJournal;
 
-    static attach_journal(journal: Journal): void {
+    static attach_journal(journal: IJournal): void {
         this.journal = journal;
     }
 
@@ -17,7 +17,7 @@ export class CoreAPI {
             return Expected.err(`user '${user_id}' not found`);
         }
         user.add_agent(agent);
-        this.journal?.log().info(`New user agent ${user_id} added`);
+        this.journal?.info(`New user agent ${user_id} added`);
         return Expected.ok(undefined);
     }
 

@@ -1,13 +1,13 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
 
 import { MessagesBacklogCache } from "../dist/components/messages_backlog_cache.js";
 import { Expected } from "../dist/utils/expected.js";
 
-const errors = [];
-const journal = { log: () => ({ error: (...args) => errors.push(args) }) };
+const journal = new MemoryJournal();
 
-afterEach(() => { mock.restoreAll(); errors.length = 0; });
+afterEach(() => { mock.restoreAll(); journal.clear(); });
 
 const day = 86400_000;
 
@@ -163,7 +163,7 @@ test("backlog cache applies local adds and text edits despite background write f
         const result = value(await cache.get_messages(new Date(now - 3 * day), new Date(now)));
         assert.deepEqual(result.map(message => message.text), ["Failed edit", "new", "failed"]);
         await new Promise(resolve => setImmediate(resolve));
-        assert.equal(errors.length, 2);
+        assert.equal(journal.records.filter(record => record.level === "error").length, 2);
         assert.equal(source.records.has("failed"), false);
         assert.equal(source.records.get("reply").text, "Edited");
         assert.equal(source.ranges.length, 1);
@@ -459,7 +459,7 @@ test("background failures are logged once and do not stop later writes", async (
         value(await cache.add_message(message("ok", now - 100)));
         await new Promise(resolve => setImmediate(resolve));
         assert.deepEqual(attempts, ["add:failed", "update:reply", "add:ok"]);
-        assert.equal(errors.length, 2);
+        assert.equal(journal.records.filter(record => record.level === "error").length, 2);
         assert.equal(source.records.has("failed"), false);
         assert.equal(source.records.has("ok"), true);
     }
@@ -471,7 +471,7 @@ test("background failures are logged once and do not stop later writes", async (
         value(await cache.get_messages_by_ids(["failed", "reply"]));
         await new Promise(resolve => setImmediate(resolve));
         assert.equal(attempts.length, 3);
-        assert.equal(errors.length, 2);
+        assert.equal(journal.records.filter(record => record.level === "error").length, 2);
     }
 });
 

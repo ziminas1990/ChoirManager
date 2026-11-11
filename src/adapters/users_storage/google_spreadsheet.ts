@@ -1,6 +1,6 @@
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
 import { Language, Role, UserData, Voice } from "@src/entities/user.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected } from "@src/utils/expected.js";
 
 export type Config = {
@@ -187,9 +187,9 @@ export function parse_users_table(table: string[][]): Expected<UsersSheetRead> {
 // Not used by production UserService.
 export class GoogleSpreadsheetUsersStorage {
     private sheet: GoogleSpreadsheet;
-    private journal: Journal;
+    private journal: IJournal;
 
-    constructor(private readonly config: Config, parent_journal: Journal) {
+    constructor(private readonly config: Config, parent_journal: IJournal) {
         this.sheet = new GoogleSpreadsheet(this.config.google_sheet_id);
         this.journal = parent_journal.child("users_storage");
     }
@@ -206,7 +206,7 @@ export class GoogleSpreadsheetUsersStorage {
         }
         for (const error of parsed.value.errors) {
             const who = error.tgid.length > 0 ? error.tgid : "(blank)";
-            this.journal.log().error(
+            this.journal.error(
                 `Error parsing user '${who}' at row ${error.row}: ${error.message}`);
         }
         return parsed;

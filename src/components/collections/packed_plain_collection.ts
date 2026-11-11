@@ -4,14 +4,14 @@ import {
     PartialWithId,
     PlainItem,
 } from "@src/interfaces/plain_collection.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 // Packs a (possibly nested) domain object into a plain collection item and back.
 export class PackedPlainCollection<T, P, U extends PlainItem>
 implements ICollection<T, P>
 {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
 
     constructor(
         private readonly underlying: IPlainCollection<U>,
@@ -19,7 +19,7 @@ implements ICollection<T, P>
         private readonly unpack: (item: U) => Expected<T>,
         private readonly apply: (item: T, patch: P) => Expected<T>,
         private readonly id_of: (item: T) => string,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         this.journal = parent_journal.child("packed_plain_collection");
     }
@@ -119,7 +119,7 @@ implements ICollection<T, P>
         for (const item of items) {
             const unpacked = this.unpack(item);
             if (!unpacked.ok) {
-                this.journal.log().error(`Invalid item '${item.id}': ${unpacked.error}`);
+                this.journal.error(`Invalid item '${item.id}': ${unpacked.error}`);
                 continue;
             }
             result.push(unpacked.value);

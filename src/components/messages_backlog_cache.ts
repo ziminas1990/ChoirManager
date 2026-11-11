@@ -1,5 +1,5 @@
 import { IMessagesBacklog, Message } from "@src/interfaces/messages_backlog.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { save_message } from "@src/utils/messages_backlog.js";
 
@@ -20,7 +20,7 @@ export class MessagesBacklogCache implements IMessagesBacklog {
     constructor(
         private readonly underlying: IMessagesBacklog,
         private readonly window_days: number,
-        private readonly journal: Journal,
+        private readonly journal: IJournal,
     ) {
         if (!Number.isInteger(window_days) || window_days <= 0) {
             throw new Error("cache window must be a positive integer number of days");

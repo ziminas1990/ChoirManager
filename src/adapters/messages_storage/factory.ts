@@ -1,5 +1,5 @@
 import { IMessagesBacklog } from "@src/interfaces/messages_backlog.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { MessagesBacklogCache } from "@src/components/messages_backlog_cache.js";
 import { GoogleFirestore, Config as GoogleFirestoreConfig } from "./google_firestore.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -9,7 +9,7 @@ export type MessagesStorageConfig =
     | { type: "local_cache"; window_days: number; underlying: MessagesStorageConfig };
 
 export class MessagesStorageFactory {
-    static create(config: MessagesStorageConfig, journal: Journal): Expected<IMessagesBacklog> {
+    static create(config: MessagesStorageConfig, journal: IJournal): Expected<IMessagesBacklog> {
         const status = this.verify(config);
         if (!status.ok) {
             return status.cast_error();

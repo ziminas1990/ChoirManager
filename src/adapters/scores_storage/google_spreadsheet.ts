@@ -1,7 +1,7 @@
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
 import { Score } from "@src/entities/score.js";
 import { IScoresStorage } from "@src/interfaces/storage/scores_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected } from "@src/utils/expected.js";
 
 export type Config = {
@@ -55,9 +55,9 @@ function try_parse_row(row: string[], columns: TableColumns): Expected<Score> {
 
 export class GoogleSpreadsheetScoresStorage implements IScoresStorage {
     private sheet: GoogleSpreadsheet;
-    private journal: Journal;
+    private journal: IJournal;
 
-    constructor(private readonly config: Config, parent_journal: Journal) {
+    constructor(private readonly config: Config, parent_journal: IJournal) {
         this.sheet = new GoogleSpreadsheet(this.config.google_sheet_id);
         this.journal = parent_journal.child("scores_storage");
     }
@@ -83,7 +83,7 @@ export class GoogleSpreadsheetScoresStorage implements IScoresStorage {
         for (const row of table.slice(1)) {
             const parsed = try_parse_row(row, columns);
             if (!parsed.ok) {
-                this.journal.log().warn(`Skipping scores row: ${parsed.error}`);
+                this.journal.warning(`Skipping scores row: ${parsed.error}`);
                 continue;
             }
             scores.push(parsed.value);

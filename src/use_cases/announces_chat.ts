@@ -1,12 +1,12 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { Runtime } from "@src/runtime.js";
 import { Message } from "@src/interfaces/messages_backlog.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { save_message } from "@src/utils/messages_backlog.js";
 
 export class AnnouncesChat {
 
-    public static async on_new_message(message: Message, journal: Journal)
+    public static async on_new_message(message: Message, journal: IJournal)
     : Promise<Status>
     {
         const runtime = Runtime.get_instance();

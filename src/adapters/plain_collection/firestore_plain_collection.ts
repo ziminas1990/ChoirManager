@@ -11,7 +11,7 @@ import {
     PartialWithId,
     VersionedPlainItem,
 } from "@src/interfaces/plain_collection.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Metrics } from "@src/monitoring/metrics.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { apply_patch, get_changes_log } from "@src/utils/plain_object.js";
@@ -36,14 +36,14 @@ type UpdateTransaction<T> = (transaction: Transaction) => Promise<Expected<Updat
 export class FirestorePlainCollection<T extends VersionedPlainItem>
 implements IPlainCollection<T>
 {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private readonly api_tokens: TokenBucket;
 
     constructor(
         private readonly database_id: string,
         private readonly collection_name: string,
         private readonly data_converter: FirestoreDataConverter<T>,
-        parent_journal: Journal
+        parent_journal: IJournal
     ) {
         this.journal = parent_journal.child(`firestore.${collection_name}`);
         this.api_tokens = new TokenBucket({
@@ -84,7 +84,7 @@ implements IPlainCollection<T>
                 return result;
             }
 
-            this.journal.log().info({ item: result.value }, `Created new item`);
+            this.journal.info({ item: result.value }, `Created new item`);
             return Expected.ok(result.value);
         } catch (error) {
             return Expected.exception("Firestore exception during create", error);
@@ -122,7 +122,7 @@ implements IPlainCollection<T>
 
             const fetched_item = result.value.item;
             if (result.value.created) {
-                this.journal.log().info({ item: fetched_item }, `Created new item`);
+                this.journal.info({ item: fetched_item }, `Created new item`);
             }
             return Expected.ok(fetched_item);
         } catch (error) {
@@ -299,7 +299,7 @@ implements IPlainCollection<T>
 
             const { item, update_log } = result.value;
             if (update_log) {
-                this.journal.log().info(`Updated item ${patch.id}: ${update_log}`);
+                this.journal.info(`Updated item ${patch.id}: ${update_log}`);
             }
 
             return Expected.ok(item);
@@ -336,7 +336,7 @@ implements IPlainCollection<T>
                 await batch.commit();
             }
 
-            this.journal.log().info({ ids }, `Deleted items`);
+            this.journal.info({ ids }, `Deleted items`);
             return Expected.ok(undefined);
         } catch (error) {
             return Expected.exception("Firestore exception during delete", error);

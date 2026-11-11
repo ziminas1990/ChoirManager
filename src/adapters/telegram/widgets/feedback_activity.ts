@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { AbstractWidget as AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -13,7 +13,7 @@ type State = "initial" | "waiting_details" | "choose_privacy" | "waiting_confirm
 
 export class FeedbackWidget implements AbstractWidget {
 
-    private journal: Journal;
+    private journal: IJournal;
     private state: State = "initial";
     private message_id?: number;
 
@@ -27,18 +27,18 @@ export class FeedbackWidget implements AbstractWidget {
 
     private feedback: Partial<Feedback> = {};
 
-    constructor(private user: TelegramUser, parent_journal: Journal)
+    constructor(private user: TelegramUser, parent_journal: IJournal)
     {
         this.journal = parent_journal.child("activity.feedback");
     }
 
     public on_details_provided(details: string): void {
-        this.journal.log().info({ details }, "details added");
+        this.journal.info({ details }, "details added");
         this.feedback.details = details;
     }
 
     public async start(): Promise<Status> {
-        this.journal.log().info("started");
+        this.journal.info("started");
         const status = await this.create_widget();
         if (!status.ok) {
             return status.wrap_error("failed to create widget");
@@ -51,7 +51,7 @@ export class FeedbackWidget implements AbstractWidget {
     }
 
     public async interrupt(): Promise<Status> {
-        this.journal.log().info("interrupted");
+        this.journal.info("interrupted");
         this.release_resources();
         this.state = "initial";
         return Expected.ok(undefined);
@@ -103,7 +103,7 @@ export class FeedbackWidget implements AbstractWidget {
     }
 
     private async switch_state(new_state: State): Promise<Status> {
-        this.journal.log().info({ old: this.state, new: new_state }, "switching state");
+        this.journal.info({ old: this.state, new: new_state }, "switching state");
         this.state = new_state;
         return await this.update_widget();
     }
@@ -174,7 +174,7 @@ export class FeedbackWidget implements AbstractWidget {
 
     private async publish_feedback(): Promise<Status> {
         if (!this.feedback.details || this.feedback.details.trim().length == 0) {
-            this.journal.log().error("No any details provided");
+            this.journal.error("No any details provided");
             return await this.switch_state("failed");
         }
 
@@ -190,7 +190,7 @@ export class FeedbackWidget implements AbstractWidget {
             // release_resources() call
             this.message_id = undefined;
             await this.release_resources();
-            return log_and_return(status, this.journal.log());
+            return log_and_return(status, this.journal);
         }
         return await this.switch_state("finished");
     }

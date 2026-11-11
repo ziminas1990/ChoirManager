@@ -1,5 +1,5 @@
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 const LOG_RESULT_MAX_LEN = 500;
@@ -34,7 +34,7 @@ export class ToolsMultiplexer implements IToolchain {
 
     private get_tools_cache?: Map<string, Tool>;
 
-    constructor(private journal: Journal) {}
+    constructor(private journal: IJournal) {}
 
     // The optional check runs before every function call in this toolchain.
     // Omitting it leaves access unrestricted.
@@ -154,7 +154,7 @@ export class ToolsMultiplexer implements IToolchain {
     {
         const registration = this.function2toolchain.get(name);
         if (registration === undefined) {
-            this.journal.log().error({ tool: name, parameters }, `tool '${name}' not found`);
+            this.journal.error({ tool: name, parameters }, `tool '${name}' not found`);
             return Expected.err(`Function '${name}' not found`);
         }
 
@@ -166,7 +166,7 @@ export class ToolsMultiplexer implements IToolchain {
                 authorized = Expected.exception("tool access check failed", error);
             }
             if (!authorized.ok) {
-                this.journal.log().warn({ tool: name, error: authorized.error }, "tool access denied");
+                this.journal.warning({ tool: name, error: authorized.error }, "tool access denied");
                 return authorized.cast_error();
             }
             if (this.function2toolchain.get(name) !== registration) {
@@ -176,7 +176,7 @@ export class ToolsMultiplexer implements IToolchain {
 
         const toolchain = registration.toolchain;
         const started_at = Date.now();
-        this.journal.log().info(
+        this.journal.info(
             { tool: name, toolchain: toolchain.get_name(), parameters },
             `calling tool '${name}'`,
         );
@@ -185,7 +185,7 @@ export class ToolsMultiplexer implements IToolchain {
         const duration_ms = Date.now() - started_at;
 
         if (result.ok) {
-            this.journal.log().info(
+            this.journal.info(
                 {
                     tool: name,
                     toolchain: toolchain.get_name(),
@@ -195,7 +195,7 @@ export class ToolsMultiplexer implements IToolchain {
                 `tool '${name}' completed in ${duration_ms}ms`,
             );
         } else {
-            this.journal.log().error(
+            this.journal.error(
                 {
                     tool: name,
                     toolchain: toolchain.get_name(),

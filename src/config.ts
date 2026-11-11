@@ -1,3 +1,4 @@
+import { IJournal } from "@src/interfaces/journal.js";
 import fs from "fs";
 
 import { FeedbackStorageConfig, FeedbackStorageFactory } from "@src/adapters/feedback_storage/factory.js";
@@ -155,10 +156,10 @@ export class AssistantConfig {
         return this.json.prompt_file ?? DEFAULT_CHORISTER_PROMPT_FILE;
     }
 
-    verify(): Status {
+    verify(journal?: IJournal): Status {
         const fail_prefix = "assistant misconfiguration";
 
-        const model_status = verify_openai_model(this.json.model);
+        const model_status = verify_openai_model(this.json.model, journal);
         if (!model_status.ok) {
             return model_status.wrap_error(fail_prefix);
         }
@@ -190,8 +191,8 @@ export class ManagersChatAgentConfig {
         return this.json.prompt_file;
     }
 
-    verify(): Status {
-        const model_status = verify_openai_model(this.json.model);
+    verify(journal?: IJournal): Status {
+        const model_status = verify_openai_model(this.json.model, journal);
         if (!model_status.ok) {
             return model_status;
         }
@@ -320,7 +321,7 @@ export class BotConfig {
         }
     }
 
-    verify(): Status {
+    verify(journal?: IJournal): Status {
         if (!this.json) {
             return Expected.err("configuration MUST be specified");
         }
@@ -359,12 +360,12 @@ export class BotConfig {
         }
 
         if (this.scores_service) {
-            status = this.scores_service.verify();
+            status = this.scores_service.verify(journal);
             if (!status.ok) {
                 return status.wrap_error("'scores_service' misconfiguration");
             }
         } else {
-            console.warn("'scores_service' is not specifed, feature will be DISABLED");
+            journal?.warning("'scores_service' is not specifed, feature will be DISABLED");
         }
 
         if (this.new_records_tracker) {
@@ -380,13 +381,13 @@ export class BotConfig {
                 return status.wrap_error("'deposit_service' misconfiguration");
             }
         } else {
-            console.warn("'deposit_service' is not specifed, feature will be DISABLED");
+            journal?.warning("'deposit_service' is not specifed, feature will be DISABLED");
         }
 
         if (!this.json.assistant) {
             return Expected.err("'assistant' MUST be specified");
         }
-        status = this.assistant.verify();
+        status = this.assistant.verify(journal);
         if (!status.ok) {
             return status;
         }
@@ -450,7 +451,7 @@ export class BotConfig {
         if (!this.json.simple_memory) {
             return Expected.err("'simple_memory' MUST be specified");
         }
-        status = this.simple_memory.verify();
+        status = this.simple_memory.verify(journal);
         if (!status.ok) {
             return status.wrap_error("'simple_memory' misconfiguration");
         }
@@ -461,7 +462,7 @@ export class BotConfig {
         }
 
         if (this.managers_chat_agent) {
-            status = this.managers_chat_agent.verify();
+            status = this.managers_chat_agent.verify(journal);
             if (!status.ok) {
                 return status.wrap_error("'managers_chat_agent' misconfiguration");
             }
@@ -500,11 +501,11 @@ export class BotConfig {
     }
 }
 
-export function load_config(path: string): Expected<BotConfig> {
+export function load_config(path: string, journal?: IJournal): Expected<BotConfig> {
     try {
         const json = JSON.parse(fs.readFileSync(path, "utf-8")) as BotConfigJson;
         const config = new BotConfig(json);
-        const status = config.verify();
+        const status = config.verify(journal);
         if (!status.ok) {
             return Expected.err("Invalid configuration", status);
         }
@@ -518,8 +519,8 @@ export class Config {
     public static data: BotConfigJson;
     private static current?: BotConfig;
 
-    static Load(path: string): Status {
-        const status = load_config(path);
+    static Load(path: string, journal?: IJournal): Status {
+        const status = load_config(path, journal);
         if (!status.ok) {
             return status.as_status();
         }

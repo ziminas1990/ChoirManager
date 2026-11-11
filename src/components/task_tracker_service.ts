@@ -9,7 +9,7 @@ import {
 import { IBroadcaster } from "@src/interfaces/message_queue.js";
 import { ITaskTrackerStorage } from "@src/interfaces/storage/task_tracker_storage.js";
 import { ITaskTrackerService, TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
@@ -44,7 +44,7 @@ function is_deadline_notification_day(
 }
 
 export class TaskTrackerService extends Logic<void> implements ITaskTrackerService {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
 
     private tasks: Map<string, TaskData> = new Map();
     private last_deadline_notification_day?: string;
@@ -55,7 +55,7 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
         private readonly deadline_notification_days: readonly number[],
         private readonly storage: ITaskTrackerStorage,
         private readonly broadcaster: IBroadcaster<TaskTrackerEvent>,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         super(5000);
         this.journal = parent_journal.child("task_tracker_svc");
@@ -143,7 +143,7 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
 
         const deadline_status = await this.maybe_send_deadline_notification(now, tasks_status.value);
         if (!deadline_status.ok) {
-            this.journal.log().warn(`Failed to send deadline notifications: ${deadline_status.error}`);
+            this.journal.warning(`Failed to send deadline notifications: ${deadline_status.error}`);
         }
 
         return Expected.ok(undefined);
@@ -152,13 +152,13 @@ export class TaskTrackerService extends Logic<void> implements ITaskTrackerServi
     protected async proceed_impl(now: Date, _interval_ms: number): Promise<Expected<void[]>> {
         const tasks_status = await this.fetch();
         if (!tasks_status.ok) {
-            this.journal.log().warn(`Failed to fetch tasks for deadline notifications: ${tasks_status.error}`);
+            this.journal.warning(`Failed to fetch tasks for deadline notifications: ${tasks_status.error}`);
             return Expected.ok([]);
         }
 
         const deadline_status = await this.maybe_send_deadline_notification(now, tasks_status.value);
         if (!deadline_status.ok) {
-            this.journal.log().warn(`Failed to send deadline notifications: ${deadline_status.error}`);
+            this.journal.warning(`Failed to send deadline notifications: ${deadline_status.error}`);
         }
         return Expected.ok([]);
     }

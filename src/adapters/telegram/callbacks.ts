@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import TelegramBot from "node-telegram-bot-api";
 import { Expected, Status } from "@src/utils/expected.js";
-import { Journal } from '@src/journal.js';
+import { IJournal } from "@src/interfaces/journal.js";
 import { Logic } from '@src/logic/abstracts.js';
 import { return_fail } from '@src/utils.js';
 
@@ -12,7 +12,7 @@ function random_32bit_value(): string {
 
 type Callback = {
     fn: () => Promise<Status>;
-    journal: Journal;
+    journal: IJournal;
     debug_name?: string;
     single_shot?: boolean;
     valid_until?: number;
@@ -21,7 +21,7 @@ type Callback = {
 export class TelegramCallbacks extends Logic<void> {
     private callbacks: Map<string, Callback> = new Map();
 
-    constructor(private readonly journal: Journal) {
+    constructor(private readonly journal: IJournal) {
         super(100);
     }
 
@@ -49,9 +49,9 @@ export class TelegramCallbacks extends Logic<void> {
     }
 
     async on_callback(tg_callback: TelegramBot.CallbackQuery, now = new Date()): Promise<Status> {
-        this.journal.log().info(`On callback ${tg_callback.id} received (${tg_callback.data})`);
+        this.journal.info(`On callback ${tg_callback.id} received (${tg_callback.data})`);
         if (tg_callback.data == undefined) {
-            this.journal.log().error(`Callback query has no data: ${tg_callback.id}`);
+            this.journal.error(`Callback query has no data: ${tg_callback.id}`);
             return Expected.err(`Callback query has no data: ${tg_callback.id}`);
         }
         const id = tg_callback.data;
@@ -59,7 +59,7 @@ export class TelegramCallbacks extends Logic<void> {
         if (callback) {
             if (callback.valid_until && callback.valid_until < now.getTime()) {
                 this.remove_callback(id);
-                this.journal.log().info(`callback ${id} expired`);
+                this.journal.info(`callback ${id} expired`);
                 return Expected.ok(undefined);
             }
             try {
@@ -73,7 +73,7 @@ export class TelegramCallbacks extends Logic<void> {
                 return (((error) instanceof Error) ? Expected.err((error).message) : Expected.err(String(error))).wrap_error(`callback '${callback.debug_name ?? ""}' failed`);
             }
         } else {
-            return return_fail(`callback ${id} not found`, this.journal.log());
+            return return_fail(`callback ${id} not found`, this.journal);
         }
     }
 

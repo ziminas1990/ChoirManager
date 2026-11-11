@@ -1,3 +1,4 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
@@ -20,14 +21,10 @@ test("managers agent runs independently and keeps processing after failures", { 
     let max_active_calls = 0;
     let main_calls = 0;
     let event_calls = 0;
-    const errors = [];
+    const journal = new MemoryJournal();
     {
         const response = new Promise(resolve => { release_response = resolve; });
         recovered = new Promise(resolve => { mark_recovered = resolve; });
-        const journal = {
-            child() { return this; },
-            log: () => ({ info() {}, error: (...args) => errors.push(args) }),
-        };
         const loaded = Runtime.Load({ runtime: {
             runtime_cache_filename: `/tmp/choirmanager-no-cache-${randomUUID()}`,
         } }, {}, {
@@ -38,7 +35,7 @@ test("managers agent runs independently and keeps processing after failures", { 
         }, journal);
         assert.equal(loaded.ok, true);
         runtime = loaded.value;
-        errors.length = 0;
+        journal.clear();
         runtime.managers_agent = {
             async proceed() {
                 agent_calls += 1;
@@ -93,9 +90,10 @@ test("managers agent runs independently and keeps processing after failures", { 
         release_response();
         await recovered;
         assert.equal(max_active_calls, 1);
+        const errors = journal.records.filter(record => record.level === "error");
         assert.equal(errors.length, 2);
-        assert.match(errors[0][0], /Temporary context read failure/);
-        assert.match(errors[1][0].error.message, /Temporary model exception/);
+        assert.match(errors[0].message, /Temporary context read failure/);
+        assert.match(errors[1].fields.error.message, /Temporary model exception/);
         await proceeder.stop();
         assert.equal(active_calls, 0);
     }

@@ -1,3 +1,4 @@
+import { IJournal } from "@src/interfaces/journal.js";
 import OpenAI from "openai";
 import fs from "fs";
 import { BotConfig } from "@src/config.js";
@@ -35,8 +36,8 @@ export class OpenaiAPI {
         return this._instance;
     }
 
-    public static get_llm(model: OpenaiModel): ILLM {
-        const status = verify_openai_model(model);
+    public static get_llm(model: OpenaiModel, journal?: IJournal): ILLM {
+        const status = verify_openai_model(model, journal);
         if (!status.ok) {
             throw new Error(status.error);
         }

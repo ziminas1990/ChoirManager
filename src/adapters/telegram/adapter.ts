@@ -2,7 +2,7 @@ import fs from "fs";
 import TelegramBot from "node-telegram-bot-api";
 
 import { Expected, Status } from "@src/utils/expected.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Formatting, return_fail } from "@src/utils.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Role, UserData } from "@src/entities/user.js";
@@ -69,7 +69,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
     private messages_queue: TelegramBot.Message[] = [];
     private edited_messages_queue: TelegramBot.Message[] = [];
 
-    private journal: Journal;
+    private journal: IJournal;
 
     private choir_chat_id?: number;
     private announce_thread_id?: number;
@@ -82,7 +82,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         adapter_cfg: TgAdapterCfg,
         env: TgAdapterEnv,
         packed: PackedTgAdapter,
-        parent_journal: Journal)
+        parent_journal: IJournal)
     : TgAdapter
     {
         const adapter = new TgAdapter(cfg, adapter_cfg, env, parent_journal)
@@ -108,7 +108,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         private cfg: Config,
         private readonly adapter_cfg: TgAdapterCfg,
         private readonly env: TgAdapterEnv,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         super(50);
         this.journal = parent_journal.child("adapter.telegram");
@@ -133,7 +133,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             this.bot.on("message", (msg) => {
                 const status = this.handle_message(msg);
                 if (!status.ok) {
-                    this.journal.log().warn(`failed to handle message: ${status.error}`);
+                    this.journal.warning(`failed to handle message: ${status.error}`);
                 }
             });
             this.bot.on("edited_message", (msg) => {
@@ -145,7 +145,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             this.bot.on("callback_query", (query) => {
                 const status = this.handle_callback(query);
                 if (!status.ok) {
-                    this.journal.log().error(`failed to handle callback: ${status.error}`);
+                    this.journal.error(`failed to handle callback: ${status.error}`);
                 }
             });
 
@@ -156,7 +156,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             for (const record of fetched.value) {
                 const status = await this.raise_user_from_record(record);
                 if (!status.ok) {
-                    this.journal.log().warn(
+                    this.journal.warning(
                         `failed to raise telegram user ${record.id}: ${status.error}`);
                 }
             }
@@ -164,7 +164,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             for (const [telegram_id, user] of this.users.entries()) {
                 const status = user.init(this.bot);
                 if (!status.ok) {
-                    this.journal.log().error(`failed to init user: ${status.error}`);
+                    this.journal.error(`failed to init user: ${status.error}`);
                     this.users.delete(telegram_id);
                 }
             }
@@ -213,7 +213,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 ? await this.process_private_message(msg)
                 : await this.process_group_message(msg);
             if (!status.ok) {
-                this.journal.log().warn(`failed to process message: ${status.error}`);
+                this.journal.warning(`failed to process message: ${status.error}`);
             }
         }
 
@@ -222,7 +222,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         for (const msg of edited_messages) {
             const status = await this.handle_edited_group_message(msg);
             if (!status.ok) {
-                this.journal.log().error(`failed to handle edited message: ${status.error}`);
+                this.journal.error(`failed to handle edited message: ${status.error}`);
             }
         }
 
@@ -234,7 +234,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         if (msg.from?.id == undefined) {
             return msg.chat.type == "private"
                 ? Expected.err("telegram id is undefined")
-                : return_fail("telegram id is undefined", this.journal.log());
+                : return_fail("telegram id is undefined", this.journal);
         }
 
         if (msg.chat.type == "private") {
@@ -338,7 +338,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
     // NOTE: this function must NOT be async, it should return immediately
     private handle_callback(query: TelegramBot.CallbackQuery): Status {
         const telegram_id = query.from?.id;
-        this.journal.log().info(
+        this.journal.info(
             `Callback query from ${query.from?.username ?? telegram_id} in ${query.message?.chat.id}: ${query.data}`);
         if (telegram_id == undefined) {
             return Expected.err("telegram id is undefined");
@@ -354,17 +354,17 @@ export class TgAdapter extends Logic<void> implements IAdapter {
     }
 
     async handle_admin_message(msg: TelegramBot.Message): Promise<Status> {
-        this.journal.log().info(`Admin panel message: ${msg.text}`);
+        this.journal.info(`Admin panel message: ${msg.text}`);
         if (msg.text?.includes("this is announces thread")) {
             if (msg.message_thread_id == undefined) {
-                return return_fail("message thread id is undefined", this.journal.log());
+                return return_fail("message thread id is undefined", this.journal);
             }
             return this.on_set_announce_thread_message(msg);
         }
         if (msg.text?.includes("this is managers chat")) {
             return this.on_set_manager_chat_message(msg);
         }
-        return return_fail("unexpected message", this.journal.log());
+        return return_fail("unexpected message", this.journal);
     }
 
     async handle_managers_chat_message(msg: TelegramBot.Message): Promise<Status> {
@@ -446,15 +446,15 @@ export class TgAdapter extends Logic<void> implements IAdapter {
     private log_message(msg: TelegramBot.Message, msg_type: "private" | "group") {
         if (msg.text) {
             if (!msg.text.includes("\n")) {
-                this.journal.log().info(`${msg_type} message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
+                this.journal.info(`${msg_type} message from ${msg.from?.username} in ${msg.chat.id}: ${msg.text}`);
             } else {
-                this.journal.log().info([
+                this.journal.info([
                     `Message from ${msg.from?.username} in ${msg.chat.id}:`,
                     msg.text,
                 ].join("\n"));
             }
         } else {
-            this.journal.log().info(`Empty message from ${msg.from?.username} in ${msg.chat.id}`);
+            this.journal.info(`Empty message from ${msg.from?.username} in ${msg.chat.id}`);
         }
     }
 
@@ -475,7 +475,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         if (existing) {
             const sync_status = await this.sync_existing_user(existing, telegram_id, username, chat_id);
             if (!sync_status.ok) {
-                this.journal.log().warn(
+                this.journal.warning(
                     `failed to sync telegram user ${telegram_id}: ${sync_status.error}`);
             }
             return Expected.ok(existing);
@@ -500,7 +500,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 const update_status = await this.persist_binding(
                     telegram_id, telegram_username, chat_id, resolved.value, agent.value);
                 if (!update_status.ok) {
-                    this.journal.log().warn(
+                    this.journal.warning(
                         `failed to update telegram user ${telegram_id}: ${update_status.error}`);
                 }
             }
@@ -561,7 +561,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 agent,
             );
             if (!update_status.ok) {
-                this.journal.log().warn(
+                this.journal.warning(
                     `failed to sync telegram user ${record.id} on raise: ${update_status.error}`);
             }
         }
@@ -577,7 +577,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return Expected.err("bot is not initialized");
         }
 
-        this.journal.log().info(`Creating telegram agent for ${telegram_id}...`);
+        this.journal.info(`Creating telegram agent for ${telegram_id}...`);
 
         const new_user = new TelegramUser(
             user_data, chat_id, this.adapter_cfg, this.env, this.journal);
@@ -587,7 +587,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         }
 
         this.users.set(telegram_id, new_user);
-        this.journal.log().info(`Telegram agent for ${telegram_id} created`);
+        this.journal.info(`Telegram agent for ${telegram_id} created`);
         return Expected.ok(new_user);
     }
 
@@ -647,7 +647,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             },
         );
         if (!patched.ok) {
-            this.journal.log().warn(
+            this.journal.warning(
                 `failed to update tg_username for ${telegram_id}: ${patched.error}`);
             return Expected.ok(undefined);
         }
@@ -689,7 +689,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 const sync_status = await this.sync_existing_user(
                     agent, telegram_id, username, agent.private_chat_id());
                 if (!sync_status.ok) {
-                    this.journal.log().warn(
+                    this.journal.warning(
                         `failed to sync telegram user ${telegram_id}: ${sync_status.error}`);
                 }
             }
@@ -714,7 +714,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                     resolved.value,
                 );
                 if (!update_status.ok) {
-                    this.journal.log().warn(
+                    this.journal.warning(
                         `failed to update telegram user ${telegram_id}: ${update_status.error}`);
                 }
             }
@@ -740,7 +740,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             return resolved;
         }
         if (record && resolved.value.id.system_id !== record.user_id) {
-            this.journal.log().warn(
+            this.journal.warning(
                 `rebound telegram user ${record.id} from ${record.user_id} to ${resolved.value.id.system_id}`);
         }
         return resolved;

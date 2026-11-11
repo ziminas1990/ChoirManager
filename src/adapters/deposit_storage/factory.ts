@@ -1,5 +1,5 @@
 import { IDepositStorage } from "@src/interfaces/storage/deposit_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import {
     GoogleSpreadsheetDepositStorage,
@@ -11,7 +11,7 @@ export type DepositStorageConfig =
 
 export class DepositStorageFactory {
 
-    static create(config: DepositStorageConfig, parent_journal: Journal)
+    static create(config: DepositStorageConfig, parent_journal: IJournal)
     : Expected<IDepositStorage>
     {
         switch (config.type) {

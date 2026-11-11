@@ -1,4 +1,4 @@
-import pino from "pino";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 export type PackedMap<K, P> = [K, P][];
@@ -63,20 +63,20 @@ export function shorten(text: string, max_length: number): string {
     return text.slice(0, max_length - 3) + "...";
 }
 
-export function return_fail<T = void>(what: string, logger: pino.Logger): Expected<T> {
+export function return_fail<T = void>(what: string, logger: IJournal): Expected<T> {
     logger.error(what);
     return Expected.err(what);
 }
 
-export function return_exception<T = void>(error: unknown, logger: pino.Logger, wrap?: string): Expected<T> {
-    logger.error(error);
+export function return_exception<T = void>(error: unknown, logger: IJournal, wrap?: string): Expected<T> {
+    logger.error({ error }, error instanceof Error ? error.message : String(error));
     if (wrap) {
         return Expected.exception(wrap, error);
     }
     return error instanceof Error ? Expected.err(error.message) : Expected.err(String(error));
 }
 
-export function log_and_return(status: Status, logger: pino.Logger): Status {
+export function log_and_return(status: Status, logger: IJournal): Status {
     if (!status.ok) {
         logger.error(status.error);
     }

@@ -1,3 +1,4 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
 import OpenAI from "openai";
@@ -9,7 +10,6 @@ import { AssistantConfig, ManagersChatAgentConfig } from "../dist/config.js";
 import { ScoresServiceConfig } from "../dist/adapters/scores_service/factory.js";
 import { SimpleMemoryServiceConfig } from "../dist/adapters/simple_memory_service/factory.js";
 import { Agent } from "../dist/components/ai/agent.js";
-import { Journal } from "../dist/journal.js";
 import { Expected } from "../dist/utils/expected.js";
 
 afterEach(() => mock.restoreAll());
@@ -20,8 +20,7 @@ const context = [{ role: "system", content: "Reply in JSON when requested." },
     { role: "user", content: "Find the score." }];
 const tool = { name: "find_score", description: "Find a score",
     parameters: { type: "object", properties: { title: { type: "string" } } } };
-const logger = { info() {}, warn() {}, error() {}, debug() {} };
-const journal = { child() { return this; }, log() { return logger; } };
+const journal = new MemoryJournal();
 
 function configurations(model) {
     return [
@@ -110,11 +109,9 @@ test("older model selections remain usable and emit deprecation warnings", () =>
     // without losing their explicit configuration during this upgrade.
 
     // 1. capture warnings from model selection
-    const warnings = [];
+    const diagnostics = new MemoryJournal();
     {
-        mock.method(Journal.prototype, "log", () => ({
-            ...logger, warn(data, message) { warnings.push({ data, message }); },
-        }));
+        assert.deepEqual(diagnostics.records, []);
     }
 
     // 2. accept only the explicitly listed deprecated models
@@ -122,7 +119,7 @@ test("older model selections remain usable and emit deprecation warnings", () =>
         // 2.1 validate and normalize the same selection in each workload
         {
             for (const config of configurations(model.toUpperCase())) {
-                assert.equal(config.verify().ok, true);
+                assert.equal(config.verify(diagnostics).ok, true);
                 assert.equal(config.model, model);
             }
         }
@@ -130,14 +127,26 @@ test("older model selections remain usable and emit deprecation warnings", () =>
 
     // 3. verify one warning per legacy model
     {
-        assert.equal(warnings.length, 4);
-        assert.equal(warnings[0].data.model, "gpt-4o");
+        assert.equal(diagnostics.records.length, 4);
+        assert.equal(diagnostics.records[0].fields.model, "gpt-4o");
     }
 
     // 4. keep current model selections free of deprecation warnings
     for (const model of current_models) {
-        assert.equal(configurations(model)[0].verify().ok, true);
-        assert.equal(warnings.length, 4);
+        assert.equal(configurations(model)[0].verify(diagnostics).ok, true);
+        assert.equal(diagnostics.records.length, 4);
+    }
+
+    // 5. report direct adapter warnings to a separate caller's journal
+    {
+        const other = new MemoryJournal();
+        OpenaiAPI.get_llm("GPT-4O", other);
+        OpenaiAPI.get_llm("gpt-4o", other);
+        assert.equal(other.records.length, 1);
+        assert.equal(other.records[0].level, "warning");
+        assert.equal(other.records[0].component, "openai_models");
+        assert.equal(other.records[0].fields.model, "gpt-4o");
+        assert.equal(diagnostics.records.length, 4);
     }
 });
 

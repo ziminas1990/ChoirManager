@@ -3,7 +3,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { ChoristerAttendanceStat } from "@src/entities/statistics.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Language, Role, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { apply_interval, GlobalFormatter, shorten } from "@src/utils.js";
 import { Analytic } from "@src/use_cases/analytic.js";
@@ -17,11 +17,11 @@ type StatisticsAction =
 export class ChoristerStatisticsWidget {
     private static readonly prefix = "stats:v1:";
     private static readonly period_days = [30, 60, 90, 180] as const;
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
 
     constructor(
         private readonly user: TelegramUser,
-        parent_journal: Journal,
+        parent_journal: IJournal,
         private readonly message_id?: number,
     ) {
         this.journal = parent_journal.child("activity.statistics");
@@ -34,7 +34,7 @@ export class ChoristerStatisticsWidget {
     static async on_callback(
         query: TelegramBot.CallbackQuery,
         user: TelegramUser,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Status> {
         const action = this.parse_action(query.data);
         const message = Helpers.callback_private_message(query, user);
@@ -98,7 +98,7 @@ export class ChoristerStatisticsWidget {
     }
 
     private async show_statistics(period_days?: number): Promise<Status> {
-        this.journal.log().info({ period_days }, "show statistics");
+        this.journal.info({ period_days }, "show statistics");
         try {
             const resolved = await Environment.global.user_service.resolve_user({
                 system_id: this.user.userid(),
@@ -138,7 +138,7 @@ export class ChoristerStatisticsWidget {
     }
 
     private async report_failure(status: Status): Promise<Status> {
-        this.journal.log().warn(`Statistics request failed: ${status.error}`);
+        this.journal.warning(`Statistics request failed: ${status.error}`);
         await this.user.send_message(Messages.fail_message(this.user.info().lang));
         return status;
     }

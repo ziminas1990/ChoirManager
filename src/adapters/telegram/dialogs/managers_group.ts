@@ -2,7 +2,7 @@ import { IManagersChat, TableRecord } from "@src/interfaces/adapter.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { GlobalFormatter } from "@src/utils.js";
 
 function escape_html(text: string): string {
@@ -14,9 +14,9 @@ function escape_html(text: string): string {
 
 export class ManagersGroup implements IManagersChat {
 
-    private journal: Journal;
+    private journal: IJournal;
 
-    constructor(private chat: IGroupChat, parent_journal: Journal) {
+    constructor(private chat: IGroupChat, parent_journal: IJournal) {
         this.journal = parent_journal.child("managers_chat");
     }
 
@@ -30,7 +30,7 @@ export class ManagersGroup implements IManagersChat {
 
     async on_new_feedback(feedback: Feedback): Promise<Status> {
         const formatter = GlobalFormatter.instance();
-        this.journal.log().info(`new feedback: ${JSON.stringify(feedback)}`);
+        this.journal.info(`new feedback: ${JSON.stringify(feedback)}`);
 
         const message: string[] = [
             formatter.bold("New feedback received"),
@@ -57,7 +57,7 @@ export class ManagersGroup implements IManagersChat {
     }
 
     async on_new_table_record(record: TableRecord): Promise<Status> {
-        this.journal.log().info(`new table record: ${JSON.stringify(record)}`);
+        this.journal.info(`new table record: ${JSON.stringify(record)}`);
 
         const message: string[] = [
             `Новая запись в таблице "${escape_html(record.table_name)}":`,

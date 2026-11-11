@@ -1,3 +1,4 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -7,8 +8,7 @@ import { UserLogic } from "../dist/logic/user.js";
 import { apply_cas_patch } from "../dist/utils/cas_patch.js";
 import { Expected } from "../dist/utils/expected.js";
 
-const logger = { info() {}, warn() {}, error() {}, debug() {} };
-const journal = { child() { return this; }, log() { return logger; } };
+const journal = new MemoryJournal();
 
 function profile(system_id, roles) {
     return {

@@ -1,5 +1,5 @@
 import { IScoresStorage } from "@src/interfaces/storage/scores_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import {
     GoogleSpreadsheetScoresStorage,
@@ -11,7 +11,7 @@ export type ScoresStorageConfig =
 
 export class ScoresStorageFactory {
 
-    static create(config: ScoresStorageConfig, parent_journal: Journal)
+    static create(config: ScoresStorageConfig, parent_journal: IJournal)
     : Expected<IScoresStorage>
     {
         switch (config.type) {

@@ -10,7 +10,7 @@ import {
 } from "@src/entities/task.js";
 import { generate_task_id } from "@src/utils/misc.js";
 import { ITaskTrackerStorage } from "@src/interfaces/storage/task_tracker_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected } from "@src/utils/expected.js";
 import { TokenBucket } from "@src/utils/token_bucket.js";
 
@@ -131,12 +131,12 @@ function is_already_exists_error(error: unknown): boolean {
 export class GoogleFirestoreTaskTrackerStorage implements ITaskTrackerStorage {
     private readonly db: Firestore;
     private readonly collection: CollectionReference;
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private readonly api_tokens: TokenBucket;
 
     constructor(
         private readonly config: Config,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         this.db = GoogleAuth.get_firestore(this.config.database_id);
         this.collection = this.db.collection(this.config.collection_name);
@@ -235,7 +235,7 @@ export class GoogleFirestoreTaskTrackerStorage implements ITaskTrackerStorage {
                 const parsed_status = try_parse_document(doc.id, doc.data());
                 if (!parsed_status.ok) {
                     invalid_docs++;
-                    this.journal.log().warn(
+                    this.journal.warning(
                         `Failed to parse task document '${doc.id}': ${parsed_status.error}`,
                     );
                     return;
@@ -245,10 +245,10 @@ export class GoogleFirestoreTaskTrackerStorage implements ITaskTrackerStorage {
             });
 
             if (invalid_docs > 0) {
-                this.journal.log().warn(`Skipped ${invalid_docs} invalid task documents`);
+                this.journal.warning(`Skipped ${invalid_docs} invalid task documents`);
             }
 
-            this.journal.log().info(`Fetched ${tasks.length} tasks from Firestore`);
+            this.journal.info(`Fetched ${tasks.length} tasks from Firestore`);
             return Expected.ok(tasks);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

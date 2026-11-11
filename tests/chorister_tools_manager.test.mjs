@@ -1,3 +1,4 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -6,8 +7,7 @@ import { Agent } from "../dist/components/ai/agent.js";
 import { Language, Role, Voice } from "../dist/entities/user.js";
 import { Expected } from "../dist/utils/expected.js";
 
-const logger = { info() {}, warn() {}, error() {}, debug() {} };
-const journal = { child() { return this; }, log() { return logger; } };
+const journal = new MemoryJournal();
 const user = { userid: () => "member-id" };
 const dependencies = {
     send_message: async () => Expected.ok(undefined),

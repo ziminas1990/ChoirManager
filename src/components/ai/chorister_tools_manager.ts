@@ -6,7 +6,7 @@ import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { ISimpleMemoryService } from "@src/interfaces/simple_memory_service.js";
 import { ITaskTrackerService } from "@src/interfaces/task_tracker_service.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { AdministrationTools } from "./tools/administration_tools.js";
 import { DepositManagerTools } from "./tools/deposit_manager_tools.js";
@@ -40,7 +40,7 @@ export class ChoristerToolsManager {
 
     private constructor(
         private readonly user: IUserAgent,
-        private readonly journal: Journal,
+        private readonly journal: IJournal,
         private readonly services: ChoristerToolsServices,
     ) {
         this.multiplexer = new ToolsMultiplexer(journal.child("mux"));
@@ -49,12 +49,12 @@ export class ChoristerToolsManager {
     static create(
         user: IUserAgent,
         roles: readonly Role[],
-        journal: Journal,
-        dependencies: ChoristerToolsDependencies,
+        journal: IJournal,
+        callbacks: ChoristerToolsDependencies,
         services: ChoristerToolsServices,
     ): Expected<ChoristerToolsManager> {
         const manager = new ChoristerToolsManager(user, journal, services);
-        const base_status = manager.register_base_tools(dependencies);
+        const base_status = manager.register_base_tools(callbacks);
         if (!base_status.ok) {
             return base_status.wrap_error("failed to register base tools");
         }

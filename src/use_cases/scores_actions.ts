@@ -3,7 +3,7 @@ import { Role, user_has_role } from "@src/entities/user.js";
 import { Environment } from "@src/components/environment.js";
 import { IScoresService } from "@src/interfaces/scores_service.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { GlobalFormatter, return_fail } from "@src/utils.js";
 
@@ -17,7 +17,7 @@ export class ScoresActions {
 
     static async get_available_scores(
         agent: IUserAgent,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Score[] | Status> {
         const access = await this.check_scores_access(agent, journal);
         if (!access.ok) {
@@ -32,7 +32,7 @@ export class ScoresActions {
     static async search_scores(
         agent: IUserAgent,
         query: string,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Expected<Score[]>> {
         const access = await this.check_scores_access(agent, journal);
         if (!access.ok) {
@@ -53,7 +53,7 @@ export class ScoresActions {
 
     static async scores_list_requested(
         agent: IUserAgent,
-        journal: Journal
+        journal: IJournal
     ): Promise<Status> {
         const scores = await this.get_available_scores(agent, journal);
         if (!Array.isArray(scores)) {
@@ -66,7 +66,7 @@ export class ScoresActions {
     static async download_scores_request(
         agent: IUserAgent,
         score: Score | string | { id: string },
-        journal: Journal
+        journal: IJournal
     ): Promise<Status> {
         const access = await this.check_scores_access(agent, journal);
         if (!access.ok) {
@@ -91,7 +91,7 @@ export class ScoresActions {
         }
 
         if (!current?.file) {
-            return return_fail("requested score is no longer available", journal.log())
+            return return_fail("requested score is no longer available", journal)
                 .set_error_code(ScoresError.NotFound);
         }
 
@@ -102,7 +102,7 @@ export class ScoresActions {
 
     private static async check_scores_access(
         agent: IUserAgent,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Expected<IScoresService>> {
         const userid = agent.userid();
         const resolved = await Environment.global.user_service.resolve_user({ system_id: userid });
@@ -110,17 +110,17 @@ export class ScoresActions {
             return resolved.cast_error<IScoresService>().set_error_code(ScoresError.Unavailable);
         }
         if (!resolved.value) {
-            return return_fail<IScoresService>(`user ${userid} not found`, journal.log())
+            return return_fail<IScoresService>(`user ${userid} not found`, journal)
                 .set_error_code(ScoresError.AccessDenied);
         }
         if (!user_has_role(resolved.value, [Role.Chorister, Role.Conductor, Role.Manager])) {
-            return return_fail<IScoresService>(`user ${userid} has no permissions`, journal.log())
+            return return_fail<IScoresService>(`user ${userid} has no permissions`, journal)
                 .set_error_code(ScoresError.AccessDenied);
         }
 
         const service = Environment.global.maybe_scores_service;
         if (!service) {
-            return return_fail<IScoresService>("scores service is not available", journal.log())
+            return return_fail<IScoresService>("scores service is not available", journal)
                 .set_error_code(ScoresError.Unavailable);
         }
 

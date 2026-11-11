@@ -1,5 +1,5 @@
 import { ITaskTrackerStorage } from "@src/interfaces/storage/task_tracker_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import {
     GoogleFirestoreTaskTrackerStorage,
@@ -11,7 +11,7 @@ export type TaskTrackerStorageConfig =
 
 export class TaskTrackerStorageFactory {
 
-    static create(config: TaskTrackerStorageConfig, parent_journal: Journal)
+    static create(config: TaskTrackerStorageConfig, parent_journal: IJournal)
     : Expected<ITaskTrackerStorage>
     {
         switch (config.type) {

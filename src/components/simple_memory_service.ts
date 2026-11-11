@@ -12,11 +12,11 @@ import {
     ISimpleMemoryService,
 } from "@src/interfaces/simple_memory_service.js";
 import { ISimpleMemoryStorage } from "@src/interfaces/storage/simple_memory_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 export class SimpleMemoryService implements ISimpleMemoryService {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private facts: Map<string, MemoryFact> = new Map();
 
     constructor(
@@ -24,7 +24,7 @@ export class SimpleMemoryService implements ISimpleMemoryService {
         private readonly search_prompt_file: string,
         private readonly ask_prompt_file: string,
         private readonly storage: ISimpleMemoryStorage,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         this.journal = parent_journal.child("memory_svc");
     }
@@ -36,7 +36,7 @@ export class SimpleMemoryService implements ISimpleMemoryService {
         }
 
         this.facts = new Map(fetched.value.map((fact) => [fact.id, fact]));
-        this.journal.log().info(`Hydrated ${this.facts.size} memory facts`);
+        this.journal.info(`Hydrated ${this.facts.size} memory facts`);
         return Expected.ok(undefined);
     }
 
@@ -136,7 +136,7 @@ export class SimpleMemoryService implements ISimpleMemoryService {
             return result.cast_error<string[]>().wrap_error("memory search job failed");
         }
 
-        this.journal.log().info(
+        this.journal.info(
             `memory search selected ${result.value.output.ids.length} facts` +
             ` (model=${result.value.model},` +
             ` in=${result.value.usage.input_tokens},` +
@@ -165,7 +165,7 @@ export class SimpleMemoryService implements ISimpleMemoryService {
         for (const id of search_result.value) {
             const fact = this.get_visible(id, access);
             if (!fact.ok) {
-                this.journal.log().warn(`memory ask skipped id '${id}': ${fact.error}`);
+                this.journal.warning(`memory ask skipped id '${id}': ${fact.error}`);
                 continue;
             }
             facts.push(fact.value);
@@ -187,7 +187,7 @@ export class SimpleMemoryService implements ISimpleMemoryService {
             return result.cast_error<string>().wrap_error("memory ask job failed");
         }
 
-        this.journal.log().info(
+        this.journal.info(
             `memory ask answered from ${facts.length} facts` +
             ` (model=${result.value.model},` +
             ` in=${result.value.usage.input_tokens},` +

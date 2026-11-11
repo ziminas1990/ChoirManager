@@ -10,7 +10,7 @@ import { ManagersChatAgentConfig } from "@src/config.js";
 import { IManagersChat } from "@src/interfaces/adapter.js";
 import { IToolchain, Message } from "@src/interfaces/llm.js";
 import { IBroadcaster, ISubscription } from "@src/interfaces/message_queue.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { render_task_tracker_event } from "@src/utils/string_engine/task_tracker.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IMessagesBacklog, Message as ChatMessage } from "@src/interfaces/messages_backlog.js";
@@ -67,7 +67,7 @@ function parse_agent_response(text: string): Expected<AgentResponse> {
 }
 
 export class ManagersAgent {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private readonly task_tracker_subscription: ISubscription<TaskTrackerEvent>;
     private context_builder?: ChatContextBuilder;
     private agent_config?: AgentCfg;
@@ -84,7 +84,7 @@ export class ManagersAgent {
         private readonly extra_tools: IToolchain | undefined,
         private readonly simple_memory_tools: SimpleMemoryTools | undefined,
         private readonly users: IUserServiceReplica,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         this.journal = parent_journal.child("managers_agent");
         this.task_tracker_subscription = task_tracker_events.subscribe();
@@ -132,7 +132,7 @@ export class ManagersAgent {
     // Queue message for processing in proceed()
     // NOTE: this function must NOT be async, it should return immediately
     on_new_message(message: ChatMessage): void {
-        this.journal.log().info(`new managers chat message: ${message.text}`);
+        this.journal.info(`new managers chat message: ${message.text}`);
         this.new_messages_queue.push(message);
     }
 
@@ -158,7 +158,7 @@ export class ManagersAgent {
                 ...context.value.window,
             ]);
             if (!status.ok) {
-                this.journal.log().error(`Failed to handle managers chat message: ${status.error}`);
+                this.journal.error(`Failed to handle managers chat message: ${status.error}`);
             }
             break; // handle one bot's message at a time
         }
@@ -196,7 +196,7 @@ export class ManagersAgent {
         }
 
         return await this.with_typing_indicator(async () => {
-            this.journal.log().info("Requesting managers agent response");
+            this.journal.info("Requesting managers agent response");
             const response = await agent.generate_response();
             if (!response.ok) {
                 return response.wrap_error("failed to generate managers chat response").as_status();
@@ -209,7 +209,7 @@ export class ManagersAgent {
             if (parsed.value.status === "error") {
                 return Expected.err(parsed.value.description);
             }
-            this.journal.log().info("Managers agent response received");
+            this.journal.info("Managers agent response received");
             return Expected.ok(undefined);
         });
     }
@@ -316,13 +316,13 @@ export class ManagersAgent {
     private async send_typing_indicator(): Promise<void> {
         const managers_chat = await this.dependencies.get_managers_chat();
         if (!managers_chat) {
-            this.journal.log().warn("Managers chat sender is not available for typing action");
+            this.journal.warning("Managers chat sender is not available for typing action");
             return;
         }
 
         const status = await managers_chat.send_typing_action();
         if (!status.ok) {
-            this.journal.log().warn(`Failed to send typing action: ${status.error}`);
+            this.journal.warning(`Failed to send typing action: ${status.error}`);
         }
     }
 

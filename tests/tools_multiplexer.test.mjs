@@ -1,11 +1,11 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { ToolsMultiplexer } from "../dist/components/ai/tools/multiplexer.js";
 import { Expected } from "../dist/utils/expected.js";
 
-const logger = { info() {}, warn() {}, error() {}, debug() {} };
-const journal = { child() { return this; }, log() { return logger; } };
+const journal = new MemoryJournal();
 
 function toolchain(name, calls, functions = [`${name}_call`]) {
     return {

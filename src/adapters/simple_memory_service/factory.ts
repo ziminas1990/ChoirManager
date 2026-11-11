@@ -6,7 +6,7 @@ import {
     SimpleMemoryStorageFactory,
 } from "@src/adapters/simple_memory_storage/factory.js";
 import { SimpleMemoryService } from "@src/components/simple_memory_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 // "local" — SimpleMemoryService is instantiated in-process on top of ISimpleMemoryStorage.
@@ -41,7 +41,7 @@ export class SimpleMemoryServiceConfig {
         return this.json.ask_prompt_file;
     }
 
-    verify(): Status {
+    verify(journal?: IJournal): Status {
         if (!this.json.type) {
             return Expected.err("'type' MUST be specified");
         }
@@ -55,7 +55,7 @@ export class SimpleMemoryServiceConfig {
         if (!storage_status.ok) {
             return storage_status.wrap_error("'storage' misconfiguration");
         }
-        const model_status = verify_openai_model(this.json.model);
+        const model_status = verify_openai_model(this.json.model, journal);
         if (!model_status.ok) {
             return model_status;
         }
@@ -78,7 +78,7 @@ export class SimpleMemoryServiceConfig {
 export class SimpleMemoryServiceFactory {
     static create(
         config: SimpleMemoryServiceConfig,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ): Expected<SimpleMemoryService> {
         switch (config.type) {
             case "local": {

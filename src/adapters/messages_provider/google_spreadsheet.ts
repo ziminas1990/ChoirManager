@@ -3,7 +3,7 @@ import mustache from "mustache";
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
 import { Language } from "@src/entities/user.js";
 import { IMessagesProvider } from "@src/interfaces/messages_provider.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 enum MessageId {
@@ -92,13 +92,13 @@ function try_parse_templates(table: string[][]): Expected<Map<string, Record<Lan
 
 export class GoogleSpreadsheetMessagesProvider implements IMessagesProvider {
     private readonly sheet: GoogleSpreadsheet;
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private readonly range: string;
 
     private last_fetch_date?: Date;
     private templates = new Map<string, Record<Language, string>>();
 
-    constructor(google_sheet_id: string, table_name: string, parent_journal: Journal)
+    constructor(google_sheet_id: string, table_name: string, parent_journal: IJournal)
     {
         this.sheet = new GoogleSpreadsheet(google_sheet_id);
         this.range = `${table_name}`;
@@ -160,7 +160,7 @@ export class GoogleSpreadsheetMessagesProvider implements IMessagesProvider {
 
         this.templates = templates_status.value;
         this.last_fetch_date = new Date();
-        this.journal.log().info({
+        this.journal.info({
             messages_count: this.templates.size,
         }, "Messages sheet refreshed");
         return Expected.ok(undefined);

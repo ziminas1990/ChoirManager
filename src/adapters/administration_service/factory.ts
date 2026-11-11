@@ -1,6 +1,6 @@
 import { AdministrationService } from "@src/components/administration_service.js";
 import { IUserService } from "@src/interfaces/user_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 // "local" — AdministrationService is instantiated in-process. Pending operations
@@ -56,7 +56,7 @@ export class AdministrationServiceFactory {
     static create(
         config: AdministrationServiceConfig,
         users: IUserService,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ): Expected<AdministrationService> {
         switch (config.type) {
             case "local": {

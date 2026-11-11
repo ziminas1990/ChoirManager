@@ -1,7 +1,7 @@
 import { Logic } from '@src/logic/abstracts.js';
 import { Role, UserData, is_guest_user, user_has_role, user_tg_username } from '@src/entities/user.js';
 import { Expected } from "@src/utils/expected.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from '@src/interfaces/user_agent.js';
 import { IUserServiceReplica } from '@src/interfaces/user_service.js';
 
@@ -12,7 +12,7 @@ export type PackedUserLogic = {
 };
 
 export class UserLogic extends Logic<void> {
-    private journal: Journal;
+    private journal: IJournal;
 
     private agents: IUserAgent[] = [];
 
@@ -20,7 +20,7 @@ export class UserLogic extends Logic<void> {
         private readonly system_id: string,
         public data: UserData,
         proceed_interval_ms: number,
-        parent_journal: Journal,
+        parent_journal: IJournal,
         private readonly users: IUserServiceReplica,
     )
     {
@@ -34,10 +34,10 @@ export class UserLogic extends Logic<void> {
         const username = user_tg_username(this.data);
         const label = username.length > 0 ? `@${username}` : this.system_id;
         this.journal = parent_journal.child(label, additional_tags);
-        this.journal.log().info(`UserLogic created for ${this.system_id}`);
+        this.journal.info(`UserLogic created for ${this.system_id}`);
     }
 
-    get_journal(): Journal {
+    get_journal(): IJournal {
         return this.journal;
     }
 
@@ -133,7 +133,7 @@ export class UserLogic extends Logic<void> {
     static unpack(
         user: UserData,
         packed: PackedUserLogic,
-        parent_journal: Journal,
+        parent_journal: IJournal,
         users: IUserServiceReplica,
     ): Expected<UserLogic> {
         const system_id = packed.system_id ?? user.id.system_id;
@@ -162,7 +162,7 @@ export class UserLogic extends Logic<void> {
         try {
             const resolved = this.users.resolve_user({ system_id: this.system_id });
             if (!resolved.ok || !resolved.value) {
-                this.journal.log().warn({
+                this.journal.warning({
                     error: resolved.ok ? "user not found" : resolved.error,
                 }, "Failed to refresh current user data");
                 return undefined;
@@ -170,7 +170,7 @@ export class UserLogic extends Logic<void> {
             this.data = resolved.value;
             return this.data;
         } catch (error) {
-            this.journal.log().warn({ error }, "Failed to refresh current user data");
+            this.journal.warning({ error }, "Failed to refresh current user data");
             return undefined;
         }
     }

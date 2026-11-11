@@ -1,6 +1,6 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Runtime } from "@src/runtime.js";
 import { return_fail } from "@src/utils.js";
 import { UserLogic } from "@src/logic/user.js";
@@ -14,25 +14,25 @@ export class DepositActions {
 
     static async deposit_requested(
         agent: IUserAgent,
-        journal: Journal
+        journal: IJournal
     ): Promise<Status> {
         const userid = agent.userid();
         const resolved = await Environment.global.user_service.resolve_user({ system_id: userid });
         if (!resolved.ok || !resolved.value) {
-            return return_fail(`user ${userid} not found`, journal.log());
+            return return_fail(`user ${userid} not found`, journal);
         }
         if (!user_has_role(resolved.value, Role.Chorister)) {
-            return return_fail(`user ${userid} has no permissions`, journal.log());
+            return return_fail(`user ${userid} has no permissions`, journal);
         }
 
         const deposit_service = Environment.global.maybe_deposit_service;
         if (!deposit_service) {
-            return return_fail(`deposit service is not configured`, journal.log());
+            return return_fail(`deposit service is not configured`, journal);
         }
 
         const deposit = await deposit_service.get_deposit(user_tg_username(resolved.value));
         if (!deposit.ok) {
-            return return_fail(`failed to get deposit for ${userid}: ${deposit.error}`, journal.log());
+            return return_fail(`failed to get deposit for ${userid}: ${deposit.error}`, journal);
         }
 
         return await agent.as_deposit_owner().send_deposit_info(deposit.value);
@@ -40,22 +40,22 @@ export class DepositActions {
 
     static async transactions_requested(
         agent: IUserAgent,
-        journal: Journal,
+        journal: IJournal,
         limit?: number
     ): Promise<Status> {
         const userid = agent.userid();
         const resolved = await Environment.global.user_service.resolve_user({ system_id: userid });
-        journal.log().info(`transactions_requested by ${resolved.ok && resolved.value ? user_tg_username(resolved.value) : undefined}`);
+        journal.info(`transactions_requested by ${resolved.ok && resolved.value ? user_tg_username(resolved.value) : undefined}`);
         if (!resolved.ok || !resolved.value) {
-            return return_fail(`user ${userid} not found`, journal.log());
+            return return_fail(`user ${userid} not found`, journal);
         }
         if (!user_has_role(resolved.value, Role.Chorister)) {
-            return return_fail(`user ${userid} has no permissions`, journal.log());
+            return return_fail(`user ${userid} has no permissions`, journal);
         }
 
         const deposit_service = Environment.global.maybe_deposit_service;
         if (!deposit_service) {
-            return return_fail(`deposit service is not configured`, journal.log());
+            return return_fail(`deposit service is not configured`, journal);
         }
 
         const transactions = await deposit_service.fetch_transactions(
@@ -67,24 +67,24 @@ export class DepositActions {
         agent: IUserAgent,
         amount: number,
         original_message: string,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Status> {
         const user_id = agent.userid();
-        journal.log().info(`top_up ${user_id} ${amount} ${original_message}`);
+        journal.info(`top_up ${user_id} ${amount} ${original_message}`);
 
         const resolved = await Environment.global.user_service.resolve_user({ system_id: user_id });
         if (!resolved.ok || !resolved.value) {
-            return return_fail(`user ${user_id} not found`, journal.log());
+            return return_fail(`user ${user_id} not found`, journal);
         }
         if (!user_has_role(resolved.value, Role.Chorister)) {
-            return return_fail(`user ${user_id} has no permissions`, journal.log());
+            return return_fail(`user ${user_id} has no permissions`, journal);
         }
         const user = resolved.value;
 
         {
             const status = await agent.as_deposit_owner().send_thanks_for_information();
             if (!status.ok) {
-                journal.log().warn([
+                journal.warning([
                     `failed to send thanks_for_information to ${user_id}`,
                     status.error
                 ].join(":"));
@@ -102,7 +102,7 @@ export class DepositActions {
                 const status = await accounter.send_top_up_notification(
                     user, amount, original_message);
                 if (!status.ok) {
-                    journal.log().warn([
+                    journal.warning([
                         `failed to send top_up notification to ${accounter.base().userid()}`,
                         status.error
                     ].join(":"));
@@ -114,24 +114,24 @@ export class DepositActions {
 
     static async already_paid(
         agent: IUserAgent,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Status> {
         const user_id = agent.userid();
-        journal.log().info(`handle already_paid by ${user_id}`);
+        journal.info(`handle already_paid by ${user_id}`);
 
         const resolved = await Environment.global.user_service.resolve_user({ system_id: user_id });
         if (!resolved.ok || !resolved.value) {
-            return return_fail(`user ${user_id} not found`, journal.log());
+            return return_fail(`user ${user_id} not found`, journal);
         }
         if (!user_has_role(resolved.value, Role.Chorister)) {
-            return return_fail(`user ${user_id} has no permissions`, journal.log());
+            return return_fail(`user ${user_id} has no permissions`, journal);
         }
         const user = resolved.value;
 
         {
             const status = await agent.as_deposit_owner().send_already_paid_response();
             if (!status.ok) {
-                journal.log().warn([
+                journal.warning([
                     `failed to send already_paid response to ${user_id}`,
                     status.error
                 ].join(":"));
@@ -148,7 +148,7 @@ export class DepositActions {
             for (const accounter of accounter_agents) {
                 const status = await accounter.send_already_paid_notification(user);
                 if (!status.ok) {
-                    journal.log().warn([
+                    journal.warning([
                         `failed to send already_paid notification to ${user_tg_username(user)}`,
                         status.error
                     ].join(":"));
@@ -162,11 +162,11 @@ export class DepositActions {
         user: UserLogic,
         deposit: Deposit,
         changes: DepositChange,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Status>
     {
         const tgid = user_tg_username(user.data);
-        journal.log().info(`send_deposit_update for ${tgid}`);
+        journal.info(`send_deposit_update for ${tgid}`);
 
         const deposit_owner_dialog = user.as_deposit_owner();
         if (!deposit_owner_dialog || deposit_owner_dialog.length === 0) {
@@ -201,21 +201,21 @@ export class DepositActions {
     static async send_reminder(
         user: UserLogic,
         amount: number,
-        journal: Journal
+        journal: IJournal
     ): Promise<Status>
     {
         const userid = user_tg_username(user.data);
-        journal.log().info(`send_reminder for @${userid}`);
+        journal.info(`send_reminder for @${userid}`);
 
         if (amount < 10) {
-            journal.log().info(`skipping reminder for @${userid} because amount is too small: ${amount}`);
+            journal.info(`skipping reminder for @${userid} because amount is too small: ${amount}`);
             // It's okay to move it to the next month
             return Expected.ok(undefined);
         }
 
         const deposit_owner_dialog = user.as_deposit_owner();
         if (!deposit_owner_dialog || deposit_owner_dialog.length === 0) {
-            journal.log().info(`skipping reminder for @${userid} because they have no deposit dialogs`);
+            journal.info(`skipping reminder for @${userid} because they have no deposit dialogs`);
             return Expected.ok(undefined);
         }
 
@@ -245,9 +245,9 @@ export class DepositActions {
 
     static async handle_deposit_event(
         event: DepositEvent,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Status> {
-        journal.log().info({ event }, `got event`);
+        journal.info({ event }, `got event`);
 
         const replica = Runtime.get_instance().get_user_service_replica();
         const resolved = replica.resolve_user({ tg_username: event.tgid });

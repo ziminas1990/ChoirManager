@@ -2,7 +2,7 @@ import { Database } from "@src/database.js";
 import { Language, Role, UserData, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { UserLogic } from "@src/logic/user.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IMessagesProvider } from "@src/interfaces/messages_provider.js";
@@ -82,7 +82,7 @@ export class AttendanceTrackerConfig {
 }
 
 export class AttendanceTracker extends Logic<void> {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private readonly last_processed_schedule_day: Map<number, string> = new Map();
     private muted_until: Date;
 
@@ -93,7 +93,7 @@ export class AttendanceTracker extends Logic<void> {
         private readonly database: Database,
         private readonly get_user_logic: (system_id: string) => UserLogic | undefined,
         private readonly get_managers_chat: () => Promise<IManagersChat | undefined>,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         super(30000);
         this.journal = parent_journal.child("attendance_tracker");
@@ -101,7 +101,7 @@ export class AttendanceTracker extends Logic<void> {
     }
 
     async init(): Promise<Status> {
-        this.journal.log().info("Initializing attendance tracker...");
+        this.journal.info("Initializing attendance tracker...");
         return Expected.ok(undefined);
     }
 
@@ -187,7 +187,7 @@ export class AttendanceTracker extends Logic<void> {
             for (const agent of user_logic.as_chorister()) {
                 const sent = await agent.base().send_message(message);
                 if (sent.ok) {
-                    this.journal.log().info(
+                    this.journal.info(
                         { tgid },
                         `Attendance reminder sent to ${chorister.name} (@${tgid})`);
                     notified_choristers.push(chorister);
@@ -195,7 +195,7 @@ export class AttendanceTracker extends Logic<void> {
                     const admin_message = `Notification to @${tgid} sent:\n\n${message}`;
                     await AdminActions.notify_all_admins(admin_message, this.journal);
                 } else {
-                    this.journal.log().warn({
+                    this.journal.warning({
                         tgid,
                         error: sent.error,
                     }, "Failed to send attendance reminder");
@@ -223,7 +223,7 @@ export class AttendanceTracker extends Logic<void> {
     ): Promise<Status> {
         const managers_chat = await this.get_managers_chat();
         if (!managers_chat) {
-            this.journal.log().warn("Managers chat is not available for attendance reminders report");
+            this.journal.warning("Managers chat is not available for attendance reminders report");
             return Expected.ok(undefined);
         }
 
@@ -241,11 +241,11 @@ export class AttendanceTracker extends Logic<void> {
         );
         const sent = await managers_chat.send_message(message);
         if (!sent.ok) {
-            this.journal.log().warn({ error: sent.error }, "Failed to send attendance reminders report");
+            this.journal.warning({ error: sent.error }, "Failed to send attendance reminders report");
             return sent.as_status();
         }
 
-        this.journal.log().info(
+        this.journal.info(
             { choristers_count: choristers.length },
             "Attendance reminders report sent to managers chat",
         );
@@ -277,7 +277,7 @@ export class AttendanceTracker extends Logic<void> {
             const statistic = Analytic.chorister_statistic_request(
                 this.database, tgid, chorister.voice, begin, end);
             if (!statistic.ok) {
-                this.journal.log().warn({
+                this.journal.warning({
                     tgid,
                     error: statistic.error,
                 }, "Failed to collect attendance statistics");

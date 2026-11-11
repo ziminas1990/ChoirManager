@@ -2,14 +2,14 @@ import { Expected, Status } from "@src/utils/expected.js";
 import { Runtime } from "@src/runtime.js";
 import { Language, UserData, user_tg_username } from "@src/entities/user.js";
 import { GoogleTranslate } from "@src/api/google_translate.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 
 export class Translator {
 
     static async translate_announce(
         author: UserData,
         announce: string,
-        journal: Journal
+        journal: IJournal
     ): Promise<Status> {
         if (!announce) {
             return Expected.ok(undefined);
@@ -37,7 +37,7 @@ export class Translator {
             for (const agent of agents) {
                 const status = await agent.send_message(translated_text);
                 if (!status.ok) {
-                    journal.log().warn(`failed to send announce to ${user_tg_username(user.data)}: ${status.error}`);
+                    journal.warning(`failed to send announce to ${user_tg_username(user.data)}: ${status.error}`);
                 }
             }
         }

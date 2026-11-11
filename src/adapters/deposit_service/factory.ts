@@ -9,7 +9,7 @@ import {
 import { DepositService } from "@src/components/deposit_service.js";
 import { DepositEvent } from "@src/interfaces/deposit_service.js";
 import { IBroadcaster } from "@src/interfaces/message_queue.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 export type DepositReminderConfigJson = {
@@ -180,7 +180,7 @@ export class DepositServiceFactory {
     static create(
         config: DepositServiceConfig,
         broadcaster: IBroadcaster<DepositEvent>,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ): Expected<DepositService> {
         switch (config.type) {
             case "local": {

@@ -1,3 +1,4 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
 import { readFileSync } from "node:fs";
@@ -11,7 +12,7 @@ import { TokenBucket } from "../dist/utils/token_bucket.js";
 
 afterEach(() => mock.restoreAll());
 
-const journal = { child() { return this; }, log: () => ({ error() {} }) };
+const journal = new MemoryJournal();
 
 const firestore_config = { type: "firestore", database_id: "test", collection_name: "messages",
     read_only: false };

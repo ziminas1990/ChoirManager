@@ -1,14 +1,14 @@
 import { IMessagesBacklog, Message } from "@src/interfaces/messages_backlog.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 
 export async function save_message(
     backlog: IMessagesBacklog | undefined,
     message: Message,
     operation: "add" | "update",
-    journal: Journal,
+    journal: IJournal,
 ): Promise<void> {
     if (!backlog) {
-        journal.log().error("Cannot save message: backlog is not configured");
+        journal.error("Cannot save message: backlog is not configured");
         return;
     }
     try {
@@ -16,11 +16,11 @@ export async function save_message(
             ? await backlog.add_message(message)
             : await backlog.update_message(message);
         if (!status.ok) {
-            journal.log().error({ operation, message_id: message.message_id, error: status.error },
+            journal.error({ operation, message_id: message.message_id, error: status.error },
                 "Failed to save message to backlog");
         }
     } catch (error) {
-        journal.log().error({ operation, message_id: message.message_id, error },
+        journal.error({ operation, message_id: message.message_id, error },
             "Failed to save message to backlog");
     }
 }

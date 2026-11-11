@@ -8,7 +8,7 @@ import {
 } from "@src/interfaces/administration_service.js";
 import { ConfirmationError, IUserAgent } from "@src/interfaces/user_agent.js";
 import { IUserService } from "@src/interfaces/user_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { return_fail } from "@src/utils.js";
 import {
@@ -34,16 +34,16 @@ export class AdministratorWorkflows {
         },
         fields: UserFields,
         roles: Role[],
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Expected<PendingOperation>> {
         const wf = journal.child("request_create_user");
         const agent = env.agent;
-        wf.log().info(`started by ${agent.userid()}`);
+        wf.info(`started by ${agent.userid()}`);
 
         const admin_svc = env.admin_svc
             ?? Environment.global.maybe_administration_service;
         if (!admin_svc) {
-            return return_fail("administration service is not configured", wf.log());
+            return return_fail("administration service is not configured", wf);
         }
 
         const pending = await admin_svc.request_create_user(
@@ -51,10 +51,10 @@ export class AdministratorWorkflows {
             Helpers.to_new_user(fields, roles),
         );
         if (!pending.ok) {
-            wf.log().error(`request_create_user failed: ${pending.error}`);
+            wf.error(`request_create_user failed: ${pending.error}`);
             return pending.cast_error();
         }
-        wf.log().info(`pending created: ${pending.value.id}`);
+        wf.info(`pending created: ${pending.value.id}`);
         return pending;
     }
 
@@ -69,36 +69,36 @@ export class AdministratorWorkflows {
         fields: UserFields,
         add_roles: Role[],
         remove_roles: Role[],
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Expected<PendingOperation>> {
         const wf = journal.child("request_update_user");
         const agent = env.agent;
-        wf.log().info(`started by ${agent.userid()} for ${system_id}`);
+        wf.info(`started by ${agent.userid()} for ${system_id}`);
 
         const admin_svc = env.admin_svc
             ?? Environment.global.maybe_administration_service;
         if (!admin_svc) {
-            return return_fail("administration service is not configured", wf.log());
+            return return_fail("administration service is not configured", wf);
         }
         const user_svc = env.user_svc ?? Environment.global.maybe_user_service;
         if (!user_svc) {
-            return return_fail("user service is not configured", wf.log());
+            return return_fail("user service is not configured", wf);
         }
 
         const current = await user_svc.resolve_user({ system_id });
         if (!current.ok) {
-            wf.log().error(`failed to resolve target user '${system_id}': ${current.error}`);
+            wf.error(`failed to resolve target user '${system_id}': ${current.error}`);
             return current.wrap_error("failed to resolve target user");
         }
         if (!current.value) {
-            wf.log().error(`user '${system_id}' not found`);
+            wf.error(`user '${system_id}' not found`);
             return Expected.err(`user '${system_id}' not found`);
         }
 
         const patch = Helpers.build_update_patch(
             current.value, fields, add_roles, remove_roles);
         if (!patch.ok) {
-            wf.log().error(`failed to build update patch for '${system_id}': ${patch.error}`);
+            wf.error(`failed to build update patch for '${system_id}': ${patch.error}`);
             return patch.cast_error();
         }
 
@@ -108,10 +108,10 @@ export class AdministratorWorkflows {
             patch.value,
         );
         if (!pending.ok) {
-            wf.log().error(`request_update_user failed: ${pending.error}`);
+            wf.error(`request_update_user failed: ${pending.error}`);
             return pending.cast_error();
         }
-        wf.log().info(`pending created: ${pending.value.id}`);
+        wf.info(`pending created: ${pending.value.id}`);
         return pending;
     }
 
@@ -122,24 +122,24 @@ export class AdministratorWorkflows {
             admin_svc?: IAdministrationService;
         },
         system_id: string,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Expected<PendingOperation>> {
         const wf = journal.child("request_remove_member");
         const agent = env.agent;
-        wf.log().info(`started by ${agent.userid()} for ${system_id}`);
+        wf.info(`started by ${agent.userid()} for ${system_id}`);
 
         const admin_svc = env.admin_svc
             ?? Environment.global.maybe_administration_service;
         if (!admin_svc) {
-            return return_fail("administration service is not configured", wf.log());
+            return return_fail("administration service is not configured", wf);
         }
 
         const pending = await admin_svc.request_remove_member(agent.userid(), system_id);
         if (!pending.ok) {
-            wf.log().error(`request_remove_member failed: ${pending.error}`);
+            wf.error(`request_remove_member failed: ${pending.error}`);
             return pending.cast_error();
         }
-        wf.log().info(`pending created: ${pending.value.id}`);
+        wf.info(`pending created: ${pending.value.id}`);
         return pending;
     }
 
@@ -149,10 +149,10 @@ export class AdministratorWorkflows {
         pending: PendingOperation,
         agent: IUserAgent,
         admin_svc: IAdministrationService,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Status> {
         const wf = journal.child("run_confirmation");
-        wf.log().info(
+        wf.info(
             `started for ${pending.id} (${pending.operation.what}) by ${agent.userid()}`,
         );
 
@@ -160,23 +160,23 @@ export class AdministratorWorkflows {
             const decision = await AdministratorWorkflows.ask_confirmation(pending, agent);
             if (!decision.ok) {
                 if (decision.is_error(ConfirmationError.TimedOut)) {
-                    wf.log().warn(
+                    wf.warning(
                         `confirmation timed out for ${pending.id}: ${decision.error}`);
                     const rejected = await admin_svc.reject(agent.userid(), pending.id);
                     if (!rejected.ok && !rejected.is_error(PENDING_ALREADY_GONE)) {
-                        wf.log().error(
+                        wf.error(
                             `reject after timeout failed for ${pending.id}: ${rejected.error}`);
                         return await AdministratorWorkflows.report(
                             agent, render_failure(rejected.error), wf);
                     }
                     if (!rejected.ok) {
-                        wf.log().info(
+                        wf.info(
                             `pending ${pending.id} already gone after timeout: ${rejected.error}`);
                     }
                     return await AdministratorWorkflows.report(agent, render_timeout(), wf);
                 }
 
-                wf.log().error(
+                wf.error(
                     `confirmation prompt failed for ${pending.id}: ${decision.error}`,
                 );
                 await AdministratorWorkflows.drop_pending(admin_svc, pending, wf);
@@ -184,30 +184,30 @@ export class AdministratorWorkflows {
                     agent, render_failure(decision.error), wf);
             }
 
-            wf.log().info(`admin decision for ${pending.id}: ${decision.value}`);
+            wf.info(`admin decision for ${pending.id}: ${decision.value}`);
 
             if (decision.value === "negative") {
                 const rejected = await admin_svc.reject(agent.userid(), pending.id);
                 if (!rejected.ok) {
-                    wf.log().error(`reject failed for ${pending.id}: ${rejected.error}`);
+                    wf.error(`reject failed for ${pending.id}: ${rejected.error}`);
                     return await AdministratorWorkflows.report(
                         agent, render_failure(rejected.error), wf);
                 }
-                wf.log().info(`pending ${pending.id} rejected by admin`);
+                wf.info(`pending ${pending.id} rejected by admin`);
                 return await AdministratorWorkflows.report(agent, render_rejected(), wf);
             }
 
             const applied = await admin_svc.confirm(agent.userid(), pending.id);
             if (!applied.ok) {
-                wf.log().error(`confirm failed for ${pending.id}: ${applied.error}`);
+                wf.error(`confirm failed for ${pending.id}: ${applied.error}`);
                 return await AdministratorWorkflows.report(
                     agent, render_failure(applied.error), wf);
             }
-            wf.log().info(`${pending.operation.what} completed: ${pending.id}`);
+            wf.info(`${pending.operation.what} completed: ${pending.id}`);
             return await AdministratorWorkflows.report(
                 agent, render_result(applied.value), wf);
         } catch (error) {
-            wf.log().error(error, `confirmation workflow crashed for ${pending.id}`);
+            wf.error({ error }, `confirmation workflow crashed for ${pending.id}`);
             await AdministratorWorkflows.drop_pending(admin_svc, pending, wf);
             const reason = error instanceof Error ? error.message : String(error);
             return await AdministratorWorkflows.report(agent, render_failure(reason), wf);
@@ -231,11 +231,11 @@ export class AdministratorWorkflows {
     private static async report(
         agent: IUserAgent,
         message: string,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<Status> {
         const sent = await agent.send_message(message);
         if (!sent.ok) {
-            journal.log().error(`failed to send administration outcome: ${sent.error}`);
+            journal.error(`failed to send administration outcome: ${sent.error}`);
             return sent.wrap_error("failed to send administration outcome").as_status();
         }
         return Expected.ok(undefined);
@@ -244,14 +244,14 @@ export class AdministratorWorkflows {
     private static async drop_pending(
         service: IAdministrationService,
         pending: PendingOperation,
-        journal: Journal,
+        journal: IJournal,
     ): Promise<void> {
         const rejected = await service.reject(pending.requested_by, pending.id);
         if (rejected.ok) {
             return;
         }
         if (!rejected.is_error(PENDING_ALREADY_GONE)) {
-            journal.log().warn(`reject failed for ${pending.id}: ${rejected.error}`);
+            journal.warning(`reject failed for ${pending.id}: ${rejected.error}`);
         }
     }
 }

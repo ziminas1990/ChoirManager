@@ -3,7 +3,7 @@ import {
     UsersStorageFactory,
 } from "@src/adapters/users_storage/factory.js";
 import { UserService } from "@src/components/user_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 // "local" — UserService is instantiated in-process on top of ICollection.
@@ -42,7 +42,7 @@ export class UserServiceConfig {
 }
 
 export class UserServiceFactory {
-    static create(config: UserServiceConfig, parent_journal: Journal): Expected<UserService> {
+    static create(config: UserServiceConfig, parent_journal: IJournal): Expected<UserService> {
         switch (config.type) {
             case "local": {
                 const storage_status = UsersStorageFactory.create(

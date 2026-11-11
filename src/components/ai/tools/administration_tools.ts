@@ -8,7 +8,7 @@ import {
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { IUserServiceReplica, UserFindQuery } from "@src/interfaces/user_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { AdministratorWorkflows } from "@src/use_cases/administrator_workflows.js";
 import { Expected } from "@src/utils/expected.js";
 import { parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
@@ -141,11 +141,11 @@ If any administration tool call fails:
 `.trim();
 
 export class AdministrationTools implements IToolchain {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
 
     constructor(
         private readonly agent: IUserAgent,
-        journal: Journal,
+        journal: IJournal,
         private readonly users: IUserServiceReplica,
         private readonly admin_svc: IAdministrationService,
     ) {
@@ -295,13 +295,13 @@ export class AdministrationTools implements IToolchain {
             this.journal,
         ).then((status) => {
             if (!status.ok) {
-                this.journal.log().error(
+                this.journal.error(
                     `confirmation workflow failed for ${pending.id}: ${status.error}`,
                 );
             }
         }).catch((error: unknown) => {
-            this.journal.log().error(
-                error,
+            this.journal.error(
+                { error },
                 `confirmation workflow crashed for ${pending.id}`,
             );
         });

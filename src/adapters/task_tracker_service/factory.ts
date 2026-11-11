@@ -5,7 +5,7 @@ import {
 import { TaskTrackerService } from "@src/components/task_tracker_service.js";
 import { IBroadcaster } from "@src/interfaces/message_queue.js";
 import { TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 // "local" — TaskTrackerService is instantiated in-process on top of ITaskTrackerStorage.
@@ -88,7 +88,7 @@ export class TaskTrackerServiceFactory {
     static create(
         config: TaskTrackerServiceConfig,
         broadcaster: IBroadcaster<TaskTrackerEvent>,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ): Expected<TaskTrackerService> {
         switch (config.type) {
             case "local": {

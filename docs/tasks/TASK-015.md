@@ -7,6 +7,9 @@ and import compiled modules from `dist/`. Their location does not identify the
 corresponding source layer, and running a test directly can exercise stale build
 output. Test code also lacks TypeScript checking against application contracts.
 
+Complete [TASK-017](./closed/TASK-017.md) first so tests can use a typed diagnostic journal
+without depending on pino or incomplete logger substitutes.
+
 ## Require
 
 Reorganize `tests/` to mirror the directory structure of `src/`. Place tests next
@@ -18,6 +21,9 @@ Migrate all application tests and their supporting code under `tests/` to
 TypeScript. Preserve existing behavioral coverage and the project's test-writing
 conventions. Keep integration tests near the primary component or entry point
 they exercise.
+
+Use application contracts to type test fixtures and supporting code without
+`any`. Do not bypass contract checking with broad unchecked type assertions.
 
 Make tests target source modules instead of importing `dist/` paths. Update test
 execution and type checking to support the nested TypeScript test tree. Document

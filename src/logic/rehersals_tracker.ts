@@ -2,7 +2,7 @@ import { Database } from "@src/database.js";
 import { Voice } from "@src/entities/user.js";
 import { IRehersalsStorage, RehersalInfo } from "@src/interfaces/rehersals_storage.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 export type RehersalsTrackerConfigJson = {
@@ -29,7 +29,7 @@ export class RehersalsTrackerConfig {
 
 
 export class RehersalsTracker {
-    private journal: Journal;
+    private journal: IJournal;
 
     private next_fetch: Date;
     private fetch_promise?: Promise<void>;
@@ -39,14 +39,14 @@ export class RehersalsTracker {
         private rehersals_storage: IRehersalsStorage,
         private database: Database,
         private readonly users: IUserServiceReplica,
-        parent_journal: Journal)
+        parent_journal: IJournal)
     {
         this.next_fetch = new Date();
         this.journal = parent_journal.child("rehersals_tracker");
     }
 
     async init(): Promise<Status> {
-        this.journal.log().info("Initializing rehersals tracker...");
+        this.journal.info("Initializing rehersals tracker...");
         return this.fetch_rehersals();
     }
 
@@ -63,7 +63,7 @@ export class RehersalsTracker {
             const status = await this.fetch_rehersals();
             this.fetch_promise = undefined;
             if (!status.ok) {
-                this.journal.log().error(`Failed to fetch rehersals: ${status.error}`);
+                this.journal.error(`Failed to fetch rehersals: ${status.error}`);
             }
             resolve();
         });
@@ -85,7 +85,7 @@ export class RehersalsTracker {
     }
 
     private update_database(rehersals: RehersalInfo[]) {
-        this.journal.log().info(`Updating database with ${rehersals.length} rehersals`);
+        this.journal.info(`Updating database with ${rehersals.length} rehersals`);
         // Add rehersals data to database
         for (const { date, songs, participants } of rehersals) {
             const rehersal = this.database.add_rehersal(date);

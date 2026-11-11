@@ -1,6 +1,6 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { Feedback } from "@src/entities/feedback.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { Runtime } from "@src/runtime.js";
 import { Environment } from "@src/components/environment.js";
@@ -9,7 +9,7 @@ import { Environment } from "@src/components/environment.js";
 export class FeedbackActions {
 
     static async register_new_feedback(
-        who: IUserAgent, feedback: Feedback, journal: Journal
+        who: IUserAgent, feedback: Feedback, journal: IJournal
     ): Promise<Status> {
         const runtime = Runtime.get_instance();
 
@@ -36,7 +36,7 @@ export class FeedbackActions {
             if (managers_chat) {
                 const status = await managers_chat.on_new_feedback(feedback);
                 if (!status.ok) {
-                    journal.log().warn([
+                    journal.warning([
                         `Failed to notify managers about feedback`,
                         status.error
                     ].join(": "));
@@ -49,7 +49,7 @@ export class FeedbackActions {
         for (const chorister of user_logic?.as_chorister() ?? []) {
             const status = await chorister.on_feedback_received(feedback);
             if (!status.ok) {
-                journal.log().warn([
+                journal.warning([
                     `Failed to notify ${chorister.base().agent_name()} about feedback`,
                     status.error
                 ].join(": "));

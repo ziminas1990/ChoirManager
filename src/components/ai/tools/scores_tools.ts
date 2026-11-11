@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { IToolchain, Tool } from "@src/interfaces/llm.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { ScoresActions } from "@src/use_cases/scores_actions.js";
 import { Expected } from "@src/utils/expected.js";
 import { empty_parameters_schema, parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
@@ -32,7 +32,7 @@ If user asks for a specific score by title or author, do the following:
 export class ScoresTools implements IToolchain {
     constructor(
         private user: IUserAgent,
-        private journal: Journal,
+        private journal: IJournal,
     ) {}
 
     get_name(): string {

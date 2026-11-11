@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { current_month, Formatter, GlobalFormatter } from "@src/utils.js";
 import { Status } from "@src/utils/expected.js";
@@ -13,12 +13,12 @@ import { Transaction } from "@src/interfaces/transactions_storage.js";
 
 
 export class DepositOwnerDialog implements IDepositOwnerAgent {
-    private journal: Journal;
+    private journal: IJournal;
     private orator: Orator;
 
     constructor(
         private user: TelegramUser,
-        parent_journal: Journal,
+        parent_journal: IJournal,
         private readonly deposit_presentation?: DepositPresentationConfig,
         formatter?: Formatter)
     {

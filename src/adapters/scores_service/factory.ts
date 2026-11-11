@@ -6,7 +6,7 @@ import {
     ScoresStorageFactory,
 } from "@src/adapters/scores_storage/factory.js";
 import { ScoresService } from "@src/components/scores_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 // "local" — ScoresService is instantiated in-process on top of IScoresStorage.
@@ -41,7 +41,7 @@ export class ScoresServiceConfig {
         return this.json.search_prompt_file;
     }
 
-    verify(): Status {
+    verify(journal?: IJournal): Status {
         if (!this.json.type) {
             return Expected.err("'type' MUST be specified");
         }
@@ -64,7 +64,7 @@ export class ScoresServiceConfig {
             return Expected.err("'fetch_interval_sec' MUST be at least 60 seconds");
         }
 
-        const model_status = verify_openai_model(this.json.model);
+        const model_status = verify_openai_model(this.json.model, journal);
         if (!model_status.ok) {
             return model_status;
         }
@@ -84,7 +84,7 @@ export class ScoresServiceConfig {
 export class ScoresServiceFactory {
     static create(
         config: ScoresServiceConfig,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ): Expected<ScoresService> {
         switch (config.type) {
             case "local": {

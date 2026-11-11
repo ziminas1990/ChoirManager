@@ -1,3 +1,4 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -17,10 +18,9 @@ import { Runtime } from "../dist/runtime.js";
 import { Expected } from "../dist/utils/expected.js";
 import { TokenBucket } from "../dist/utils/token_bucket.js";
 
-afterEach(() => mock.restoreAll());
+afterEach(() => { mock.restoreAll(); journal.clear(); });
 
-const logger = { info() {}, warn() {}, error() {}, debug() {} };
-const journal = { child() { return this; }, log() { return logger; } };
+const journal = new MemoryJournal();
 const sender = { id: 123, first_name: "Reply", last_name: "Author" };
 const original_author = { id: 456, first_name: "Original", last_name: "Author",
     username: "original_author" };
@@ -375,7 +375,6 @@ for (const failure of ["error", "throw"]) {
 
         // 1. send a tool reply and fail persistence only for the outgoing message
         let context;
-        const errors = [];
         let outgoing_writes = 0;
         {
             context = await fixture(t, async (_messages, _options, request) => {
@@ -399,7 +398,6 @@ for (const failure of ["error", "throw"]) {
                 }
                 return Expected.err("Outgoing storage error");
             });
-            mock.method(logger, "error", (...args) => errors.push(args));
         }
 
         // 2. complete the tool round trip despite the failed outgoing write
@@ -412,7 +410,7 @@ for (const failure of ["error", "throw"]) {
             assert.deepEqual(JSON.parse(result.result), { value: true });
             assert.equal(context.stored(1000), undefined);
             assert.equal(outgoing_writes, 1);
-            assert.equal(errors.length, 1);
+            assert.equal(journal.records.filter(record => record.level === "error").length, 1);
         }
 
         // 3. avoid retrying or replaying the delivered reply on the next tick

@@ -2,7 +2,7 @@ import { LocalJsonFileFeedbackStorage, Config as LocalJsonFileConfig } from "./l
 import { GoogleSpreadsheetFeedbackStorage, Config as GoogleSpreadsheetConfig } from "./google_spreadsheet.js";
 import { IFeedbackStorage } from "@src/interfaces/feedback_storage.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 
 export type FeedbackStorageConfig =
 { type: "local_json_file" } & LocalJsonFileConfig |
@@ -10,7 +10,7 @@ export type FeedbackStorageConfig =
 
 export class FeedbackStorageFactory {
 
-    static create(config: FeedbackStorageConfig, parent_journal: Journal)
+    static create(config: FeedbackStorageConfig, parent_journal: IJournal)
     : Expected<IFeedbackStorage>
     {
         switch (config.type) {

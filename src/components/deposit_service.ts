@@ -3,7 +3,7 @@ import { IBroadcaster } from "@src/interfaces/message_queue.js";
 import { DepositEvent, IDepositService } from "@src/interfaces/deposit_service.js";
 import { IDepositStorage } from "@src/interfaces/storage/deposit_storage.js";
 import { ITransactionsStorage, Transaction } from "@src/interfaces/transactions_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
@@ -18,7 +18,7 @@ type PendingChange = {
 }
 
 export class DepositService extends Logic<void> implements IDepositService {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
 
     // Latest fetched deposits by tgid.
     private deposits = new Map<string, Deposit>();
@@ -39,7 +39,7 @@ export class DepositService extends Logic<void> implements IDepositService {
         private readonly deposits_storage: IDepositStorage,
         private readonly transactions_storage: ITransactionsStorage,
         private readonly broadcaster: IBroadcaster<DepositEvent>,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         // Short tick so debounce and reminder windows are checked promptly;
         // sheet refetch is throttled separately via fetch_interval_sec.
@@ -67,18 +67,18 @@ export class DepositService extends Logic<void> implements IDepositService {
         if (this.time_to_fetch(now)) {
             const refetch_status = await this.refetch(now, /*emit_changes=*/ true);
             if (!refetch_status.ok) {
-                this.journal.log().warn(`Failed to refetch deposits: ${refetch_status.error}`);
+                this.journal.warning(`Failed to refetch deposits: ${refetch_status.error}`);
             }
         }
 
         const flush_status = await this.flush_stable_changes(now);
         if (!flush_status.ok) {
-            this.journal.log().warn(`Failed to flush deposit changes: ${flush_status.error}`);
+            this.journal.warning(`Failed to flush deposit changes: ${flush_status.error}`);
         }
 
         const reminder_status = await this.maybe_send_reminders(now);
         if (!reminder_status.ok) {
-            this.journal.log().warn(`Failed to send deposit reminders: ${reminder_status.error}`);
+            this.journal.warning(`Failed to send deposit reminders: ${reminder_status.error}`);
         }
 
         return Expected.ok([]);
@@ -126,7 +126,7 @@ export class DepositService extends Logic<void> implements IDepositService {
             this.deposits.set(deposit.tgid, deposit);
         }
 
-        this.journal.log().info({ deposits_count: this.deposits.size }, "Deposits cache refreshed");
+        this.journal.info({ deposits_count: this.deposits.size }, "Deposits cache refreshed");
         return Expected.ok(undefined);
     }
 
@@ -158,7 +158,7 @@ export class DepositService extends Logic<void> implements IDepositService {
         for (const { tgid, deposit, changes } of confirmed) {
             const tx_status = await this.write_transactions(tgid, changes);
             if (!tx_status.ok) {
-                this.journal.log().warn(
+                this.journal.warning(
                     `Failed to write transactions for ${tgid}: ${tx_status.error}`,
                 );
             }
@@ -169,10 +169,10 @@ export class DepositService extends Logic<void> implements IDepositService {
                 deposit,
                 changes,
             };
-            this.journal.log().info({ event }, "deposit update");
+            this.journal.info({ event }, "deposit update");
             const broadcast_status = await this.broadcaster.broadcast(event);
             if (!broadcast_status.ok) {
-                this.journal.log().warn(
+                this.journal.warning(
                     `Failed to broadcast update for ${tgid}: ${broadcast_status.error}`,
                 );
             }
@@ -268,10 +268,10 @@ export class DepositService extends Logic<void> implements IDepositService {
         this.last_reminder_date = now;
 
         for (const event of events) {
-            this.journal.log().info({ event }, "deposit reminder");
+            this.journal.info({ event }, "deposit reminder");
             const status = await this.broadcaster.broadcast(event);
             if (!status.ok) {
-                this.journal.log().warn(
+                this.journal.warning(
                     `Failed to broadcast reminder for ${event.tgid}: ${status.error}`,
                 );
             }

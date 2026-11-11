@@ -3,7 +3,7 @@ import fs from "fs";
 import { Expected, Status } from "@src/utils/expected.js";
 import { OpenaiAPI } from "@src/api/openai.js";
 import { AssistantConfig } from "@src/config.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Agent } from "@src/components/ai/agent.js";
 import { IToolchain } from "@src/interfaces/llm.js";
 
@@ -13,7 +13,7 @@ export class ChoristerAgent {
     constructor(
         config: AssistantConfig,
         tools: IToolchain,
-        journal: Journal,
+        journal: IJournal,
     ) {
         const instruction = fs.readFileSync(config.prompt_file, "utf-8").trim();
 

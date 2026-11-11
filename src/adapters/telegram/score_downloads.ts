@@ -3,7 +3,7 @@ import type TelegramBot from "node-telegram-bot-api";
 import type { TelegramUser } from "./telegram_user.js";
 import { Score } from "@src/entities/score.js";
 import { Language } from "@src/entities/user.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { ScoresActions, ScoresError } from "@src/use_cases/scores_actions.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
@@ -21,7 +21,7 @@ export class ScoreDownloads {
         return data?.startsWith(this.prefix) ?? false;
     }
 
-    static async on_callback(data: string, user: TelegramUser, journal: Journal): Promise<Status> {
+    static async on_callback(data: string, user: TelegramUser, journal: IJournal): Promise<Status> {
         let status: Status;
         try {
             status = await ScoresActions.download_scores_request(

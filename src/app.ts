@@ -7,20 +7,20 @@ import { BotConfig, load_config } from '@src/config.js';
 import { OpenaiAPI } from "@src/api/openai.js";
 import { UserServiceFactory } from '@src/adapters/user_service/factory.js';
 import { Database } from '@src/database.js';
-import { Journal } from '@src/journal.js';
+import { PinoJournal } from '@src/adapters/journal/pino_journal.js';
 import { GlobalFormatter } from '@src/utils.js';
 import { CoreAPI } from '@src/use_cases/core.js';
 import { UserService } from '@src/components/user_service.js';
 import { Environment } from '@src/components/environment.js';
 
-const root_logger = Journal.Root();
+const root_logger = PinoJournal.create();
 
 // Loading configuration
 function load_bot_config(): BotConfig {
     const cfgfile = path.join(process.cwd(), 'config', 'botcfg.json');
-    const status = load_config(cfgfile);
+    const status = load_config(cfgfile, root_logger.child("config"));
     if (!status.ok) {
-        root_logger.log().error(`Failed to load configuration from ${cfgfile}: ${status.error}`);
+        root_logger.error(`Failed to load configuration from ${cfgfile}: ${status.error}`);
         process.exit(1);
     }
     return status.value!;
@@ -30,7 +30,7 @@ function init_openai_api(config: BotConfig): Status {
     if (!config.json.openai_api_key_file) {
         return Expected.ok(undefined);
     }
-    root_logger.log().info("Initializing OpenAI API...");
+    root_logger.info("Initializing OpenAI API...");
     return OpenaiAPI.init(config);
 }
 
@@ -54,7 +54,7 @@ async function wait_and_exit(wait_ms: number, exit_code: number) {
 }
 
 async function main() {
-    root_logger.log().info("Preparing...");
+    root_logger.info("Preparing...");
     const config = load_bot_config();
 
     GlobalFormatter.init(config.tg_adapter!.formatting);
@@ -65,19 +65,19 @@ async function main() {
     const operations_journal = root_logger.child("operations");
     CoreAPI.attach_journal(operations_journal.child("core_api"));
 
-    root_logger.log().info("Initializing Google Auth...");
+    root_logger.info("Initializing Google Auth...");
     {
         const status = await GoogleAuth.authenticate(config.json.google_cloud_key_file);
         if (!status.ok) {
-            root_logger.log().error(`Google auth failed: ${status.error}`);
+            root_logger.error(`Google auth failed: ${status.error}`);
             await wait_and_exit(10000, 1);
         }
     }
 
-    root_logger.log().info("Initializing user service...");
+    root_logger.info("Initializing user service...");
     const user_service_status = await load_user_service(config);
     if (!user_service_status.ok) {
-        root_logger.log().error(`Failed to load user service: ${user_service_status.error}`);
+        root_logger.error(`Failed to load user service: ${user_service_status.error}`);
         await wait_and_exit(10000, 1);
     }
     const user_service = user_service_status.value!;
@@ -85,31 +85,31 @@ async function main() {
 
     const database = new Database();
 
-    root_logger.log().info("Loading runtime...");
+    root_logger.info("Loading runtime...");
     const runtime_status = Runtime.Load(config, database, user_service, root_logger);
     if (!runtime_status.ok) {
-        root_logger.log().error(`Failed to load runtime: ${runtime_status.error}`);
+        root_logger.error(`Failed to load runtime: ${runtime_status.error}`);
         await wait_and_exit(10000, 1);
     }
     const runtime = runtime_status.value!;
 
     const openai_status = init_openai_api(config);
     if (!openai_status.ok) {
-        root_logger.log().error(`Failed to initialize OpenAI API: ${openai_status.error}`);
+        root_logger.error(`Failed to initialize OpenAI API: ${openai_status.error}`);
         await wait_and_exit(10000, 1);
     }
 
-    root_logger.log().info("Initializing Google Translate API...");
+    root_logger.info("Initializing Google Translate API...");
     GoogleTranslate.init(config.json.google_cloud_key_file);
 
-    root_logger.log().info("Starting runtime...");
+    root_logger.info("Starting runtime...");
     const status = await runtime.start();
     if (!status.ok) {
-        root_logger.log().error(`${status.error}`);
+        root_logger.error(`${status.error}`);
         await wait_and_exit(10000, 1);
     }
 
-    root_logger.log().info("Runnning...");
+    root_logger.info("Runnning...");
     while (true) {
         await runtime.proceed(new Date());
         await new Promise(resolve => setTimeout(resolve, 50));
@@ -119,6 +119,6 @@ async function main() {
 try {
     main();
 } catch (e) {
-    root_logger.log().error(`Unhandled exception: ${e}`);
+    root_logger.error(`Unhandled exception: ${e}`);
     wait_and_exit(10000, 1);
 }

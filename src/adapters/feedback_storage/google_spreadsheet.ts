@@ -2,7 +2,7 @@ import { GoogleSpreadsheet } from "@src/api/google_docs.js";
 import { Voice } from "@src/entities/user.js";
 import { Feedback } from "@src/entities/feedback.js";
 import { IFeedbackStorage } from "@src/interfaces/feedback_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { log_and_return } from "@src/utils.js";
 
@@ -82,9 +82,9 @@ function try_parse_row(row: string[], columns: TableColumns): Expected<Feedback>
 export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
     private sheet: GoogleSpreadsheet;
     private feedbacks: Feedback[] = [];
-    private journal: Journal;
+    private journal: IJournal;
 
-    constructor(private config: Config, parent_journal: Journal) {
+    constructor(private config: Config, parent_journal: IJournal) {
         this.sheet = new GoogleSpreadsheet(config.spreadsheet_id)
         this.journal = parent_journal.child("feedback_storage");
     }
@@ -117,7 +117,7 @@ export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
         if (!add_status.ok) {
             return log_and_return(
                 add_status.wrap_error("failed to add feedback to the spreadsheet"),
-                this.journal.log()
+                this.journal
             );
         }
         return Expected.ok(undefined);
@@ -141,7 +141,7 @@ export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
             row_number++;
             const feedback_status = try_parse_row(row, columns.value!);
             if (!feedback_status.ok) {
-                this.journal.log().error(`Invalid row #${row_number}: ${feedback_status.error}`);
+                this.journal.error(`Invalid row #${row_number}: ${feedback_status.error}`);
                 invalid_rows++;
                 continue;
             }
@@ -149,7 +149,7 @@ export class GoogleSpreadsheetFeedbackStorage implements IFeedbackStorage {
         }
 
         if (invalid_rows > 0) {
-            this.journal.log().warn(`got ${invalid_rows} invalid rows`);
+            this.journal.warning(`got ${invalid_rows} invalid rows`);
         }
         return Expected.ok(undefined);
     }

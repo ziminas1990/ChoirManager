@@ -1,7 +1,7 @@
 import { GoogleSpreadsheet } from "@src/api/google_docs.js";
 import { Deposit } from "@src/entities/deposit.js";
 import { IDepositStorage } from "@src/interfaces/storage/deposit_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { only_month } from "@src/utils.js";
 import { Expected } from "@src/utils/expected.js";
 
@@ -134,9 +134,9 @@ function try_parse_row(row: string[], columns: TableColumns): Deposit | undefine
 
 export class GoogleSpreadsheetDepositStorage implements IDepositStorage {
     private sheet: GoogleSpreadsheet;
-    private journal: Journal;
+    private journal: IJournal;
 
-    constructor(private readonly config: Config, parent_journal: Journal) {
+    constructor(private readonly config: Config, parent_journal: IJournal) {
         this.sheet = new GoogleSpreadsheet(this.config.google_sheet_id);
         this.journal = parent_journal.child("deposit_storage");
     }
@@ -145,7 +145,7 @@ export class GoogleSpreadsheetDepositStorage implements IDepositStorage {
         const sheet_status = await this.sheet.read(this.config.range);
         if (!sheet_status.ok) {
             const wrapped = sheet_status.wrap_error("can't fetch sheet data");
-            this.journal.log().error(wrapped.error);
+            this.journal.error(wrapped.error);
             throw new Error(wrapped.error);
         }
         const table = sheet_status.value;
@@ -157,7 +157,7 @@ export class GoogleSpreadsheetDepositStorage implements IDepositStorage {
         const header_status = try_parse_header(table[0]);
         if (!header_status.ok) {
             const wrapped = header_status.wrap_error("invalid header");
-            this.journal.log().error(wrapped.error);
+            this.journal.error(wrapped.error);
             throw new Error(wrapped.error);
         }
         const columns = header_status.value;

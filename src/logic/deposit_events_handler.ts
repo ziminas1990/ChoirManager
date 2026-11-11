@@ -1,17 +1,17 @@
 import { DepositEvent } from "@src/interfaces/deposit_service.js";
 import { IBroadcaster, ISubscription } from "@src/interfaces/message_queue.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 // Drains DepositService events and forwards them to DepositActions for UI notify.
 export class DepositEventsHandler {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private readonly subscription: ISubscription<DepositEvent>;
 
     constructor(
         events: IBroadcaster<DepositEvent>,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         this.journal = parent_journal.child("deposit_events");
         this.subscription = events.subscribe();
@@ -30,7 +30,7 @@ export class DepositEventsHandler {
             const event = polled.value;
             const status = await DepositActions.handle_deposit_event(event, this.journal);
             if (!status.ok) {
-                this.journal.log().error(
+                this.journal.error(
                     `failed to handle deposit event for ${event.tgid}: ${status.error}`);
             }
         }

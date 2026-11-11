@@ -1,7 +1,7 @@
 import { GoogleSpreadsheet, Row } from "@src/api/google_docs.js";
 import { NewRecordsTrackerConfig } from "@src/config.js";
 import { IAdapter, TableRecord } from "@src/interfaces/adapter.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 type TableConfig = {
@@ -32,10 +32,10 @@ function normalize_row(row: Row, width: number): string[] {
 export class NewRecordsFetcher {
     private last_fetch_date?: Date;
     private snapshots: Map<string, Set<string>> = new Map();
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
 
     constructor(
-        parent_journal: Journal,
+        parent_journal: IJournal,
         private readonly config: NewRecordsTrackerConfig,
         private readonly get_adapters: () => IAdapter[])
     {
@@ -54,7 +54,7 @@ export class NewRecordsFetcher {
         for (const table of this.config.tables) {
             const status = await this.check_table(table);
             if (!status.ok) {
-                this.journal.log().warn(`Failed to check table '${table.name}': ${status.error}`);
+                this.journal.warning(`Failed to check table '${table.name}': ${status.error}`);
             }
         }
 
@@ -83,7 +83,7 @@ export class NewRecordsFetcher {
         const previous_keys = this.snapshots.get(key);
         if (!previous_keys) {
             this.snapshots.set(key, next_keys);
-            this.journal.log().info(`Initialized snapshot for table '${cfg.name}'`);
+            this.journal.info(`Initialized snapshot for table '${cfg.name}'`);
             return Expected.ok(undefined);
         }
 

@@ -6,7 +6,7 @@ import { PackedPlainCollection } from "@src/components/collections/packed_plain_
 import { UserData } from "@src/entities/user.js";
 import { ICollection } from "@src/interfaces/collection.js";
 import { UserPatch } from "@src/interfaces/user_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import {
     apply_user_patch,
@@ -22,7 +22,7 @@ export class UsersStorageFactory {
         return PlainCollectionFactory.verify(config);
     }
 
-    static create(config: UsersStorageConfig, parent_journal: Journal)
+    static create(config: UsersStorageConfig, parent_journal: IJournal)
     : Expected<ICollection<UserData, UserPatch>>
     {
         const collection_status = PlainCollectionFactory.create(

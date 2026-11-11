@@ -1,3 +1,4 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
 
@@ -17,7 +18,7 @@ test("incoming messages are saved before notifying the agent and edits only upda
     const notifications = [];
     const message = { message_id: "message", time: new Date(),
         sender_id: "author", text: "@bot Question", reply_to: null };
-    const journal = { log: () => ({ error() { assert.fail("unexpected write failure"); } }) };
+    const journal = new MemoryJournal();
     let release_write;
     let started;
     {
@@ -71,6 +72,7 @@ test("incoming messages are saved before notifying the agent and edits only upda
         assert.equal((await AnnouncesChat.on_new_message(message, journal)).ok, true);
         assert.deepEqual(attempts, ["add:start", "add:done", "notify", "update:Edited", "announce"]);
         assert.deepEqual(notifications, [message]);
+        assert.deepEqual(journal.records, []);
     }
 });
 
@@ -81,11 +83,10 @@ for (const failure of ["error", "throw", "missing"]) {
 
         // 1. provide failing or absent backlogs and observe agent notifications
         const attempts = [];
-        const errors = [];
         const notifications = [];
         const message = { message_id: "message", time: new Date(),
             sender_id: "author", text: "@bot Question" };
-        const journal = { log: () => ({ error: (...args) => errors.push(args) }) };
+        const journal = new MemoryJournal();
         {
             const save = async operation => {
                 attempts.push(operation);
@@ -112,7 +113,7 @@ for (const failure of ["error", "throw", "missing"]) {
             assert.equal((await AnnouncesChat.on_new_message(message, journal)).ok, true);
             assert.deepEqual(attempts, failure === "missing" ? [] : ["add", "update", "add"]);
             assert.deepEqual(notifications, [message]);
-            assert.equal(errors.length, 3);
+            assert.equal(journal.records.filter(record => record.level === "error").length, 3);
         }
     });
 }

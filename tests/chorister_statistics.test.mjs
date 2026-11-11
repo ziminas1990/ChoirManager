@@ -1,3 +1,4 @@
+import { MemoryJournal } from "../dist/components/memory_journal.js";
 import assert from "node:assert/strict";
 import { after, mock, test } from "node:test";
 
@@ -14,8 +15,7 @@ import { Expected } from "../dist/utils/expected.js";
 GlobalFormatter.init("html");
 mock.method(CoreAPI, "on_new_user_agent", () => Expected.ok(undefined));
 after(() => mock.restoreAll());
-const logger = { info() {}, warn() {}, error() {}, debug() {} };
-const journal = { child() { return this; }, log() { return logger; } };
+const journal = new MemoryJournal();
 
 function fixture(lang = Language.EN) {
     const state = {

@@ -1,22 +1,22 @@
 import TelegramBot from "node-telegram-bot-api";
 
 import { Expected, Status } from "@src/utils/expected.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { seconds_since } from "@src/utils.js";
 
 
 export class GuestDialog {
     private last_welcome: Date = new Date(0);
-    private journal: Journal;
+    private journal: IJournal;
 
-    constructor(private user: TelegramUser, parent_journal: Journal)
+    constructor(private user: TelegramUser, parent_journal: IJournal)
     {
         this.journal = parent_journal.child("guest_dialog");
     }
 
     async on_message(msg: TelegramBot.Message): Promise<Status> {
-        this.journal.log().info(`message: ${msg.text}`);
+        this.journal.info(`message: ${msg.text}`);
         return await this.maybe_send_welcome();
     }
 

@@ -1,6 +1,6 @@
 import { ILLM, IToolchain, Message, ToolsOption } from "@src/interfaces/llm.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 
 type ContextItem = {
     time: Date;
@@ -22,7 +22,7 @@ const TOOLS_LIMIT_REACHED_MESSAGE =
 export class Agent {
     private static next_agent_id = 1;
 
-    private journal: Journal;
+    private journal: IJournal;
     private context: ContextItem[] = [];
     private last_activity?: Date;
 
@@ -32,7 +32,7 @@ export class Agent {
         private cfg: AgentCfg,
         private llm: ILLM,
         private readonly tools: IToolchain,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         if (cfg.tool_calls_limit <= 0) {
             throw new Error("tool_calls_limit must be positive");
@@ -89,7 +89,7 @@ export class Agent {
         this.cleanup_context();
         this.last_activity = new Date();
 
-        this.journal.log().info(
+        this.journal.info(
             `generating response with ${this.get_context_messages().length} context length`);
 
         for (let i = 0; i <= this.cfg.tool_calls_limit; i++) {
@@ -125,7 +125,7 @@ export class Agent {
 
             const has_assistant = response_messages.some(m => m.role === "assistant");
             if (has_assistant && response.value.content !== null) {
-                this.journal.log().info(
+                this.journal.info(
                     `assistant response after ${i} iterations: ${response.value.content}`);
                 return Expected.ok(response.value.content);
             }
@@ -166,7 +166,7 @@ export class Agent {
             try {
                 if (this.tools.get_tools().size === 0) {
                     result_text = "Tool execution has failed! Reason: no tools are available.";
-                    this.journal.log().error({ tool: call.name, parameters: call.parameters }, result_text);
+                    this.journal.error({ tool: call.name, parameters: call.parameters }, result_text);
                 } else {
                     const result = await this.tools.call_tool(call.name, call.parameters);
                     result_text = result.ok
@@ -176,7 +176,7 @@ export class Agent {
             } catch (e) {
                 const error_text = e instanceof Error ? e.message : String(e);
                 result_text = `Tool execution has failed! Reason: ${error_text}`;
-                this.journal.log().error(
+                this.journal.error(
                     { tool: call.name, parameters: call.parameters, error: error_text },
                     `tool '${call.name}' threw an exception`,
                 );

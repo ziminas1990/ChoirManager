@@ -1,5 +1,5 @@
 import { ISimpleMemoryStorage } from "@src/interfaces/storage/simple_memory_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import {
     GoogleFirestoreSimpleMemoryStorage,
@@ -11,7 +11,7 @@ export type SimpleMemoryStorageConfig =
 
 export class SimpleMemoryStorageFactory {
 
-    static create(config: SimpleMemoryStorageConfig, parent_journal: Journal)
+    static create(config: SimpleMemoryStorageConfig, parent_journal: IJournal)
     : Expected<ISimpleMemoryStorage>
     {
         switch (config.type) {

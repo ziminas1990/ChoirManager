@@ -5,13 +5,13 @@ import { ScoresSearchJob } from "@src/components/ai/jobs/scores_search_job.js";
 import { Score } from "@src/entities/score.js";
 import { IScoresService } from "@src/interfaces/scores_service.js";
 import { IScoresStorage } from "@src/interfaces/storage/scores_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 
 export class ScoresService extends Logic<void> implements IScoresService {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private scores = new Map<string, Score>();
 
     constructor(
@@ -19,7 +19,7 @@ export class ScoresService extends Logic<void> implements IScoresService {
         private readonly search_prompt_file: string,
         private readonly storage: IScoresStorage,
         fetch_interval_sec: number,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         super(fetch_interval_sec * 1000);
         this.journal = parent_journal.child("scores_svc");
@@ -77,7 +77,7 @@ export class ScoresService extends Logic<void> implements IScoresService {
             matched.push(score);
         }
 
-        this.journal.log().info(
+        this.journal.info(
             `scores search selected ${matched.length} scores` +
             ` (model=${result.value.model},` +
             ` in=${result.value.usage.input_tokens},` +
@@ -90,7 +90,7 @@ export class ScoresService extends Logic<void> implements IScoresService {
     protected async proceed_impl(_now: Date, _interval_ms: number): Promise<Expected<void[]>> {
         const status = await this.refetch();
         if (!status.ok) {
-            this.journal.log().warn(`Failed to refetch scores: ${status.error}`);
+            this.journal.warning(`Failed to refetch scores: ${status.error}`);
         }
         return Expected.ok([]);
     }
@@ -103,7 +103,7 @@ export class ScoresService extends Logic<void> implements IScoresService {
 
         // Replace the cache entirely so removed/changed sheet rows stay correct.
         this.scores = new Map(fetched.value.map((score) => [score.get_key(), score]));
-        this.journal.log().info({ scores_count: this.scores.size }, "Scores cache refreshed");
+        this.journal.info({ scores_count: this.scores.size }, "Scores cache refreshed");
         return Expected.ok(undefined);
     }
 }

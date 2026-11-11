@@ -9,18 +9,18 @@ import {
     UserFindQuery,
     UserPatch,
 } from "@src/interfaces/user_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 
 export class UserService implements IUserService {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private by_system_id = new Map<string, UserData>();
     private by_tg_username = new Map<string, UserData>();
 
     constructor(
         private readonly collection: ICollection<UserData, UserPatch>,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         this.journal = parent_journal.child("user_service");
     }
@@ -69,7 +69,7 @@ export class UserService implements IUserService {
             return persisted.wrap_error("can't create user");
         }
 
-        this.journal.log().info(`Created user ${username} without roles`);
+        this.journal.info(`Created user ${username} without roles`);
         return persisted;
     }
 
@@ -97,7 +97,7 @@ export class UserService implements IUserService {
         }
 
         const label = username ?? persisted.value.id.system_id;
-        this.journal.log().info(`Created user ${label}`);
+        this.journal.info(`Created user ${label}`);
         return persisted;
     }
 
@@ -131,7 +131,7 @@ export class UserService implements IUserService {
         const diffs = Helpers.diff_user(existing, stored.value);
         if (diffs.length > 0) {
             const label = stored.value.id.tg_username ?? system_id;
-            this.journal.log().info(`Updated user ${label}: ${diffs.join(", ")}`);
+            this.journal.info(`Updated user ${label}: ${diffs.join(", ")}`);
         }
         return stored;
     }
@@ -187,13 +187,13 @@ export class UserService implements IUserService {
 
         for (const user of fetched.value) {
             if (next_by_system_id.has(user.id.system_id)) {
-                this.journal.log().warn(`Duplicate system_id '${user.id.system_id}', keeping first`);
+                this.journal.warning(`Duplicate system_id '${user.id.system_id}', keeping first`);
                 continue;
             }
 
             const username = user.id.tg_username;
             if (username && next_by_tg_username.has(username)) {
-                this.journal.log().warn(`Duplicate tg_username '${username}', keeping first`);
+                this.journal.warning(`Duplicate tg_username '${username}', keeping first`);
                 continue;
             }
 
@@ -202,7 +202,7 @@ export class UserService implements IUserService {
                 const diffs = Helpers.diff_user(existing, user);
                 if (diffs.length > 0) {
                     const label = username ?? user.id.system_id;
-                    this.journal.log().info(`Updated user ${label}: ${diffs.join(", ")}`);
+                    this.journal.info(`Updated user ${label}: ${diffs.join(", ")}`);
                 }
             }
 
@@ -216,7 +216,7 @@ export class UserService implements IUserService {
         this.by_tg_username = next_by_tg_username;
 
         const all_users = Array.from(this.by_system_id.values());
-        this.journal.log().info({
+        this.journal.info({
             users_count: all_users.length,
             users_without_roles: all_users.filter((user) => is_guest_user(user)).length,
         }, "Users cache refreshed");

@@ -3,6 +3,9 @@
 Language-model choices, required configuration, and deprecated models are described
 in the [deployment guide](docs/deployment_guide.md#language-models).
 
+The [diagnostic logging guide](docs/logging.md) describes `IJournal`, production
+output, and in-memory records for tests.
+
 To update:
 
 ```bash

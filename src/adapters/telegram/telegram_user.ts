@@ -2,7 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Role, UserData, is_guest_user, user_has_role, user_tg_username } from "@src/entities/user.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { return_exception, return_fail } from "@src/utils.js";
@@ -33,7 +33,7 @@ export type TelegramUserEnv = {
 }
 
 export class TelegramUser implements IUserAgent {
-    private journal: Journal;
+    private journal: IJournal;
     private queue: IcomingItem[] = [];
     private bot?: TelegramBot;
     private callbacks_registry: TelegramCallbacks
@@ -57,7 +57,7 @@ export class TelegramUser implements IUserAgent {
         private chat_id: number,
         private readonly cfg: TelegramUserCfg,
         private readonly env: TelegramUserEnv,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         this.journal = parent_journal.child(`@${user_tg_username(this.user_info)}`);
         this.callbacks_registry = new TelegramCallbacks(this.journal);
@@ -151,13 +151,13 @@ export class TelegramUser implements IUserAgent {
         const callback_id = button.callback_data;
         const text = button.text;
         if (!callback_id) {
-            return return_fail("callback_data is not specified", this.journal.log());
+            return return_fail("callback_data is not specified", this.journal);
         }
         if (this.callbacks_registry.remove_callback(callback_id)) {
-            this.journal.log().debug({ callback_id, text }, "callback removed");
+            this.journal.debug({ callback_id, text }, "callback removed");
             return Expected.ok(undefined);
         }
-        return return_fail(`failed to remove callback ${callback_id}`, this.journal.log());
+        return return_fail(`failed to remove callback ${callback_id}`, this.journal);
     }
 
     // From IUserAgent
@@ -166,7 +166,7 @@ export class TelegramUser implements IUserAgent {
         options?: TelegramBot.SendMessageOptions,
     ): Promise<Expected<number>> {
         if (!this.bot) {
-            return return_fail("API is not initialized", this.journal.log());
+            return return_fail("API is not initialized", this.journal);
         }
         try {
             await this.wait_api_cooldown();
@@ -174,23 +174,23 @@ export class TelegramUser implements IUserAgent {
                 ...options,
                 parse_mode: "HTML"
             });
-            this.journal.log().info({ message }, "message sent")
+            this.journal.info({ message }, "message sent")
             return Expected.ok(sent.message_id);
         } catch (e) {
-            return return_exception(e, this.journal.log());
+            return return_exception(e, this.journal);
         }
     }
 
     async send_chat_action(action: TelegramBot.ChatAction): Promise<Status> {
         if (!this.bot) {
-            return return_fail("API is not initialized", this.journal.log());
+            return return_fail("API is not initialized", this.journal);
         }
         try {
             // Note: do not wait for cooldown here
             await this.bot.sendChatAction(this.chat_id, action);
             return Expected.ok(undefined);
         } catch (e) {
-            return return_exception(e, this.journal.log());
+            return return_exception(e, this.journal);
         }
     }
 
@@ -213,7 +213,7 @@ export class TelegramUser implements IUserAgent {
     // From IUserAgent
     async send_file(filename: string, caption?: string, content_type?: string): Promise<Status> {
         if (!this.bot) {
-            return return_fail("API is not initialized", this.journal.log());
+            return return_fail("API is not initialized", this.journal);
         }
         try {
             const options: TelegramBot.SendDocumentOptions = {
@@ -224,10 +224,10 @@ export class TelegramUser implements IUserAgent {
             };
             await this.wait_api_cooldown();
             await this.bot.sendDocument(this.chat_id, filename, options, file_options);
-            this.journal.log().info({ document: filename }, "document sent")
+            this.journal.info({ document: filename }, "document sent")
             return Expected.ok(undefined);
         } catch (e) {
-            return return_exception(e, this.journal.log());
+            return return_exception(e, this.journal);
         }
     }
 
@@ -236,7 +236,7 @@ export class TelegramUser implements IUserAgent {
         inline_keyboard?: TelegramBot.InlineKeyboardButton[][]
     }): Promise<Status> {
         if (!this.bot) {
-            return return_fail("API is not initialized", this.journal.log());
+            return return_fail("API is not initialized", this.journal);
         }
 
         try {
@@ -264,20 +264,20 @@ export class TelegramUser implements IUserAgent {
             }
             return Expected.ok(undefined);
         } catch (e) {
-            return return_exception(e, this.journal.log());
+            return return_exception(e, this.journal);
         }
     }
 
     async delete_message(message_id: number): Promise<Status> {
         if (!this.bot) {
-            return return_fail("API is not initialized", this.journal.log());
+            return return_fail("API is not initialized", this.journal);
         }
         try {
             await this.wait_api_cooldown();
             const ok = await this.bot.deleteMessage(this.chat_id, message_id);
-            return ok ? Expected.ok(undefined) : return_fail("Failed to delete message", this.journal.log());
+            return ok ? Expected.ok(undefined) : return_fail("Failed to delete message", this.journal);
         } catch(e) {
-            return return_exception(e, this.journal.log());
+            return return_exception(e, this.journal);
         }
     }
 
@@ -285,14 +285,14 @@ export class TelegramUser implements IUserAgent {
         try {
             await this.maybe_update_user_info(now);
         } catch (error) {
-            this.journal.log().warn({ error }, "Failed to refresh user info");
+            this.journal.warning({ error }, "Failed to refresh user info");
         }
         // Handle clicks before registry cleanup so valid_until is checked on
         // the click itself, even when background expiry has not run yet.
         for (const item of this.queue) {
             const refresh_status = this.refresh_user_info_from_cache();
             if (!refresh_status.ok) {
-                this.journal.log().warn({ error: refresh_status.error }, "Failed to refresh user info");
+                this.journal.warning({ error: refresh_status.error }, "Failed to refresh user info");
                 this.set_user_info({ ...this.user_info, roles: [] });
             }
             if (item.what == "message") {
@@ -300,15 +300,15 @@ export class TelegramUser implements IUserAgent {
                 if (main_dialog) {
                     const status = await main_dialog.on_message(item.message);
                     if (!status.ok) {
-                        this.journal.log().error(`Failed to handle message: ${status.error}`);
+                        this.journal.error(`Failed to handle message: ${status.error}`);
                     }
                 } else {
-                    this.journal.log().warn("ignoring message: no main dialog");
+                    this.journal.warning("ignoring message: no main dialog");
                 }
             } else if (item.what == "callback") {
                 const status = await this.handle_callback(item.callback, now);
                 if (!status.ok) {
-                    this.journal.log().error(`Failed to handle callback: ${status.error}`);
+                    this.journal.error(`Failed to handle callback: ${status.error}`);
                 }
             }
         }
@@ -369,7 +369,7 @@ export class TelegramUser implements IUserAgent {
         try {
             await this.bot?.answerCallbackQuery(query.id);
         } catch (error) {
-            this.journal.log().warn({ error }, "Failed to answer callback query");
+            this.journal.warning({ error }, "Failed to answer callback query");
         }
 
         if (ChoristerStatisticsWidget.matches(query.data)) {
@@ -413,7 +413,7 @@ export class TelegramUser implements IUserAgent {
         } else if (user_has_role(this.user_info, [Role.Chorister, Role.Manager, Role.Admin])) {
             const dialog = this.get_or_create_chorister_dialog();
             if (!dialog.ok) {
-                this.journal.log().error(`Failed to create chorister dialog: ${dialog.error}`);
+                this.journal.error(`Failed to create chorister dialog: ${dialog.error}`);
                 return undefined;
             }
             return dialog.value;

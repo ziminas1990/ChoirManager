@@ -9,7 +9,7 @@ import {
     NewMemoryFact,
 } from "@src/entities/memory.js";
 import { ISimpleMemoryStorage } from "@src/interfaces/storage/simple_memory_storage.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected } from "@src/utils/expected.js";
 import { generate_memory_id } from "@src/utils/misc.js";
 import { TokenBucket } from "@src/utils/token_bucket.js";
@@ -121,12 +121,12 @@ function try_parse_document(doc_id: string, data: Record<string, unknown>): Expe
 export class GoogleFirestoreSimpleMemoryStorage implements ISimpleMemoryStorage {
     private readonly db: Firestore;
     private readonly collection: CollectionReference;
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private readonly api_tokens: TokenBucket;
 
     constructor(
         private readonly config: Config,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         this.db = GoogleAuth.get_firestore(this.config.database_id);
         this.collection = this.db.collection(this.config.collection_name);
@@ -228,7 +228,7 @@ export class GoogleFirestoreSimpleMemoryStorage implements ISimpleMemoryStorage 
                 const parsed = try_parse_document(doc.id, doc.data());
                 if (!parsed.ok) {
                     invalid_docs++;
-                    this.journal.log().warn(
+                    this.journal.warning(
                         `Failed to parse memory document '${doc.id}': ${parsed.error}`,
                     );
                     return;
@@ -237,10 +237,10 @@ export class GoogleFirestoreSimpleMemoryStorage implements ISimpleMemoryStorage 
             });
 
             if (invalid_docs > 0) {
-                this.journal.log().warn(`Skipped ${invalid_docs} invalid memory documents`);
+                this.journal.warning(`Skipped ${invalid_docs} invalid memory documents`);
             }
 
-            this.journal.log().info(`Fetched ${facts.length} memory facts from Firestore`);
+            this.journal.info(`Fetched ${facts.length} memory facts from Firestore`);
             return Expected.ok(facts);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import assert from "assert";
 
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { ScoresActions } from "@src/use_cases/scores_actions.js";
@@ -26,14 +26,14 @@ import { ScoreDownloads } from "@src/adapters/telegram/score_downloads.js";
 
 export class ChoristerDialog implements IChorister {
     private last_welcome: Date = new Date(0);
-    private journal: Journal;
+    private journal: IJournal;
 
     private widgets: AbstractWidget[] = [];
 
     constructor(
         private user: TelegramUser,
         private readonly runtime_config: RuntimeConfig,
-        journal: Journal,
+        journal: IJournal,
         private readonly assistant: ChoristerAgent,
         private readonly tools_manager: ChoristerToolsManager,
     )
@@ -45,7 +45,7 @@ export class ChoristerDialog implements IChorister {
         user: TelegramUser,
         runtime_config: RuntimeConfig,
         users: IUserServiceReplica,
-        parent_journal: Journal,
+        parent_journal: IJournal,
         assistant_config: AssistantConfig,
     ): Expected<ChoristerDialog> {
         const journal = parent_journal.child("chorister_dialog");
@@ -150,7 +150,7 @@ export class ChoristerDialog implements IChorister {
 
     // From IChorister
     async send_scores_list(scores: Score[]): Promise<Status> {
-        this.journal.log().info("sending scores list");
+        this.journal.info("sending scores list");
 
         if (scores.length == 0) {
             this.user.send_message(this.no_scores_available(this.user.info().lang));
@@ -179,7 +179,7 @@ export class ChoristerDialog implements IChorister {
 
     // From IChorister
     async on_feedback_received(feedback: Feedback): Promise<Status> {
-        this.journal.log().info({ feedback }, "feedback received");
+        this.journal.info({ feedback }, "feedback received");
         return (await this.user.send_message(
             Messages.feedback_received(feedback, this.user.info().lang))).as_status();
     }
@@ -203,7 +203,7 @@ export class ChoristerDialog implements IChorister {
     private async send_typing_indicator(): Promise<void> {
         const status = await this.user.send_chat_action("typing");
         if (!status.ok) {
-            this.journal.log().warn(`Failed to send typing chat action: ${status.error}`);
+            this.journal.warning(`Failed to send typing chat action: ${status.error}`);
         }
     }
 
@@ -229,7 +229,7 @@ export class ChoristerDialog implements IChorister {
 
     private async on_service_message(text: string): Promise<Status> {
         const command = text.split(/\s/)[0].split("@")[0];
-        this.journal.log().info(`Processing service message: ${command}`);
+        this.journal.info(`Processing service message: ${command}`);
 
         const user = this.user.info();
 
@@ -240,7 +240,7 @@ export class ChoristerDialog implements IChorister {
         } else if (command == "/stop") {
             return AdminActions.stop_application(this.journal);
         } else {
-            return return_fail(`unknown service command: ${command}`, this.journal.log());
+            return return_fail(`unknown service command: ${command}`, this.journal);
         }
     }
 

@@ -15,21 +15,21 @@ import {
     UserCasPatch,
 } from "@src/interfaces/administration_service.js";
 import { IUserService, NewUserData } from "@src/interfaces/user_service.js";
-import { Journal } from "@src/journal.js";
+import { IJournal } from "@src/interfaces/journal.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { apply_cas_patch } from "@src/utils/cas_patch.js";
 import { build_user_data_patch } from "@src/utils/patching/user_data_patch.js";
 
 export class AdministrationService extends Logic<void> implements IAdministrationService {
-    private readonly journal: Journal;
+    private readonly journal: IJournal;
     private readonly pending = new Map<string, PendingOperation>();
 
     constructor(
         private readonly confirmation_ttl_sec: number,
         private readonly max_pending_per_user: number,
         private readonly users: IUserService,
-        parent_journal: Journal,
+        parent_journal: IJournal,
     ) {
         super(1000);
         this.journal = parent_journal.child("administration_svc");
@@ -122,13 +122,13 @@ export class AdministrationService extends Logic<void> implements IAdministratio
 
         const applied = await this.apply_operation(actor_id, pending.value.operation);
         if (!applied.ok) {
-            this.journal.log().warn(
+            this.journal.warning(
                 `Failed to apply ${pending.value.operation.what} ${pending.value.id}: ${applied.error}`,
             );
             return applied;
         }
 
-        this.journal.log().info(
+        this.journal.info(
             `Confirmed ${pending.value.operation.what} ${pending.value.id} ` +
             `requested by ${pending.value.requested_by} confirmed by ${Helpers.actor_label(actor.value)}`,
         );
@@ -146,7 +146,7 @@ export class AdministrationService extends Logic<void> implements IAdministratio
             return pending.as_status();
         }
 
-        this.journal.log().info(
+        this.journal.info(
             `Rejected ${pending.value.operation.what} ${pending.value.id} ` +
             `requested by ${pending.value.requested_by} rejected by ${Helpers.actor_label(actor.value)}`,
         );
@@ -159,7 +159,7 @@ export class AdministrationService extends Logic<void> implements IAdministratio
                 continue;
             }
             this.pending.delete(id);
-            this.journal.log().info(
+            this.journal.info(
                 `Expired pending ${operation.operation.what} ${id} requested by ${operation.requested_by}`,
             );
         }
@@ -180,7 +180,7 @@ export class AdministrationService extends Logic<void> implements IAdministratio
         };
         this.pending.set(pending.id, pending);
 
-        this.journal.log().info(
+        this.journal.info(
             `Requested ${operation.what} ${pending.id} by ${Helpers.actor_label(actor)}`,
         );
         return Expected.ok(Helpers.clone_pending(pending));
@@ -249,7 +249,7 @@ export class AdministrationService extends Logic<void> implements IAdministratio
             return rules.cast_error();
         }
 
-        this.journal.log().info(
+        this.journal.info(
             `Reusing roleless profile ${target.id.system_id} ` +
             `for tg_username '${target.id.tg_username}'`,
         );
@@ -559,7 +559,7 @@ export class AdministrationService extends Logic<void> implements IAdministratio
             return;
         }
         this.pending.delete(operation_id);
-        this.journal.log().info(
+        this.journal.info(
             `Dropped pending ${pending.operation.what} ${pending.id}: ` +
             `${actor_id} is not allowed to confirm`,
         );
