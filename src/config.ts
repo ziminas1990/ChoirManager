@@ -1,3 +1,4 @@
+import { AnalyticServiceConfig, AnalyticServiceConfigJson } from "@src/adapters/analytic_service/factory.js";
 import { IJournal } from "@src/interfaces/journal.js";
 import fs from "fs";
 
@@ -237,6 +238,7 @@ export class MessagesProviderConfig {
 }
 
 export type BotConfigJson = {
+    analytic_service?: AnalyticServiceConfigJson;
     runtime_cache_filename: string;
     google_cloud_key_file: string;
     runtime_dump_interval_sec: number;
@@ -262,6 +264,7 @@ export type BotConfigJson = {
 }
 
 export class BotConfig {
+    public readonly analytic_service: AnalyticServiceConfig;
     public readonly runtime: RuntimeConfig;
     public readonly tg_adapter?: TgAdapterConfig;
     public readonly user_service?: UserServiceConfig;
@@ -278,6 +281,7 @@ export class BotConfig {
     public readonly managers_chat_agent?: ManagersChatAgentConfig;
 
     constructor(public readonly json: BotConfigJson) {
+        this.analytic_service = new AnalyticServiceConfig(json.analytic_service ?? { type: "local" });
         this.runtime = new RuntimeConfig({
             runtime_cache_filename: json.runtime_cache_filename,
             runtime_dump_interval_sec: json.runtime_dump_interval_sec,
@@ -341,6 +345,11 @@ export class BotConfig {
         status = this.runtime.verify();
         if (!status.ok) {
             return status.wrap_error("runtime misconfiguration");
+        }
+
+        status = this.analytic_service.verify();
+        if (!status.ok) {
+            return status.wrap_error("'analytic_service' misconfiguration");
         }
 
         if (!this.user_service) {

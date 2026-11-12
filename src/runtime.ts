@@ -46,6 +46,7 @@ import { ManagersAgent } from "./components/ai/agents/managers_agent.js";
 import { TaskTrackerTools } from "./components/ai/tools/task_tracker_tools.js";
 import { SimpleMemoryTools } from "./components/ai/tools/simple_memory_tools.js";
 import { DepositEventsHandler } from "./logic/deposit_events_handler.js";
+import { AnalyticServiceFactory } from "./adapters/analytic_service/factory.js";
 
 export type RuntimeConfigJson = {
     runtime_cache_filename: string;
@@ -328,13 +329,20 @@ export class Runtime {
             }
         }
 
+        const analytic = AnalyticServiceFactory.create(
+            this.config.analytic_service, this.database, this.user_service.as_replica());
+        if (!analytic.ok) {
+            return analytic.wrap_error("Failed to create Analytic service");
+        }
+        Environment.setup.analytic_service = analytic.value;
+
         if (this.config.attendance_tracker) {
             this.journal.info("Initializing attendance tracker...");
             this.attendance_tracker = new AttendanceTracker(
                 this.config.attendance_tracker,
                 this.messages_provider,
                 this.user_service.as_replica(),
-                this.database,
+                analytic.value,
                 (system_id) => this.get_user_logic(system_id),
                 async () => await this.tg_adapter?.get_managers_chat(),
                 this.journal

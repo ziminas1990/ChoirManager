@@ -51,8 +51,11 @@ Do **not** expose sync methods on `I*Service` just because the local cache is sy
 Sync helpers may exist on a concrete local component for in-process wiring only
 (e.g. Runtime session state), but they are not part of the service interface.
 
-Keep service interface methods **HTTP/RPC-mappable**: arguments and results must be
-serializable data. Do **not** put on `I*Service` calls that are hard to remoting —
+Keep service interface methods **HTTP/RPC-mappable**: arguments and results must
+have a defined representation that transport adapters can encode and restore.
+Service contracts may use convenient domain types such as `Date`; adapters own
+conversion to and from the wire format. Contracts need not use JSON primitives
+throughout. Do **not** put on `I*Service` calls that are hard to remoting —
 for example methods that accept a function/callback (you cannot send a function over
 the network). Prefer request/response shapes, IDs, and plain DTOs; keep callbacks,
 closures, and other in-process wiring on the concrete local component or at the

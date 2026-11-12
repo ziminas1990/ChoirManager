@@ -1,3 +1,4 @@
+import { IAnalyticService } from "./analytic_service.js";
 import { IAdministrationService } from "./administration_service.js";
 import { IDepositService } from "./deposit_service.js";
 import { IScoresService } from "./scores_service.js";
@@ -25,5 +26,8 @@ export interface IEnvironment {
 
     get scores_service(): IScoresService;
     get maybe_scores_service(): IScoresService | undefined;
+
+    get analytic_service(): IAnalyticService;
+    get maybe_analytic_service(): IAnalyticService | undefined;
 
 }

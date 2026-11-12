@@ -80,6 +80,7 @@
             }
         ]
     },
+    "analytic_service": { "type": "local" },
     "rehersals_tracker": {
         "fetch_interval_sec": 3600
     },

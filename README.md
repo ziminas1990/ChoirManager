@@ -94,6 +94,8 @@ The image also contains the release 1 migration command (`node migrate.cjs`). Th
 * remove "chorister" role, because everyone who is not a guest is chorister
 * TelegramCallbacks: add lifetime for callbacks. Once lifetime is out, callback should be removed
 
+Report calculations and their source-data rules are described in [docs/analytics.md](docs/analytics.md).
+
 ## Useful
 
 Regex to find all imports with no ".js" specified:

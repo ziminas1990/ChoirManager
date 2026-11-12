@@ -1,18 +1,20 @@
 import TelegramBot from "node-telegram-bot-api";
 
-import { ChoristerAttendanceStat } from "@src/entities/statistics.js";
+import { ChoristerAttendanceStat, IAnalyticService } from "@src/interfaces/analytic_service.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { IJournal } from "@src/interfaces/journal.js";
-import { Language, Role, user_has_role, user_tg_username } from "@src/entities/user.js";
+import { Language, Role, user_has_role } from "@src/entities/user.js";
 import { apply_interval, GlobalFormatter, shorten } from "@src/utils.js";
-import { Analytic } from "@src/use_cases/analytic.js";
-import { Runtime } from "@src/runtime.js";
 import { Environment } from "@src/components/environment.js";
 
 type StatisticsAction =
     | { type: "close" }
     | { type: "period"; days: number | undefined };
+
+function analytic_service(): IAnalyticService {
+    return Environment.global.analytic_service;
+}
 
 export class ChoristerStatisticsWidget {
     private static readonly prefix = "stats:v1:";
@@ -119,13 +121,11 @@ export class ChoristerStatisticsWidget {
             const begin = period_days
                 ? apply_interval(end, { days: -period_days })
                 : new Date(0);
-            const statistic = Analytic.chorister_statistic_request(
-                Runtime.get_instance().get_database(),
-                user_tg_username(profile),
-                profile.voice,
-                begin,
-                end,
-            );
+            const statistic = await analytic_service().chorister_statistic_request({
+                system_id: profile.id.system_id,
+                from: begin,
+                to: end,
+            });
             if (!statistic.ok) {
                 return await this.report_failure(statistic.as_status());
             }
@@ -204,7 +204,7 @@ class Messages {
 
         const formatter = GlobalFormatter.instance();
 
-        const attendance = data.visited_hours / data.total_hours * 100;
+        const attendance = data.attendance_percent ?? 0;
         const diff_ms = data.period.to.getTime() - data.period.from.getTime();
         const days = Math.ceil(diff_ms / (1000 * 60 * 60 * 24));
 
@@ -216,15 +216,14 @@ class Messages {
             .replace("{visited_hours}", data.visited_hours.toFixed(0))
             .replace("{total_hours}", data.total_hours.toFixed(0));
 
-        const songs_stat = Array.from(data.songs.entries())
-        .sort((a, b) => b[1].actual - a[1].actual)
-        .map(([name, stat]) => {
+        const songs_stat = data.songs.map(stat => {
+            const name = stat.name;
             return [
                 shorten(name, 16).padEnd(16),
                 (stat.actual / 60).toFixed(1).padStart(4),
                 parts.of,
                 (stat.ideal / 60).toFixed(1).padEnd(4),
-                `~${((stat.actual / stat.ideal) * 100).toFixed(0)}%`.padStart(5),
+                `~${(stat.attendance_percent ?? 0).toFixed(0)}%`.padStart(5),
             ].join(" ");
         }).join("\n");
 

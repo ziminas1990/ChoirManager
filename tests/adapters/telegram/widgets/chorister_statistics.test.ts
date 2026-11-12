@@ -9,15 +9,14 @@ import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/choris
 import { Environment } from "@src/components/environment.js";
 import { MemoryJournal } from "@src/components/memory_journal.js";
 import { Language, Role, UserData, UserId, Voice } from "@src/entities/user.js";
-import { Runtime } from "@src/runtime.js";
+import { ChoristerStatisticsRequest } from "@src/interfaces/analytic_service.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { GlobalFormatter, apply_interval } from "@src/utils.js";
 import { Expected } from "@src/utils/expected.js";
 
 import { telegram_config } from "@tests/helpers/config.js";
 import { value } from "@tests/helpers/expected.js";
-import { mock_database, mock_rehersal } from "@tests/mocks/database.js";
-import { mock_runtime } from "@tests/mocks/runtime.js";
+import { mock_analytic } from "@tests/mocks/analytic.js";
 import { TelegramDelivery, inline_keyboard, mock_telegram, telegram_callback, telegram_message } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
@@ -30,14 +29,14 @@ const journal = new MemoryJournal();
 type State = {
     profile: UserData | undefined;
     minutes: number;
-    queries: { begin: Date; end: Date }[];
+    queries: ChoristerStatisticsRequest[];
     messages: TelegramDelivery[];
     edits: (TelegramBot.EditMessageTextOptions & { text: string })[];
     deletions: { chat_id: TelegramBot.ChatId; message_id: number }[];
     answers: string[];
     access_checks: Partial<UserId>[];
     no_change: boolean;
-    broken_database: boolean;
+    broken_analytic: boolean;
 };
 
 function fixture(lang = Language.EN) {
@@ -48,31 +47,29 @@ function fixture(lang = Language.EN) {
             roles: [Role.Chorister],
         },
         minutes: 60, queries: [], messages: [], edits: [], deletions: [], answers: [],
-        access_checks: [], no_change: false, broken_database: false,
+        access_checks: [], no_change: false, broken_analytic: false,
     };
-    const database = mock_database({
-        first_presence_date(username: string) {
-            assert.equal(username, state.profile!.id.tg_username);
-            return new Date(0);
-        },
-        get_rehersals_in_period(begin: Date, end: Date) {
-            if (state.broken_database) throw new Error("statistics unavailable");
-            state.queries.push({ begin, end });
-            return [mock_rehersal({
-                when: () => new Date(end.getTime() - 86400_000),
-                minutes_of_presence(username: string) {
-                    assert.equal(username, state.profile!.id.tg_username);
-                    return state.minutes;
-                },
-                duration(voice: Voice) {
-                    assert.equal(voice, state.profile!.voice);
-                    return 120;
-                },
-                songs: () => [{ name: "Song", minutes: state.minutes }],
-            })];
+    const environment = new Environment();
+    environment.analytic_service = mock_analytic({
+        async chorister_statistic_request(request) {
+            assert.equal(request.system_id, state.profile!.id.system_id);
+            state.queries.push({ ...request });
+            if (state.broken_analytic) {
+                return Expected.err("statistics unavailable");
+            }
+            return Expected.ok({
+                period: { from: request.from, to: request.to },
+                total_rehersals: 1,
+                visited_rehersals: 1,
+                last_skipped_rehersals: 0,
+                total_hours: 2,
+                visited_hours: state.minutes / 60,
+                attendance_percent: state.minutes / 120 * 100,
+                songs: [{ name: "Song", ideal: 120, actual: state.minutes,
+                    attendance_percent: state.minutes / 120 * 100 }],
+            });
         },
     });
-    const environment = new Environment();
     environment.user_service = mock_user_service({
         async resolve_user(id) {
             state.access_checks.push(id);
@@ -81,7 +78,6 @@ function fixture(lang = Language.EN) {
         },
     });
     Environment.set_global(environment);
-    mock.method(Runtime, "get_instance", () => mock_runtime({ get_database: () => database }));
     const bot = mock_telegram({
         async sendMessage(chat_id, text, options) {
             const message_id = state.messages.length + 100;
@@ -89,7 +85,9 @@ function fixture(lang = Language.EN) {
             return { message_id };
         },
         async editMessageText(text, options) {
-            if (state.no_change) throw new Error("Bad Request: message is not modified");
+            if (state.no_change) {
+                throw new Error("Bad Request: message is not modified");
+            }
             state.edits.push({ text, ...options });
             return true;
         },
@@ -151,8 +149,8 @@ for (const lang of [Language.EN, Language.RU]) {
             assert.deepEqual(keyboard.flat().map(button => button.callback_data),
                 ["30", "60", "90", "180", "all", "close"].map(action => `stats:v1:${action}`));
 
-            const { begin, end } = context.state.queries[0];
-            assert.deepEqual(begin, apply_interval(end, { days: -30 }));
+            const { from, to } = context.state.queries[0];
+            assert.deepEqual(from, apply_interval(to, { days: -30 }));
         }
     });
 }
@@ -194,9 +192,10 @@ test("all period buttons and close survive a fresh session without widget state"
 
         // 3.2 verify period bounds and edit destination
         {
-            const { begin, end } = context.state.queries.at(-1)!;
+            const { from, to } = context.state.queries.at(-1)!;
+            const end: Date = to;
             assert.ok(end.getTime() >= clicked_at && end.getTime() <= Date.now());
-            assert.deepEqual(begin, days ? apply_interval(end, { days: -days }) : new Date(0));
+            assert.deepEqual(from, days ? apply_interval(end, { days: -days }) : new Date(0));
             const edit: TelegramBot.EditMessageTextOptions & { text: string } = context.state.edits.at(-1)!;
             assert.equal(edit.message_id, first.message_id);
             assert.equal(edit.chat_id, 123);
@@ -278,7 +277,7 @@ for (const [data, overrides] of [
     });
 }
 
-for (const failure of ["profile error", "profile exception", "database error", "edit error"]) {
+for (const failure of ["profile error", "profile exception", "analytic error", "edit error"]) {
     test(`statistics failures give feedback and allow retry (${failure})`, async () => {
         // Motivation: outages must neither expose stale statistics nor consume
         // durable buttons, so the same action can be retried after recovery.
@@ -299,8 +298,8 @@ for (const failure of ["profile error", "profile exception", "database error", "
                 context.environment.user_service.resolve_user = async () => Expected.err("offline");
             } else if (failure === "profile exception") {
                 context.environment.user_service.resolve_user = async () => { throw new Error("offline"); };
-            } else if (failure === "database error") {
-                context.state.broken_database = true;
+            } else if (failure === "analytic error") {
+                context.state.broken_analytic = true;
             } else {
                 context.bot.editMessageText = async () => { throw new Error("offline"); };
             }
@@ -318,7 +317,7 @@ for (const failure of ["profile error", "profile exception", "database error", "
         {
             context.environment.user_service.resolve_user = resolve;
             context.bot.editMessageText = edit;
-            context.state.broken_database = false;
+            context.state.broken_analytic = false;
             await click(context, "stats:v1:60");
             assert.equal(context.state.edits.at(-1)!.message_id, 100);
             assert.equal(context.state.messages.length, 1);

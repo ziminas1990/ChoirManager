@@ -5,6 +5,18 @@ alwaysApply: true
 
 # TypeScript code style
 
+## Conditional blocks
+
+Always use braces for `if` and `else` bodies, even for a single statement.
+Put the body on separate lines. Never write single-line conditional statements
+or guard clauses such as `if (!value) return;` or `if (!value) continue;`.
+
+```typescript
+if (!resolved.ok || !resolved.value) {
+    continue;
+}
+```
+
 ## TypeScript class structure
 
 Inside a class, declare members in this order:

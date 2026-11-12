@@ -1,153 +1,101 @@
-# TASK-014: Publish monthly choir attendance reports
+# TASK-014: Consolidate report calculations in the Analytic service
 
 ## Background
 
-The bot provides personal attendance statistics but does not publish a monthly
-summary in the main choir chat. Choristers need a shared view of rehearsal
-activity and recognition for consistent attendance.
+Personal attendance calculations live in a static use-case class, while the
+low-attendance list is calculated inside AttendanceTracker's formatting code.
+Activity-period calculations also exist, but have no current callers. A separate
+HTML analytics prototype is unfinished and no longer needed.
+
+A single service should own these calculations and provide monthly choir report
+data using consistent, explicit source-data rules.
 
 ## Require
 
-Add a stateless Analytic service whose initial capability builds a
-MonthlyAttendanceReport for a requested calendar month. Recalculate each report
-from the current source data on every request, without caching or persisting
-reports. Keep its asynchronous contract independent of Telegram and scheduling.
+Add a stateless Analytic service with an asynchronous IAnalyticService contract
+that accepts transport-mappable requests and returns structured report data.
+Use Date objects for dates; transport adapters own their encoding and restoration.
+Recalculate results from the current source snapshot on every request, without
+an Analytic cache or report store.
 
-Include the following in the report:
+Consolidate the existing calculations in this service:
+
+- Personal attendance for a requested period, including expected and attended
+  rehearsal counts and hours, consecutive recent absences, and piece statistics.
+- Activity periods, including first attendance and the start of the latest active
+  period, with a configurable inactivity gap.
+- Low-attendance lists for a requested period, including attendance percentages
+  and the existing selection and ordering rules.
+
+Switch the personal statistics widget and AttendanceTracker to the service.
+Keep presentation and reminder orchestration with their existing consumers.
+Remove src/use_cases/analytic.ts after migrating its calculations.
+
+Add MonthlyAttendanceReport for a requested calendar month, containing:
 
 - Total rehearsal count and total rehearsal hours.
-- Rehearsed pieces, ordered by total rehearsal time descending.
-- Champions who attended every rehearsal in the month, when any exist.
+- Rehearsed pieces, ordered by accumulated rehearsal time descending.
+- Champions who attended every held rehearsal for their voice part in the month.
 - Average attendance and attendance leaders for each voice part.
 
-Support two configurable leader selection modes within each part: all choristers
-with attendance strictly above 80%, or the top three by attendance. Both modes
-order choristers by attendance descending; the threshold mode includes every
-qualifying chorister regardless of how many qualify.
+Support two explicit leader selection modes per part: all eligible choristers
+strictly above 80%, or the top three eligible choristers. Both modes order by
+attendance descending; do not switch modes based on how many exceed 80%.
 
-Add monthly publication to the main choir chat as a separate responsibility.
-Keep formatting separate from report calculation. Any delivery state belongs to
-the publication component, not Analytic.
+Document calculation rules supported by the available data:
+
+- Reporting timezone and period boundaries.
+- Which rehearsals count as held and how overall and per-part durations are
+  determined, given that current per-part duration is maximum participant presence.
+- Membership eligibility and expected time since the first recorded attendance.
+- Rehearsal eligibility for each chorister: positive duration for their current
+  voice part, within the requested period and since their first recorded visit.
+  Apply it consistently to all individual attendance measures.
+- Use of current voice assignments for historical reports.
+- Identity matching between system IDs and attendance records keyed by Telegram
+  username, including unmatched records.
+- Piece-time attribution when a chorister attended only part of a rehearsal.
+- Empty periods, zero expected time, rounding, and deterministic tie ordering.
+
+Remove the abandoned HTML analytics prototype under src/analytic/ and its
+exclusive build configuration and dependencies.
 
 ## Acceptance
 
-- Each request returns a newly calculated report; changes in the source snapshot
-  are reflected in subsequent requests without an Analytic cache or report store.
-- Reports cover the previous calendar month when published automatically, using
-  an inclusive start and exclusive end in the documented reporting timezone.
-- Totals include only rehearsals treated as held under the documented source-data
-  rule. Rehearsal hours are counted once, without multiplying by participants or
-  voice parts. Pieces show their accumulated rehearsal time in descending order.
-- Champions attended every held rehearsal in the month. Partial attendance counts
-  as visiting a rehearsal; joining midway through the month does not make someone
-  a champion after attending only the remaining rehearsals. Empty months have no
-  champions and produce no division-by-zero results.
-- Individual attendance is the ratio of attended minutes to expected minutes.
-  The part average is the arithmetic mean of eligible individual percentages.
-  Membership eligibility and expected time for newcomers are documented;
-  zero-denominator cases do not distort the average or ranking.
-- Threshold mode includes all and only choristers strictly above 80%, ordered by
-  attendance descending. Top-three mode returns the three highest-ranked eligible
-  choristers, or all eligible choristers if fewer than three exist. Thresholds
-  and ranking use unrounded values, with deterministic ordering for ties.
-- The configured monthly report reaches the main choir chat. Successful delivery
-  is remembered across restarts; a missed scheduled tick or a definite delivery
-  failure does not permanently skip the report. An uncertain delivery outcome is
-  distinguished from a definite failure to avoid blind duplicate retries.
-- Long reports retain all required content across message parts. User-supplied
-  names and piece titles display correctly. Reports can be built and previewed
-  without publishing to the choir chat.
-- Failed source refreshes do not result in publishing a report presented as fresh.
-  An empty month has explicit handling and cannot produce misleading rankings.
-
-## Plan
-
-### 1. Define calculation and source-data rules
-
-Status: Pending
-
-Specify MonthlyAttendanceReport and its serializable month request. Define the
-reporting timezone and publication schedule. Keep both leader modes explicit;
-do not switch modes based on the number exceeding 80%.
-
-Document the following source-data rules before implementing the calculations:
-
-- How held rehearsals are distinguished from cancelled or unfilled date columns.
-- How overall and per-part rehearsal durations are obtained; the current Database
-  derives per-part duration from maximum participant presence, not an explicit
-  scheduled duration.
-- Which choristers are eligible, including newcomers and missing identity matches;
-  use the existing first-presence convention for newcomers unless revised.
-- How current voice assignments affect historical reports, since membership and
-  voice-change history are not currently available.
-- How zero expected minutes, empty months, and equal attendance are handled.
-
-### 2. Make the rehearsal snapshot reliable
-
-Status: Pending
-
-Review RehersalsTracker updates: removed sheet values must disappear from the
-in-memory snapshot rather than surviving earlier imports. Make successful refresh
-completion observable so publication can await a fresh, consistent snapshot.
-Extend the source contract only where needed to implement the rules from step 1.
-
-### 3. Implement the stateless Analytic service
-
-Status: Pending
-
-Add IAnalyticService with an asynchronous
-build_monthly_attendance_report(year, month) operation returning
-Expected<MonthlyAttendanceReport>. Implement it in components/analytic_service.ts
-and assemble dependencies through adapters/analytic_service/factory.ts. Do not
-add an Analytic storage adapter or cache.
-
-Read a consistent snapshot of rehearsals and users for each request. Aggregate
-the monthly report using system_id for participant identity and Telegram usernames
-only to bridge existing attendance records. Reuse compatible calculation rules
-from use_cases/analytic.ts without changing existing personal statistics behavior.
-
-### 4. Format reports and provide a preview path
-
-Status: Pending
-
-Add a formatter independent of the calculations. Format totals and piece times
-with consistent units, and omit the champions section when empty. Escape dynamic
-HTML content and split long output at section or item boundaries. Provide a way
-to preview a requested month's report without sending it to the main chat.
-
-### 5. Wire monthly publication and delivery tracking
-
-Status: Pending
-
-Add a separate publication component to Runtime.proceed(). Once the configured
-time is due, refresh the source snapshot, request the previous month's report,
-and send formatted messages through IGroupChat from get_choir_chat(). On initial
-enablement, consider only the previous month rather than replaying all history.
-
-Use a storage/service split and factories for publication state. Track delivery
-by month and destination, including progress for multi-part reports and returned
-message IDs. Persist successful delivery across restarts and retry definite
-failures. Define recovery for uncertain send outcomes without promising atomic
-delivery across Telegram and storage. Keep report persistence out of Analytic.
-
-Register configuration and validation through the appropriate factories and
-BotConfig, and update botcfg.template.json. Document the schedule and recovery
-behavior in the relevant operational guide.
-
-### 6. Verify calculations and publication behavior
-
-Status: Pending
-
-Add focused tests for the following behavior:
-
-- Month and year boundaries, empty months, and source-data eligibility rules.
-- Rehearsal totals, piece ordering, part averages, and newcomer denominators.
-- Full-month champions versus partial-month newcomers.
-- Both leader modes, especially one or two above 80%, exactly 80%, and ties.
-- Recalculation after source changes, including deleted attendance values.
-- Scheduling after downtime, restart recovery, and partial or uncertain delivery.
-- Failed refreshes, escaped names, and reports requiring multiple messages.
-
-Run npm run compile and npm run autotests. Review a preview against a known
-monthly source snapshot, verifying counts and attendance before enabling the
-production schedule.
+- All report calculations are available through the asynchronous Analytic service
+  as transport-mappable data with Date values, independently of presentation.
+  Analytic has no report persistence or result cache; subsequent requests reflect
+  changes in its input snapshot.
+- Personal statistics and AttendanceTracker use the service without duplicating
+  attendance calculations. Existing reminder orchestration is preserved. The
+  low-attendance list preserves its current rounded-up percentage comparison
+  against 60% and descending ordering.
+- Personal statistics use only rehearsals for the chorister's current voice part
+  since their first recorded attendance. The same selection applies to rehearsal
+  counts and hours, consecutive absences, and piece statistics. Rehearsals with
+  zero duration for that part and dates before joining cannot count as absences.
+  Partial presence retains the current piece-time attribution. Zero expected time
+  has explicit handling and cannot produce NaN or infinite percentages.
+- Activity results retain the existing inactivity-gap semantics and distinguish
+  ongoing periods from closed periods.
+- Monthly results cover the requested calendar month with an inclusive start and
+  exclusive end in the documented reporting timezone, including year boundaries.
+- Monthly totals include only held rehearsals. Rehearsal hours are counted once,
+  without multiplying by participants or voice parts. Piece times are accumulated
+  and ordered descending.
+- Champions attended every held rehearsal for their current voice part over the
+  whole month; positive partial attendance counts as a visit. Attending only the
+  remaining rehearsals after joining does not waive earlier rehearsals for that
+  part. A part with no rehearsals has no champions. Empty months have no champions
+  or misleading rankings.
+- Monthly individual attendance is attended minutes divided by expected minutes.
+  Each part average is the arithmetic mean of eligible individual percentages.
+  Zero-denominator cases are excluded from monthly averages and rankings.
+- Monthly threshold mode includes all and only eligible choristers strictly above
+  80%. Top-three mode returns the three highest-ranked eligible choristers, or all
+  if fewer than three exist. Monthly comparisons use unrounded values and ties
+  have deterministic ordering.
+- src/use_cases/analytic.ts and the abandoned HTML analytics prototype are removed;
+  active code and build configuration no longer reference them.
+- Focused checks cover migrated calculations and monthly report edge cases.
+  npm run compile and npm run autotests pass after the migration and cleanup.

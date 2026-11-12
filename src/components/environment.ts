@@ -1,3 +1,4 @@
+import { IAnalyticService } from "@src/interfaces/analytic_service.js";
 import { IAdministrationService } from "@src/interfaces/administration_service.js";
 import { IDepositService } from "@src/interfaces/deposit_service.js";
 import { IEnvironment } from "@src/interfaces/environment.js";
@@ -14,6 +15,7 @@ import { IUserService } from "@src/interfaces/user_service.js";
 export class Environment implements IEnvironment {
     private static global_instance?: Environment;
 
+    private analytic_service_instance?: IAnalyticService;
     private user_service_instance?: IUserService;
     private task_tracker_instance?: ITaskTrackerService;
     private administration_service_instance?: IAdministrationService;
@@ -39,6 +41,21 @@ export class Environment implements IEnvironment {
 
     static set_global(environment: Environment) {
         this.global_instance = environment;
+    }
+
+    set analytic_service(service: IAnalyticService) {
+        this.analytic_service_instance = service;
+    }
+
+    get analytic_service(): IAnalyticService {
+        if (!this.analytic_service_instance) {
+            throw new Error("Analytic service is not set");
+        }
+        return this.analytic_service_instance;
+    }
+
+    get maybe_analytic_service(): IAnalyticService | undefined {
+        return this.analytic_service_instance;
     }
 
     set user_service(user_service: IUserService) {
