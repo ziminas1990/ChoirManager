@@ -82,7 +82,8 @@ test("Rich HTML is serialized through the SDK for sending and editing", async ()
 
     // 3. update that message and clear any previous external keyboard
     {
-        assert.equal((await context.user.edit_rich_message(message_id, html)).ok, true);
+        assert.equal((await context.user.edit_message(
+            message_id, { text: html, format: "rich_html", inline_keyboard: [] })).ok, true);
         const { method, fields } = context.calls[1];
         assert.equal(method, "editMessageText");
         assert.equal(fields.get("chat_id"), "123");
@@ -248,7 +249,7 @@ for (const operation of ["rich send", "rich edit", "private HTML", "group HTML"]
             const result = operation === "rich send"
                 ? await context.user.send_message("<unsupported>value</unsupported>", { format: "rich_html" })
                 : operation === "rich edit"
-                    ? await context.user.edit_rich_message(42, "<unsupported>value</unsupported>")
+                    ? await context.user.edit_message(42, { text: "<unsupported>value</unsupported>", format: "rich_html" })
                     : operation === "private HTML"
                         ? await context.user.send_message("<unsupported>value</unsupported>")
                         : await context.group.send_message("<unsupported>value</unsupported>");
@@ -290,5 +291,51 @@ test("local document uploads retain bytes, metadata and the destination topic", 
         assert.equal(fields.get("chat_id"), index === 0 ? "123" : "-100");
         assert.equal(fields.get("caption"), index === 0 ? "Private report" : "Group report");
         assert.equal(fields.get("message_thread_id"), index === 0 ? null : "12");
+    }
+});
+
+
+test("message edits preserve or replace inline controls as requested", async () => {
+    // Motivation: callers need predictable content and keyboard edits through
+    // the common interface, including removal without replacing message text.
+
+    // 1. prepare an agent and inline controls
+    let context: ReturnType<typeof fixture>;
+    let agent: IUserAgent;
+    let keyboard: { text: string; callback_data: string }[][];
+    {
+        context = fixture();
+        agent = context.user;
+        keyboard = [[{ text: "OK", callback_data: "ok" }]];
+    }
+
+    // 2. edit content with and without replacement controls
+    {
+        assert.equal((await agent.edit_message(42, { text: "<b>Hi</b>" })).ok, true);
+        assert.equal((await agent.edit_message(42, { text: "Changed", inline_keyboard: keyboard })).ok, true);
+        const first = context.calls[0].fields;
+        assert.equal(first.get("text"), "<b>Hi</b>");
+        assert.equal(first.get("parse_mode"), "HTML");
+        assert.equal(first.has("reply_markup"), false);
+        assert.deepEqual(JSON.parse(String(context.calls[1].fields.get("reply_markup"))),
+            { inline_keyboard: keyboard });
+    }
+
+    // 3. remove controls while retaining content
+    {
+        assert.equal((await agent.edit_message(42, { inline_keyboard: [] })).ok, true);
+        assert.equal(context.calls[2].method, "editMessageReplyMarkup");
+        assert.deepEqual(JSON.parse(String(context.calls[2].fields.get("reply_markup"))),
+            { inline_keyboard: [] });
+        assert.equal(context.calls[2].fields.has("text"), false);
+    }
+
+    // 4. surface API and transport failures as statuses
+    {
+        context.state.reject = true;
+        assert.equal((await agent.edit_message(42, { text: "Rejected" })).ok, false);
+        context.state.reject = false;
+        context.state.network_error = true;
+        assert.equal((await agent.edit_message(42, { inline_keyboard: [] })).ok, false);
     }
 });

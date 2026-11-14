@@ -18,14 +18,14 @@ the editing capabilities used by current consumers:
 - Updating or clearing an inline keyboard without replacing the content.
 
 Keep format selection consistent with send_message and its defaults from
-[TASK-026](closed/TASK-026.md). Limit editing options to supported application
+[TASK-026](./TASK-026.md). Limit editing options to supported application
 capabilities; do not expose arbitrary Telegram SDK parameters or reply-keyboard
 options that cannot be used for message edits.
 
 Migrate current editing paths to the common contract, including personal
 statistics. Remove the separate rich-message editing method. Preserve current
 controls and their lifecycle; the button-grid migration remains covered by
-[TASK-027](TASK-027.md).
+[TASK-027](../TASK-027.md).
 
 Define the supported options and defaults in the public interface, including
 the difference between leaving a keyboard unchanged and explicitly clearing it.

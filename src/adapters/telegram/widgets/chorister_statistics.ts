@@ -129,7 +129,8 @@ export class ChoristerStatisticsWidget {
         if (this.message_id === undefined) {
             return (await this.user.send_message(html, { format: "rich_html" })).as_status();
         }
-        const updated = await this.user.edit_rich_message(this.message_id, html);
+        const updated = await this.user.edit_message(
+            this.message_id, { text: html, format: "rich_html", inline_keyboard: [] });
         // Repeated clicks can produce identical message contents.
         if (!updated.ok && updated.error.includes("message is not modified")) {
             return Expected.ok(undefined);

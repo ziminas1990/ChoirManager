@@ -23,6 +23,14 @@ export type SendMessageOptions = {
     };
 };
 
+// Omitted format uses ordinary HTML. Omitted inline_keyboard preserves controls;
+// an empty inline_keyboard removes them. Omit text for keyboard-only edits.
+export type EditMessageOptions = {
+    text?: string;
+    format?: "html" | "rich_html";
+    inline_keyboard?: { text: string; callback_data?: string; url?: string }[][];
+};
+
 export interface IUserAgent
 {
     agent_name(): string;
@@ -31,6 +39,8 @@ export interface IUserAgent
     userid(): string;
 
     send_message(message: string, options?: SendMessageOptions): Promise<Expected<number>>;
+
+    edit_message(message_id: number, options: EditMessageOptions): Promise<Status>;
 
     send_file(filename: string, caption?: string, content_type?: string): Promise<Status>;
 

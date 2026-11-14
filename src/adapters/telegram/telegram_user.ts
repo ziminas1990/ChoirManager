@@ -1,7 +1,15 @@
 import * as TelegramBot from "node-telegram-bot-api";
 import { fromPath } from "node-telegram-bot-api/node";
 
-import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent, SendMessageOptions } from "@src/interfaces/user_agent.js";
+import {
+    IAccounterAgent,
+    IAdminAgent,
+    IChorister,
+    IDepositOwnerAgent,
+    IUserAgent,
+    SendMessageOptions,
+    EditMessageOptions,
+} from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IJournal } from "@src/interfaces/journal.js";
 import { Role, UserData, is_guest_user, user_has_role, user_tg_username } from "@src/entities/user.js";
@@ -190,25 +198,6 @@ export class TelegramUser implements IUserAgent {
         }
     }
 
-    async edit_rich_message(message_id: number, html: string): Promise<Status> {
-        if (!this.bot) {
-            return return_fail("API is not initialized", this.journal);
-        }
-        try {
-            await this.wait_api_cooldown();
-            await this.bot.api.editMessageText({
-                chat_id: this.chat_id,
-                message_id,
-                rich_message: { html },
-                // Clear the separate keyboard when refreshing a pre-migration message.
-                reply_markup: { inline_keyboard: [] },
-            });
-            return Expected.ok(undefined);
-        } catch (error) {
-            return return_exception(error, this.journal);
-        }
-    }
-
     async send_chat_action(action: TelegramBot.SendChatActionParams["action"]): Promise<Status> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal);
@@ -257,34 +246,28 @@ export class TelegramUser implements IUserAgent {
         }
     }
 
-    async edit_message(message_id: number, what: {
-        text?: string,
-        inline_keyboard?: TelegramBot.InlineKeyboardButton[][]
-    }): Promise<Status> {
+    async edit_message(message_id: number, what: EditMessageOptions): Promise<Status> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal);
         }
-
         try {
-            if (what.text != undefined) {
+            if (what.text !== undefined) {
                 await this.wait_api_cooldown();
                 await this.bot.api.editMessageText({
                     chat_id: this.chat_id,
-                    message_id: message_id,
-                    text: what.text,
-                    parse_mode: "HTML",
-                    reply_markup: what.inline_keyboard ? {
-                        inline_keyboard: what.inline_keyboard,
-                    } : undefined
+                    message_id,
+                    ...(what.format === "rich_html"
+                        ? { rich_message: { html: what.text } }
+                        : { text: what.text, parse_mode: "HTML" as const }),
+                    reply_markup: what.inline_keyboard !== undefined
+                        ? { inline_keyboard: what.inline_keyboard } : undefined,
                 });
-            } else if (what.inline_keyboard != undefined) {
+            } else if (what.inline_keyboard !== undefined) {
                 await this.wait_api_cooldown();
                 await this.bot.api.editMessageReplyMarkup({
-                    reply_markup: {
-                        inline_keyboard: what.inline_keyboard,
-                    },
+                    reply_markup: { inline_keyboard: what.inline_keyboard },
                     chat_id: this.chat_id,
-                    message_id: message_id,
+                    message_id,
                 });
             }
             return Expected.ok(undefined);

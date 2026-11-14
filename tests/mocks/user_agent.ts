@@ -7,6 +7,7 @@ export function mock_user_agent(overrides: Partial<IUserAgent> = {}): IUserAgent
         agent_name: unexpected,
         userid: unexpected,
         send_message: unexpected,
+        edit_message: unexpected,
         send_file: unexpected,
         ask_confirmation: unexpected,
         proceed: unexpected,
