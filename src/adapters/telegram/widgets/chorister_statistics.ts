@@ -1,3 +1,4 @@
+import { render_button_grid } from "../button_grid.js";
 import * as TelegramBot from "node-telegram-bot-api";
 
 import { ChoristerAttendanceStat, IAnalyticService } from "@src/interfaces/analytic_service.js";
@@ -112,7 +113,7 @@ export class ChoristerStatisticsWidget {
             }
             const updated = await this.update_widget(
                 Messages.statistics(statistic.value, profile.lang, period_days)
-                + Messages.controls(profile.lang));
+                + "\n" + Messages.controls(profile.lang));
             return updated.ok ? updated : await this.report_failure(updated);
         } catch (error) {
             return await this.report_failure(Expected.exception("failed to collect statistics", error));
@@ -127,10 +128,10 @@ export class ChoristerStatisticsWidget {
 
     private async update_widget(html: string): Promise<Status> {
         if (this.message_id === undefined) {
-            return (await this.user.send_message(html, { format: "rich_html" })).as_status();
+            return (await this.user.send_message(html)).as_status();
         }
         const updated = await this.user.edit_message(
-            this.message_id, { text: html, format: "rich_html", inline_keyboard: [] });
+            this.message_id, { text: html });
         // Repeated clicks can produce identical message contents.
         if (!updated.ok && updated.error.includes("message is not modified")) {
             return Expected.ok(undefined);
@@ -198,16 +199,18 @@ class Messages {
 
     static controls(lang: Language): string {
         const ru = lang === Language.RU;
-        const periods = statistics_period_days.map(days =>
-            `<tg-button type="callback_data" data="${statistics_prefix}${days}">${ru ? `За ${days} дней` : `For ${days} days`}</tg-button>`);
-        const buttons = [
-            ...periods,
-            `<tg-button type="callback_data" data="${statistics_prefix}all">${ru ? "За всё время" : "All time"}</tg-button>`,
-            `<tg-button type="callback_data" style="danger" data="${statistics_prefix}close">${ru ? "Закрыть" : "Close"}</tg-button>`,
-        ];
-        return [buttons.slice(0, 2), buttons.slice(2, 4), buttons.slice(4)]
-            .map(row => `<tg-button-row>${row.join("")}</tg-button-row>`)
-            .join("\n");
+        const periods = statistics_period_days.map(days => ({
+            text: ru ? `За ${days} дней` : `For ${days} days`,
+            callback_data: `${statistics_prefix}${days}`,
+        }));
+        return render_button_grid([
+            periods.slice(0, 2),
+            periods.slice(2, 4),
+            [
+                { text: ru ? "За всё время" : "All time", callback_data: `${statistics_prefix}all` },
+                { text: ru ? "Закрыть" : "Close", callback_data: `${statistics_prefix}close`, style: "danger" },
+            ],
+        ]);
     }
 
     static fail_message(lang: Language): string {

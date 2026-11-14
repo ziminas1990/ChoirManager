@@ -22,6 +22,7 @@ import { AssistantConfig } from "@src/config.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { Environment } from "@src/components/environment.js";
 import { ScoreDownloads } from "@src/adapters/telegram/score_downloads.js";
+import { with_button_grid } from "../button_grid.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -153,8 +154,9 @@ export class ChoristerDialog implements IChorister {
         this.journal.info("sending scores list");
 
         if (scores.length == 0) {
-            this.user.send_message(this.no_scores_available(this.user.info().lang));
-            return Expected.ok(undefined);
+            const status = await this.user.send_message(
+                this.no_scores_available(this.user.info().lang))
+            return status.as_status();
         }
 
         // send only scores with files
@@ -162,15 +164,14 @@ export class ChoristerDialog implements IChorister {
 
         const buttons = scores.map(score => ScoreDownloads.create_button(score));
 
-        const keyboard: TelegramBot.InlineKeyboardMarkup = {
-            inline_keyboard: split_to_columns(buttons, 2)
-        };
+        const status = await this.user.send_message(
+            with_button_grid(
+                this.get_scores_list(this.user.info().lang),
+                split_to_columns(buttons, 2)
+            )
+        );
 
-        return (await this.user.send_message(
-            this.get_scores_list(this.user.info().lang),
-            {
-                reply_markup: keyboard,
-            })).as_status();
+        return status.as_status();
     }
 
     update_roles(roles: readonly Role[]): Status {

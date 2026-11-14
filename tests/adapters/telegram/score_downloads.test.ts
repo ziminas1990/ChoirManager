@@ -16,7 +16,7 @@ import { Expected } from "@src/utils/expected.js";
 import { telegram_config } from "@tests/helpers/config.js";
 import { value } from "@tests/helpers/expected.js";
 import { mock_scores } from "@tests/mocks/scores.js";
-import { TelegramDelivery, inline_keyboard, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
+import { TelegramDelivery, embedded_grid, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
 
@@ -68,7 +68,8 @@ function fixture(lang = Language.EN) {
     Environment.set_global(environment);
 
     const bot = mock_telegram({
-        async sendMessage({ chat_id, text, ...options }) {
+        async sendRichMessage({ chat_id, rich_message, ...options }) {
+            const text = rich_message.html!;
             state.messages.push({ chat_id, text, options, message_id: state.messages.length + 1, file: rendered_links.get(text) });
             return { message_id: state.messages.length };
         },
@@ -267,9 +268,9 @@ test("a failed link delivery allows retrying the same button", async () => {
     let data;
     {
         context = fixture();
-        send = context.bot.api.sendMessage;
-        context.bot.api.sendMessage = async (...args) => {
-            if (context.rendered_links.has(args[0].text)) {
+        send = context.bot.api.sendRichMessage;
+        context.bot.api.sendRichMessage = async (...args) => {
+            if (context.rendered_links.has(args[0].rich_message.html!)) {
                 throw new Error("send failed");
             }
             return send(...args);
@@ -285,7 +286,7 @@ test("a failed link delivery allows retrying the same button", async () => {
 
     // 3. restore Telegram delivery
     {
-        context.bot.api.sendMessage = send;
+        context.bot.api.sendRichMessage = send;
     }
 
     // 4. retry the same button and verify successful delivery
@@ -387,7 +388,7 @@ test("registered callbacks retain their behavior", async () => {
     let button;
     {
         context = fixture();
-        button = context.user.create_keyboard_button("Action", "existing action", async () => {
+        button = context.user.create_callback_button("Action", "existing action", async () => {
             ++called;
             return Expected.ok(undefined);
         }, 3600);
@@ -502,7 +503,9 @@ test("lists use compact stable buttons for long Unicode titles and distinct auth
     let buttons;
     {
         assert.equal((await dialog.send_scores_list(scores)).ok, true);
-        buttons = inline_keyboard(context.state.messages[0].options).flat();
+        const grid = embedded_grid(context.state.messages[0].text);
+        assert.deepEqual(grid.map(row => row.length), [2, 1]);
+        buttons = grid.flat();
     }
 
     // 3. verify that every score has a button and authors remain distinct
@@ -578,7 +581,7 @@ test("buttons survive recreation of the user, environment, and catalog in a diff
         const dialog = value(ChoristerDialog.create(previous.user, telegram_config().runtime,
                 mock_user_replica({ resolve_user: () => Expected.ok(previous.user.info()) }), journal, telegram_config().assistant));
         await dialog.send_scores_list(previous.state.catalog);
-        data = inline_keyboard(previous.state.messages[0].options)[0][0].callback_data;
+        data = embedded_grid(previous.state.messages[0].text)[0][0].callback_data;
     }
 
     // 3. recreate the user and environment with a reordered catalog

@@ -114,7 +114,7 @@ function fixture(lang = Language.EN, coverage_days = 17.25) {
         const users = mock_user_replica({ resolve_user: () => Expected.ok(state.profile) });
         const user = new TelegramUser(structuredClone(state.profile!), 123, telegram_config(), { users }, journal);
         assert.equal(user.init(bot).ok, true);
-        mock.method(user, "create_keyboard_button", () => {
+        mock.method(user, "create_callback_button", () => {
             throw new Error("statistics must not register callbacks");
         });
         return user;
@@ -416,17 +416,20 @@ test("a rejected rich statistics send reports failure and can be retried", async
     {
         context = fixture();
         send = context.bot.api.sendRichMessage;
-        context.bot.api.sendRichMessage = async () => {
-            throw new Error("Bad Request: unsupported rich message tag");
+        context.bot.api.sendRichMessage = async params => {
+            if (params.rich_message.html?.includes("<table")) {
+                throw new Error("Bad Request: unsupported rich message tag");
+            }
+            return send(params);
         };
     }
 
-    // 2. check the failed outcome and ordinary HTML feedback
+    // 2. check the failed outcome and Rich HTML feedback
     {
         const status = await new ChoristerStatisticsWidget(context.user, journal).start();
         assert.equal(status.ok, false);
         assert.match(status.error, /unsupported rich message tag/);
-        assert.equal(context.state.rich_messages.length, 0);
+        assert.equal(context.state.rich_messages.length, 1);
         assert.equal(context.state.messages.length, 1);
         assert.match(context.state.messages[0].text, /couldn't collect statistics/);
     }
@@ -435,7 +438,7 @@ test("a rejected rich statistics send reports failure and can be retried", async
     {
         context.bot.api.sendRichMessage = send;
         assert.equal((await new ChoristerStatisticsWidget(context.user, journal).start()).ok, true);
-        assert.equal(context.state.rich_messages.length, 1);
+        assert.equal(context.state.rich_messages.length, 2);
     }
 });
 

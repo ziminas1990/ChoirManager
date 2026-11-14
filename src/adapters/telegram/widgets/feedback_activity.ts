@@ -1,3 +1,4 @@
+import { with_button_grid, CallbackButton } from "../button_grid.js";
 import * as TelegramBot from "node-telegram-bot-api";
 
 import { IJournal } from "@src/interfaces/journal.js";
@@ -5,7 +6,7 @@ import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { AbstractWidget as AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Language, user_tg_username } from "@src/entities/user.js";
-import { GlobalFormatter, log_and_return } from "@src/utils.js";
+import { GlobalFormatter, log_and_return, escape_html } from "@src/utils.js";
 import { FeedbackActions } from "@src/use_cases/feedback_actions.js";
 import { Feedback } from "@src/entities/feedback.js";
 
@@ -18,11 +19,11 @@ export class FeedbackWidget implements AbstractWidget {
     private message_id?: number;
 
     private _buttons?: {
-        cancel: TelegramBot.InlineKeyboardButton;
-        send_anonymous: TelegramBot.InlineKeyboardButton;
-        send_from_me: TelegramBot.InlineKeyboardButton;
-        send_from_my_party: TelegramBot.InlineKeyboardButton;
-        confirm: TelegramBot.InlineKeyboardButton;
+        cancel: CallbackButton;
+        send_anonymous: CallbackButton;
+        send_from_me: CallbackButton;
+        send_from_my_party: CallbackButton;
+        confirm: CallbackButton;
     };
 
     private feedback: Partial<Feedback> = {};
@@ -52,9 +53,8 @@ export class FeedbackWidget implements AbstractWidget {
 
     public async interrupt(): Promise<Status> {
         this.journal.info("interrupted");
-        this.release_resources();
-        this.state = "initial";
-        return Expected.ok(undefined);
+        this.state = "finished";
+        return await this.release_resources();
     }
 
     public waits_for_message(): boolean {
@@ -85,17 +85,11 @@ export class FeedbackWidget implements AbstractWidget {
             return Expected.ok(undefined);
         }
 
-        const sent_status = await this.user.send_message(
-            Messages.creating_widget_text(this.user.info().lang),
-            {
-                reply_markup: {
-                    inline_keyboard: [
-                        [this.buttons().cancel]
-                    ]
-                }
-            },
-        );
+        const sent_status = await this.user.send_message(with_button_grid(
+            Messages.creating_widget_text(this.user.info().lang), [[this.buttons().cancel]]));
         if (!sent_status.ok) {
+            await this.release_resources(false);
+            this.state = "failed";
             return sent_status.wrap_error("failed to create widget");
         }
         this.message_id = sent_status.value;
@@ -105,7 +99,12 @@ export class FeedbackWidget implements AbstractWidget {
     private async switch_state(new_state: State): Promise<Status> {
         this.journal.info({ old: this.state, new: new_state }, "switching state");
         this.state = new_state;
-        return await this.update_widget();
+        const status = await this.update_widget();
+        if (!status.ok) {
+            this.state = "failed";
+            await this.release_resources(false);
+        }
+        return status;
     }
 
     private async update_widget(): Promise<Status> {
@@ -118,48 +117,44 @@ export class FeedbackWidget implements AbstractWidget {
         switch (this.state) {
             case "waiting_details":
                 return this.user.edit_message(this.message_id, {
-                    text: Messages.ask_for_details_text(this.user.info().lang),
-                    inline_keyboard: [
-                        [this.buttons().cancel]
-                    ]
+                    text: with_button_grid(Messages.ask_for_details_text(this.user.info().lang),
+                        [[this.buttons().cancel]]),
                 });
             case "choose_privacy":
                 return this.user.edit_message(this.message_id, {
-                    text: Messages.select_privacy_widget_text(this.feedback, this.user.info().lang),
-                    inline_keyboard: [
+                    text: with_button_grid(Messages.select_privacy_widget_text(this.feedback, this.user.info().lang), [
                         [this.buttons().send_anonymous],
                         [this.buttons().send_from_my_party],
                         [this.buttons().send_from_me],
                         [this.buttons().cancel],
-                    ]
+                    ]),
                 });
             case "waiting_confirmation":
                 return this.user.edit_message(this.message_id, {
-                    text: Messages.confirm_widget_text(this.feedback, this.user.info().lang),
-                    inline_keyboard: [
-                        [this.buttons().confirm],
-                        [this.buttons().cancel],
-                    ]
+                    text: with_button_grid(Messages.confirm_widget_text(this.feedback, this.user.info().lang),
+                        [[this.buttons().confirm], [this.buttons().cancel]]),
                 });
             case "finished":
-                await this.release_resources();
-                return Expected.ok(undefined);
-            case "failed":
+                return await this.release_resources();
+            case "failed": {
+                await this.release_resources(false);
                 return this.user.edit_message(this.message_id, {
                     text: Messages.failed_widget_text(this.user.info().lang),
-                    inline_keyboard: undefined
                 });
+            }
             default:
                 return Expected.ok(undefined);
         }
     }
 
     private async on_cancel(): Promise<Status> {
-        await this.release_resources();
-        return await this.switch_state("initial");
+        return await this.switch_state("finished");
     }
 
     private async set_privacy(mode: "by_user" | "by_party" | "anonymous"): Promise<Status> {
+        if (this.state !== "choose_privacy") {
+            return Expected.err("feedback privacy choice is no longer active");
+        }
         if (mode == "by_user") {
             this.feedback.who = {
                 name_surname: `${this.user.info().name} ${this.user.info().surname}`,
@@ -173,6 +168,9 @@ export class FeedbackWidget implements AbstractWidget {
     }
 
     private async publish_feedback(): Promise<Status> {
+        if (this.state !== "waiting_confirmation") {
+            return Expected.err("feedback confirmation is no longer active");
+        }
         if (!this.feedback.details || this.feedback.details.trim().length == 0) {
             this.journal.error("No any details provided");
             return await this.switch_state("failed");
@@ -186,10 +184,6 @@ export class FeedbackWidget implements AbstractWidget {
         );
         if (!status.ok) {
             await this.switch_state("failed");
-            // HACK: message_id is set to undefined to prevent removing message during
-            // release_resources() call
-            this.message_id = undefined;
-            await this.release_resources();
             return log_and_return(status, this.journal);
         }
         return await this.switch_state("finished");
@@ -224,23 +218,23 @@ export class FeedbackWidget implements AbstractWidget {
         })();
 
         this._buttons = {
-            cancel: this.user.create_keyboard_button(
+            cancel: this.user.create_callback_button(
                 text.cancel,
                 "cancel",
                 () => this.on_cancel()),
-            send_from_me: this.user.create_keyboard_button(
+            send_from_me: this.user.create_callback_button(
                 text.send_from_me,
                 "send_from_me",
                 async () => await this.set_privacy("by_user")),
-            send_from_my_party: this.user.create_keyboard_button(
+            send_from_my_party: this.user.create_callback_button(
                 text.send_from_my_party,
                 "send_from_my_party",
                 async () => await this.set_privacy("by_party")),
-            send_anonymous: this.user.create_keyboard_button(
+            send_anonymous: this.user.create_callback_button(
                 text.send_anonymous,
                 "send_anonymous",
                 async () => await this.set_privacy("anonymous")),
-            confirm: this.user.create_keyboard_button(
+            confirm: this.user.create_callback_button(
                 text.confirm,
                 "confirm",
                 async () => await this.publish_feedback()),
@@ -248,17 +242,21 @@ export class FeedbackWidget implements AbstractWidget {
         return this._buttons;
     }
 
-    private async release_resources() {
-        if (this.message_id) {
-            await this.user.delete_message(this.message_id);
-        }
-        this.message_id = undefined;
+    private async release_resources(remove_message = true): Promise<Status> {
         if (this._buttons) {
-            const buttons = Object.values(this._buttons);
-            buttons.forEach(button => this.user.remove_keyboard_button(button));
+            for (const button of Object.values(this._buttons)) {
+                this.user.remove_callback_button(button);
+            }
             this._buttons = undefined;
         }
+        if (remove_message && this.message_id !== undefined) {
+            const message_id = this.message_id;
+            this.message_id = undefined;
+            return await this.user.delete_message(message_id);
+        }
+        return Expected.ok(undefined);
     }
+
 }
 
 
@@ -303,7 +301,7 @@ class Messages {
         const formatter = GlobalFormatter.instance();
         return [
             formatter.bold(parts.header),
-            formatter.quote(feedback.details!),
+            formatter.quote(escape_html(feedback.details!)),
             parts.question
         ].join("\n\n");
     }
@@ -339,8 +337,8 @@ class Messages {
         const formatter = GlobalFormatter.instance();
         return [
             parts.header,
-            formatter.quote(feedback.details!),
-            `${formatter.bold(parts.on_behalf)}: ${who}`,
+            formatter.quote(escape_html(feedback.details!)),
+            `${formatter.bold(parts.on_behalf)}: ${escape_html(who)}`,
             parts.question
         ].join("\n\n");
     }

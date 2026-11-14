@@ -10,25 +10,18 @@ export enum ConfirmationError {
     TimedOut = 1,
 }
 
-// Omitted format uses ordinary HTML; rich_html supports tables and embedded controls.
-// Omitted reply_markup leaves keyboard behavior to the messaging platform.
+// Text messages use Rich HTML; reply keyboards remain platform navigation.
 export type SendMessageOptions = {
-    format?: "html" | "rich_html";
     reply_markup?: {
-        inline_keyboard: { text: string; callback_data?: string; url?: string }[][];
-    } | {
         keyboard: { text: string }[][];
         is_persistent?: boolean;
         resize_keyboard?: boolean;
     };
 };
 
-// Omitted format uses ordinary HTML. Omitted inline_keyboard preserves controls;
-// an empty inline_keyboard removes them. Omit text for keyboard-only edits.
+// Edits replace the complete Rich HTML body and its embedded controls.
 export type EditMessageOptions = {
-    text?: string;
-    format?: "html" | "rich_html";
-    inline_keyboard?: { text: string; callback_data?: string; url?: string }[][];
+    text: string;
 };
 
 export interface IUserAgent

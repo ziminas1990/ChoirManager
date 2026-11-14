@@ -1,3 +1,4 @@
+import { CallbackButton } from "./button_grid.js";
 import * as TelegramBot from "node-telegram-bot-api";
 import { fromPath } from "node-telegram-bot-api/node";
 
@@ -139,12 +140,12 @@ export class TelegramUser implements IUserAgent {
         return this.admin_dialog;
     }
 
-    create_keyboard_button(
+    create_callback_button(
         text: string,
         debug_name: string,
         callback: () => Promise<Status>,
         lifetime_sec?: number)
-    : TelegramBot.InlineKeyboardButton {
+    : CallbackButton {
         const callback_id = this.callbacks_registry.add_callback({
             fn: async () => { return await callback(); },
             journal: this.journal.child(`callback.${debug_name}`),
@@ -156,7 +157,7 @@ export class TelegramUser implements IUserAgent {
         };
     }
 
-    remove_keyboard_button(button: TelegramBot.InlineKeyboardButton): Status {
+    remove_callback_button(button: CallbackButton): Status {
         const callback_id = button.callback_data;
         const text = button.text;
         if (!callback_id) {
@@ -179,18 +180,11 @@ export class TelegramUser implements IUserAgent {
         }
         try {
             await this.wait_api_cooldown();
-            const sent = options?.format === "rich_html"
-                ? await this.bot.api.sendRichMessage({
-                    chat_id: this.chat_id,
-                    rich_message: { html: message },
-                    reply_markup: options.reply_markup,
-                })
-                : await this.bot.api.sendMessage({
-                    chat_id: this.chat_id,
-                    text: message,
-                    parse_mode: "HTML",
-                    reply_markup: options?.reply_markup,
-                });
+            const sent = await this.bot.api.sendRichMessage({
+                chat_id: this.chat_id,
+                rich_message: { html: message },
+                reply_markup: options?.reply_markup,
+            });
             this.journal.info({ message }, "message sent")
             return Expected.ok(sent.message_id);
         } catch (e) {
@@ -251,25 +245,14 @@ export class TelegramUser implements IUserAgent {
             return return_fail("API is not initialized", this.journal);
         }
         try {
-            if (what.text !== undefined) {
-                await this.wait_api_cooldown();
-                await this.bot.api.editMessageText({
-                    chat_id: this.chat_id,
-                    message_id,
-                    ...(what.format === "rich_html"
-                        ? { rich_message: { html: what.text } }
-                        : { text: what.text, parse_mode: "HTML" as const }),
-                    reply_markup: what.inline_keyboard !== undefined
-                        ? { inline_keyboard: what.inline_keyboard } : undefined,
-                });
-            } else if (what.inline_keyboard !== undefined) {
-                await this.wait_api_cooldown();
-                await this.bot.api.editMessageReplyMarkup({
-                    reply_markup: { inline_keyboard: what.inline_keyboard },
-                    chat_id: this.chat_id,
-                    message_id,
-                });
-            }
+            await this.wait_api_cooldown();
+            await this.bot.api.editMessageText({
+                chat_id: this.chat_id,
+                message_id,
+                rich_message: { html: what.text },
+                // Clear separate controls on messages sent before Rich HTML grids.
+                reply_markup: { inline_keyboard: [] },
+            });
             return Expected.ok(undefined);
         } catch (e) {
             return return_exception(e, this.journal);

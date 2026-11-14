@@ -27,10 +27,9 @@ export class GroupChat implements IGroupChat {
         }
         try {
             await this.wait_api_cooldown();
-            const sent = await this.bot.api.sendMessage({
+            const sent = await this.bot.api.sendRichMessage({
                 chat_id: this.chat_id,
-                text: message,
-                parse_mode: "HTML",
+                rich_message: { html: message },
                 message_thread_id: this.thread_id,
             });
             return Expected.ok(sent.message_id.toString());

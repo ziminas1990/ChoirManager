@@ -1,4 +1,4 @@
-import type * as TelegramBot from "node-telegram-bot-api";
+import { CallbackButton } from "./button_grid.js";
 
 import type { TelegramUser } from "./telegram_user.js";
 import { Score } from "@src/entities/score.js";
@@ -6,13 +6,14 @@ import { Language } from "@src/entities/user.js";
 import { IJournal } from "@src/interfaces/journal.js";
 import { ScoresActions, ScoresError } from "@src/use_cases/scores_actions.js";
 import { Expected, Status } from "@src/utils/expected.js";
+import { shorten } from "@src/utils.js";
 
 export class ScoreDownloads {
     private static readonly prefix = "score:v1:";
 
-    static create_button(score: Score): TelegramBot.InlineKeyboardButton {
+    static create_button(score: Score): CallbackButton {
         return {
-            text: score.name,
+            text: shorten(score.name, 20),
             callback_data: this.prefix + score.get_id(),
         };
     }

@@ -9,7 +9,7 @@ message updates inconsistent.
 
 The bot should use Rich HTML with controls at the bottom of messages while
 preserving the button grids users already know. This task follows the unified
-sending contract in [TASK-026](./closed/TASK-026.md), which preserves existing formatting
+sending contract in [TASK-026](./TASK-026.md), which preserves existing formatting
 and keyboards during that earlier refactoring.
 
 ## Require

@@ -94,9 +94,9 @@ test("restored Telegram chat routes work with an injected collection", async t =
     const deliveries: { id: TelegramBot.ChatId; text: string; thread?: number }[] = [];
     const packed = { choir_chat_id: -100, announce_thread_id: 12, managers_chat_id: -200 };
     {
-        mock.method(TelegramBot.Api.prototype, "sendMessage", async ({ chat_id, text, message_thread_id }: TelegramBot.SendMessageParams) => {
+        mock.method(TelegramBot.Api.prototype, "sendRichMessage", async ({ chat_id, rich_message, message_thread_id }: TelegramBot.SendRichMessageParams) => {
             assert.ok(chat_id !== undefined);
-            deliveries.push({ id: chat_id, text, thread: message_thread_id });
+            deliveries.push({ id: chat_id, text: rich_message.html!, thread: message_thread_id });
             return { message_id: deliveries.length };
         });
         adapter = TgAdapter.unpack({ token_file: token_file(t), formatting: "html" },

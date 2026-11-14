@@ -1,3 +1,4 @@
+import { with_button_grid, CallbackButton } from "../button_grid.js";
 import * as TelegramBot from "node-telegram-bot-api";
 
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
@@ -12,8 +13,8 @@ export class ConfirmationWidget implements AbstractWidget {
     private message_id?: number;
     private timeout_id?: ReturnType<typeof setTimeout>;
     private buttons?: {
-        positive: TelegramBot.InlineKeyboardButton;
-        negative: TelegramBot.InlineKeyboardButton;
+        positive: CallbackButton;
+        negative: CallbackButton;
     };
     private settled = false;
     private readonly answer_promise: Promise<Expected<"positive" | "negative">>;
@@ -35,13 +36,13 @@ export class ConfirmationWidget implements AbstractWidget {
 
     async start(): Promise<Status> {
         this.buttons = {
-            positive: this.user.create_keyboard_button(
+            positive: this.user.create_callback_button(
                 this.positive_label,
                 "confirmation.positive",
                 async () => await this.on_choice("positive"),
                 this.lifetime_sec,
             ),
-            negative: this.user.create_keyboard_button(
+            negative: this.user.create_callback_button(
                 this.negative_label,
                 "confirmation.negative",
                 async () => await this.on_choice("negative"),
@@ -49,11 +50,8 @@ export class ConfirmationWidget implements AbstractWidget {
             ),
         };
 
-        const sent = await this.user.send_message(this.question, {
-            reply_markup: {
-                inline_keyboard: [[this.buttons.positive, this.buttons.negative]],
-            },
-        });
+        const sent = await this.user.send_message(with_button_grid(
+            this.question, [[this.buttons.positive, this.buttons.negative]]));
         if (!sent.ok) {
             await this.release();
             this.settle(sent.cast_error());
@@ -71,9 +69,9 @@ export class ConfirmationWidget implements AbstractWidget {
     }
 
     async interrupt(): Promise<Status> {
-        await this.release();
+        const released = await this.release();
         this.settle(return_fail("confirmation interrupted", this.journal));
-        return Expected.ok(undefined);
+        return released;
     }
 
     waits_for_message(): boolean {
@@ -101,9 +99,9 @@ export class ConfirmationWidget implements AbstractWidget {
     }
 
     private async on_choice(choice: "positive" | "negative"): Promise<Status> {
-        await this.release();
-        this.settle(Expected.ok(choice));
-        return Expected.ok(undefined);
+        const released = await this.release();
+        this.settle(released.ok ? Expected.ok(choice) : released.cast_error());
+        return released;
     }
 
     private async on_timeout(): Promise<void> {
@@ -115,19 +113,21 @@ export class ConfirmationWidget implements AbstractWidget {
         this.settle(timed_out);
     }
 
-    private async release(): Promise<void> {
+    private async release(): Promise<Status> {
         if (this.timeout_id !== undefined) {
             clearTimeout(this.timeout_id);
             this.timeout_id = undefined;
         }
         if (this.buttons) {
-            this.user.remove_keyboard_button(this.buttons.positive);
-            this.user.remove_keyboard_button(this.buttons.negative);
+            this.user.remove_callback_button(this.buttons.positive);
+            this.user.remove_callback_button(this.buttons.negative);
             this.buttons = undefined;
         }
         if (this.message_id !== undefined) {
-            await this.user.edit_message(this.message_id, { inline_keyboard: [] });
+            const message_id = this.message_id;
             this.message_id = undefined;
+            return await this.user.edit_message(message_id, { text: this.question });
         }
+        return Expected.ok(undefined);
     }
 }

@@ -9,14 +9,15 @@ import { Bot } from "node-telegram-bot-api";
 import { GroupChat } from "@src/adapters/telegram/group_chat.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { MemoryJournal } from "@src/components/memory_journal.js";
-import { IUserAgent, SendMessageOptions } from "@src/interfaces/user_agent.js";
+import { IUserAgent } from "@src/interfaces/user_agent.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { escape_html } from "@src/utils.js";
+import { render_button_grid, with_button_grid } from "@src/adapters/telegram/button_grid.js";
 import { Expected } from "@src/utils/expected.js";
 
 import { telegram_config } from "@tests/helpers/config.js";
 import { user_profile } from "@tests/helpers/user.js";
-import { telegram_message } from "@tests/mocks/telegram.js";
+import { embedded_grid, telegram_message } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 
 mock.method(CoreAPI, "on_new_user_agent", () => Expected.ok(undefined));
@@ -67,7 +68,7 @@ test("Rich HTML is serialized through the SDK for sending and editing", async ()
     let message_id;
     {
         const agent: IUserAgent = context.user;
-        const sent = await agent.send_message(html, { format: "rich_html" });
+        const sent = await agent.send_message(html);
         assert.equal(sent.ok, true, sent.ok ? undefined : sent.error);
         assert.equal(sent.value, 1);
         message_id = sent.value;
@@ -83,7 +84,7 @@ test("Rich HTML is serialized through the SDK for sending and editing", async ()
     // 3. update that message and clear any previous external keyboard
     {
         assert.equal((await context.user.edit_message(
-            message_id, { text: html, format: "rich_html", inline_keyboard: [] })).ok, true);
+            message_id, { text: html })).ok, true);
         const { method, fields } = context.calls[1];
         assert.equal(method, "editMessageText");
         assert.equal(fields.get("chat_id"), "123");
@@ -95,35 +96,35 @@ test("Rich HTML is serialized through the SDK for sending and editing", async ()
     }
 });
 
-test("ordinary HTML content is identical in private previews and group topics", async () => {
-    // Motivation: upgrading the SDK must preserve HTML, existing keyboards,
-    // and destination topics for callers sharing preview and published content.
+test("private and group messages use Rich HTML with identical content", async () => {
+    // Motivation: previews and publications must use the same rendering
+    // contract while preserving destinations and reply navigation.
 
-    // 1. prepare formatted content with literal user-provided metacharacters
+    // 1. create a sender and escaped content
     let context;
     let html;
     let keyboard;
     {
         context = fixture();
         html = `<b>Report</b>\n${escape_html('A & B <C> "D"')}`;
-        keyboard = { inline_keyboard: [[{ text: "Confirm", callback_data: "confirm:1" }]] };
+        keyboard = { keyboard: [[{ text: "Statistics" }]], is_persistent: true, resize_keyboard: true };
     }
 
-    // 2. send a private preview and publish the same content to a group topic
+    // 2. send privately and to the group topic
     {
         assert.equal((await context.user.send_message(html, { reply_markup: keyboard })).ok, true);
         assert.equal((await context.group.send_message(html)).ok, true);
     }
 
-    // 3. verify HTML mode and the exact destinations and content on the wire
+    // 3. inspect the actual SDK wire payloads
     {
         const [preview, publication] = context.calls;
-        assert.equal(preview.method, "sendMessage");
-        assert.equal(publication.method, "sendMessage");
-        assert.equal(preview.fields.get("parse_mode"), "HTML");
-        assert.equal(publication.fields.get("parse_mode"), "HTML");
-        assert.equal(preview.fields.get("text"), html);
-        assert.equal(publication.fields.get("text"), html);
+        for (const call of context.calls) {
+            assert.equal(call.method, "sendRichMessage");
+            assert.deepEqual(JSON.parse(String(call.fields.get("rich_message"))), { html });
+            assert.equal(call.fields.has("parse_mode"), false);
+            assert.equal(call.fields.has("text"), false);
+        }
         assert.equal(preview.fields.get("chat_id"), "123");
         assert.deepEqual(JSON.parse(String(preview.fields.get("reply_markup"))), keyboard);
         assert.equal(publication.fields.get("chat_id"), "-100");
@@ -131,105 +132,32 @@ test("ordinary HTML content is identical in private previews and group topics", 
     }
 });
 
-test("user-agent sends default to ordinary HTML without a keyboard", async () => {
-    // Motivation: callers using only IUserAgent must retain the existing
-    // default format without adopting platform-specific send parameters.
+for (const failure of ["uninitialized", "network"]) {
+    test(`Rich HTML sends handle ${failure} failures`, async () => {
+        // Motivation: delivery failures must remain handled errors under the
+        // public sender contract, including calls without options.
 
-    // 1. create a user behind the public interface
-    let context;
-    let agent: IUserAgent;
-    {
-        context = fixture();
-        agent = context.user;
-    }
-
-    // 2. send without options and check the identifier and exact payload
-    {
-        const sent = await agent.send_message("<b>Hello</b>");
-        assert.equal(sent.ok, true);
-        assert.equal(sent.value, 1);
-        const { method, fields } = context.calls[0];
-        assert.equal(method, "sendMessage");
-        assert.equal(fields.get("text"), "<b>Hello</b>");
-        assert.equal(fields.get("parse_mode"), "HTML");
-        assert.equal(fields.has("rich_message"), false);
-        assert.equal(fields.has("reply_markup"), false);
-    }
-});
-
-const keyboards: NonNullable<SendMessageOptions["reply_markup"]>[] = [
-    { inline_keyboard: [[
-        { text: "Confirm", callback_data: "confirm:1" },
-        { text: "Join", url: "https://example.com/join" },
-    ]] },
-    { keyboard: [[{ text: "Statistics" }]], is_persistent: true, resize_keyboard: true },
-];
-
-for (const format of ["html", "rich_html"] as const) {
-    for (const keyboard of keyboards) {
-        const kind = "inline_keyboard" in keyboard ? "inline" : "reply";
-        test(`user-agent preserves ${kind} keyboards in ${format} mode`, async () => {
-            // Motivation: both formatting paths must honor the same limited
-            // keyboard options exposed by IUserAgent, including reply flags.
-
-            // 1. create a sender through the public interface
-            let context;
-            let agent: IUserAgent;
-            {
-                context = fixture();
+        // 1. create an agent that cannot deliver
+        let agent: IUserAgent;
+        {
+            if (failure === "uninitialized") {
+                agent = new TelegramUser(user_profile("member"), 123, telegram_config(),
+                    { users: mock_user_replica() }, new MemoryJournal());
+            } else {
+                const context = fixture();
+                context.state.network_error = true;
                 agent = context.user;
             }
+        }
 
-            // 2. send with explicit formatting and inspect SDK serialization
-            {
-                const sent = await agent.send_message("<b>Hello</b>", { format, reply_markup: keyboard });
-                assert.equal(sent.ok, true);
-                assert.equal(sent.value, 1);
-                const { method, fields } = context.calls[0];
-                assert.equal(fields.get("chat_id"), "123");
-                assert.deepEqual(JSON.parse(String(fields.get("reply_markup"))), keyboard);
-                if (format === "rich_html") {
-                    assert.equal(method, "sendRichMessage");
-                    assert.deepEqual(JSON.parse(String(fields.get("rich_message"))), { html: "<b>Hello</b>" });
-                    assert.equal(fields.has("text"), false);
-                    assert.equal(fields.has("parse_mode"), false);
-                } else {
-                    assert.equal(method, "sendMessage");
-                    assert.equal(fields.get("text"), "<b>Hello</b>");
-                    assert.equal(fields.get("parse_mode"), "HTML");
-                    assert.equal(fields.has("rich_message"), false);
-                }
-            }
-        });
-    }
-
-    for (const failure of ["uninitialized", "network"]) {
-        test(`user-agent handles ${failure} sends in ${format} mode`, async () => {
-            // Motivation: uninitialized clients and transport failures must
-            // remain handled errors in both branches of the unified sender.
-
-            // 1. prepare a sender that cannot deliver the message
-            let agent: IUserAgent;
-            {
-                if (failure === "uninitialized") {
-                    agent = new TelegramUser(user_profile("member"), 123, telegram_config(),
-                        { users: mock_user_replica() }, new MemoryJournal());
-                } else {
-                    const context = fixture();
-                    context.state.network_error = true;
-                    agent = context.user;
-                }
-            }
-
-            // 2. check the error outcome through the public interface
-            {
-                const sent = await agent.send_message("<b>Hello</b>", { format });
-                assert.equal(sent.ok, false);
-                assert.match(sent.error, failure === "uninitialized"
-                    ? /API is not initialized/ : /Network request failed/);
-            }
-        });
-    }
+        // 2. check the handled result
+        {
+            const sent = await agent.send_message("<b>Hello</b>");
+            assert.equal(sent.ok, false);
+            assert.match(sent.error, failure === "uninitialized"
+                ? /API is not initialized/ : /Network request failed/);
+        }
+    });
 }
 
 for (const operation of ["rich send", "rich edit", "private HTML", "group HTML"]) {
@@ -247,9 +175,9 @@ for (const operation of ["rich send", "rich edit", "private HTML", "group HTML"]
         // 2. perform the operation and inspect the handled failure
         {
             const result = operation === "rich send"
-                ? await context.user.send_message("<unsupported>value</unsupported>", { format: "rich_html" })
+                ? await context.user.send_message("<unsupported>value</unsupported>")
                 : operation === "rich edit"
-                    ? await context.user.edit_message(42, { text: "<unsupported>value</unsupported>", format: "rich_html" })
+                    ? await context.user.edit_message(42, { text: "<unsupported>value</unsupported>" })
                     : operation === "private HTML"
                         ? await context.user.send_message("<unsupported>value</unsupported>")
                         : await context.group.send_message("<unsupported>value</unsupported>");
@@ -295,47 +223,61 @@ test("local document uploads retain bytes, metadata and the destination topic", 
 });
 
 
-test("message edits preserve or replace inline controls as requested", async () => {
-    // Motivation: callers need predictable content and keyboard edits through
-    // the common interface, including removal without replacing message text.
+test("edits replace embedded controls and clear legacy inline keyboards", async () => {
+    // Motivation: refreshing old messages must remove separate controls, and
+    // subsequent edits must replace the entire embedded grid with the body.
 
-    // 1. prepare an agent and inline controls
-    let context: ReturnType<typeof fixture>;
-    let agent: IUserAgent;
-    let keyboard: { text: string; callback_data: string }[][];
+    // 1. prepare an agent and a message containing controls
+    let context;
+    let html;
     {
         context = fixture();
-        agent = context.user;
-        keyboard = [[{ text: "OK", callback_data: "ok" }]];
+        html = with_button_grid("Changed", [[{ text: "OK", callback_data: "ok" }]]);
     }
 
-    // 2. edit content with and without replacement controls
-    {
-        assert.equal((await agent.edit_message(42, { text: "<b>Hi</b>" })).ok, true);
-        assert.equal((await agent.edit_message(42, { text: "Changed", inline_keyboard: keyboard })).ok, true);
-        const first = context.calls[0].fields;
-        assert.equal(first.get("text"), "<b>Hi</b>");
-        assert.equal(first.get("parse_mode"), "HTML");
-        assert.equal(first.has("reply_markup"), false);
-        assert.deepEqual(JSON.parse(String(context.calls[1].fields.get("reply_markup"))),
-            { inline_keyboard: keyboard });
+    // 2. replace controls together with content and then remove them
+    for (const text of [html, "Completed"]) {
+        assert.equal((await context.user.edit_message(42, { text })).ok, true);
+        const fields: FormData = context.calls.at(-1)!.fields;
+        assert.deepEqual(JSON.parse(String(fields.get("rich_message"))), { html: text });
+        assert.deepEqual(JSON.parse(String(fields.get("reply_markup"))), { inline_keyboard: [] });
     }
 
-    // 3. remove controls while retaining content
-    {
-        assert.equal((await agent.edit_message(42, { inline_keyboard: [] })).ok, true);
-        assert.equal(context.calls[2].method, "editMessageReplyMarkup");
-        assert.deepEqual(JSON.parse(String(context.calls[2].fields.get("reply_markup"))),
-            { inline_keyboard: [] });
-        assert.equal(context.calls[2].fields.has("text"), false);
-    }
-
-    // 4. surface API and transport failures as statuses
+    // 3. ensure edit failures are returned to the caller
     {
         context.state.reject = true;
-        assert.equal((await agent.edit_message(42, { text: "Rejected" })).ok, false);
+        assert.equal((await context.user.edit_message(42, { text: "Rejected" })).ok, false);
         context.state.reject = false;
         context.state.network_error = true;
-        assert.equal((await agent.edit_message(42, { inline_keyboard: [] })).ok, false);
+        assert.equal((await context.user.edit_message(42, { text: "Completed" })).ok, false);
+    }
+});
+
+test("button grids preserve rows and literal callback and URL labels", () => {
+    // Motivation: dynamic grids have partial last rows, and metacharacters
+    // in literal labels or actions must never become markup.
+
+    // 1. render mixed actions with an incomplete final row
+    let html;
+    let grid;
+    {
+        grid = [
+            [{ text: 'A < B & "C"', callback_data: 'value<&">' },
+                { text: "Join & sing", url: 'https://example.org/?a=1&b="2"' }],
+            [{ text: "Last", callback_data: "last" }],
+        ];
+        html = with_button_grid("<b>Body</b>", grid);
+    }
+
+    // 2. verify exact row boundaries, escaped literals and body placement
+    {
+        assert.deepEqual(embedded_grid(html), grid);
+        assert.ok(html.startsWith("<b>Body</b>\n<tg-button-row>"));
+        assert.doesNotMatch(html, /<table|style="primary"/);
+        assert.match(html, /A &lt; B &amp; &quot;C&quot;/);
+        assert.match(html, /data="value&lt;&amp;&quot;&gt;"/);
+        assert.match(html, /type="url" url="https:\/\/example.org\/\?a=1&amp;b=&quot;2&quot;"/);
+        assert.equal(render_button_grid([]), "");
+        assert.equal(with_button_grid("Body", []), "Body");
     }
 });

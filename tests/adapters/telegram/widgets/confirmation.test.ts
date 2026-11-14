@@ -3,27 +3,34 @@ import { after, mock, test } from "node:test";
 
 import { TelegramCallbacks } from "@src/adapters/telegram/callbacks.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
+import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity.js";
+import { ConfirmationError } from "@src/interfaces/user_agent.js";
+import { FeedbackActions } from "@src/use_cases/feedback_actions.js";
 import { ConfirmationWidget } from "@src/adapters/telegram/widgets/confirmation.js";
 import { Environment } from "@src/components/environment.js";
 import { MemoryJournal } from "@src/components/memory_journal.js";
 import { Language, Role, UserData, Voice } from "@src/entities/user.js";
 import { CoreAPI } from "@src/use_cases/core.js";
+import { GlobalFormatter } from "@src/utils.js";
 import { Expected } from "@src/utils/expected.js";
 
 import { telegram_config } from "@tests/helpers/config.js";
-import { TelegramDelivery, inline_keyboard, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
+import { TelegramDelivery, embedded_grid, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
 
 mock.method(CoreAPI, "on_new_user_agent", () => Expected.ok(undefined));
 after(() => mock.restoreAll());
 
+GlobalFormatter.init("html");
 const journal = new MemoryJournal();
 
 type State = {
     user: UserData;
     messages: TelegramDelivery[];
     answers: string[];
+    edits: string[];
+    deletions: number[];
 };
 
 function fixture(lang = Language.EN) {
@@ -38,6 +45,8 @@ function fixture(lang = Language.EN) {
         },
         messages: [],
         answers: [],
+        edits: [],
+        deletions: [],
     };
     const environment = new Environment();
     environment.user_service = mock_user_service({
@@ -48,7 +57,8 @@ function fixture(lang = Language.EN) {
     Environment.set_global(environment);
 
     const bot = mock_telegram({
-        async sendMessage({ chat_id, text, ...options }) {
+        async sendRichMessage({ chat_id, rich_message, ...options }) {
+            const text = rich_message.html!;
             state.messages.push({ chat_id, text, options, message_id: state.messages.length + 1 });
             return { message_id: state.messages.length };
         },
@@ -58,7 +68,12 @@ function fixture(lang = Language.EN) {
         async editMessageReplyMarkup() {
             return true;
         },
-        async editMessageText() {
+        async editMessageText(params) {
+            state.edits.push(params!.rich_message!.html!);
+            return true;
+        },
+        async deleteMessage({ message_id }) {
+            state.deletions.push(message_id);
             return true;
         },
     });
@@ -97,12 +112,12 @@ test("a role change between queued clicks invalidates the remaining callbacks", 
     let first;
     let second;
     {
-        first = context.user.create_keyboard_button("First", "roles.first", async () => {
+        first = context.user.create_callback_button("First", "roles.first", async () => {
             roles_seen.push(context.user.info().roles);
             context.state.user = { ...context.state.user, roles: [Role.Manager] };
             return Expected.ok(undefined);
         }).callback_data;
-        second = context.user.create_keyboard_button("Second", "roles.second", async () => {
+        second = context.user.create_callback_button("Second", "roles.second", async () => {
             roles_seen.push(context.user.info().roles);
             return Expected.ok(undefined);
         }).callback_data;
@@ -140,11 +155,11 @@ for (const roles of [[], [Role.Manager], [Role.Admin, Role.Chorister]]) {
         {
             context = fixture();
             unaffected = fixture();
-            old_button = context.user.create_keyboard_button("Old", "old", async () => {
+            old_button = context.user.create_callback_button("Old", "old", async () => {
                 calls += 1;
                 return Expected.ok(undefined);
             });
-            unaffected_button = unaffected.user.create_keyboard_button(
+            unaffected_button = unaffected.user.create_callback_button(
                 "Unchanged", "unchanged", async () => {
                     unaffected_calls += 1;
                     return Expected.ok(undefined);
@@ -170,7 +185,7 @@ for (const roles of [[], [Role.Manager], [Role.Admin, Role.Chorister]]) {
 
         // 4. issue a new button and verify the current session can use it
         {
-            const button = context.user.create_keyboard_button("New", "new", async () => {
+            const button = context.user.create_callback_button("New", "new", async () => {
                 calls += 1;
                 return Expected.ok(undefined);
             });
@@ -195,7 +210,7 @@ for (const update of ["set_user_info", "periodic refresh"]) {
         {
             context = fixture();
             await context.user.maybe_update_user_info(now);
-            old_button = context.user.create_keyboard_button("Old", "old", async () => {
+            old_button = context.user.create_callback_button("Old", "old", async () => {
                 old_calls += 1;
                 return Expected.ok(undefined);
             });
@@ -213,7 +228,7 @@ for (const update of ["set_user_info", "periodic refresh"]) {
 
         // 3. register a button under the new roles and try both buttons
         {
-            const button = context.user.create_keyboard_button("New", "new", async () => {
+            const button = context.user.create_callback_button("New", "new", async () => {
                 new_calls += 1;
                 return Expected.ok(undefined);
             });
@@ -241,7 +256,7 @@ test("profile edits and reordered or duplicate roles preserve saved callbacks", 
         context = fixture();
         context.state.user = { ...context.state.user, roles: [Role.Admin, Role.Manager] };
         context.user.set_user_info(context.state.user);
-        button = context.user.create_keyboard_button("Keep", "keep", async () => {
+        button = context.user.create_callback_button("Keep", "keep", async () => {
             calls += 1;
             return Expected.ok(undefined);
         });
@@ -347,7 +362,7 @@ test("an expired confirmation click does nothing", async () => {
     {
         context = fixture();
         called = false;
-        button = context.user.create_keyboard_button(
+        button = context.user.create_callback_button(
             "Yes",
             "confirmation.positive",
             async () => {
@@ -382,7 +397,7 @@ test("a confirmation button from before a restart is ignored", async () => {
     {
         context = fixture();
         called = false;
-        data = context.user.create_keyboard_button(
+        data = context.user.create_callback_button(
             "Yes",
             "confirmation.positive",
             async () => {
@@ -422,7 +437,7 @@ test("a repeated confirmation click does not apply the choice again", async () =
         const widget = new ConfirmationWidget(
             context.user, journal, "Add Anna?", "Yes", "No");
         assert.equal((await widget.start()).ok, true);
-        data = inline_keyboard(context.state.messages[0].options)[0][0].callback_data;
+        data = embedded_grid(context.state.messages[0].text)[0][0].callback_data;
         const pending = widget.answer();
         await click(context, data);
         decision = await pending;
@@ -439,5 +454,141 @@ test("a repeated confirmation click does not apply the choice again", async () =
         assert.equal(decision.value, "positive");
         assert.equal(context.state.messages.length, 1);
         assert.equal(context.state.answers.length, 2);
+    }
+});
+
+for (const outcome of ["choice", "timeout", "edit failure"] as const) {
+    test(`confirmation ${outcome} removes controls and invalidates actions`, async () => {
+        // Motivation: rendered controls and registered actions must end
+        // together, and a failed edit cannot produce a successful decision.
+
+        // 1. show a prompt and record its embedded callback
+        let context;
+        let widget;
+        let data;
+        {
+            context = fixture();
+            widget = new ConfirmationWidget(context.user, journal, "Continue?", "Yes", "No",
+                outcome === "timeout" ? 0.01 : undefined);
+            assert.equal((await widget.start()).ok, true);
+            const grid = embedded_grid(context.state.messages[0].text);
+            assert.deepEqual(grid.map(row => row.map(button => button.text)), [["Yes", "No"]]);
+            data = grid[0][0].callback_data;
+        }
+
+        // 2. finish the interaction and inspect its outcome
+        {
+            if (outcome === "edit failure") {
+                context.bot.api.editMessageText = async () => { throw new Error("offline"); };
+            }
+            if (outcome !== "timeout") {
+                await click(context, data);
+            }
+            const answer = await widget.answer();
+            assert.equal(answer.ok, outcome === "choice");
+            if (outcome === "timeout") {
+                assert.equal(answer.is_error(ConfirmationError.TimedOut), true);
+            }
+            if (outcome !== "edit failure") {
+                assert.deepEqual(context.state.edits, ["Continue?"]);
+            }
+        }
+
+        // 3. replay a stale click and verify no new edits
+        {
+            const count = context.state.edits.length;
+            await click(context, data);
+            assert.equal(context.state.edits.length, count);
+        }
+    });
+}
+
+for (const outcome of ["cancel", "publish", "failure"] as const) {
+    test(`feedback ${outcome} preserves grids and invalidates stale controls`, async () => {
+        // Motivation: hidden privacy controls and completed feedback must
+        // never advance a flow, including after a failed delivery or edit.
+
+        // 1. start feedback and capture its privacy grid
+        let context;
+        let widget;
+        let privacy;
+        let registration;
+        {
+            context = fixture();
+            widget = new FeedbackWidget(context.user, journal);
+            widget.on_details_provided("A concert idea");
+            registration = mock.method(FeedbackActions, "register_new_feedback", async () =>
+                outcome === "failure" ? Expected.err("offline") : Expected.ok(undefined));
+            assert.equal((await widget.start()).ok, true);
+            privacy = embedded_grid(context.state.edits.at(-1)!);
+            assert.deepEqual(privacy.map(row => row.map(button => button.text)), [
+                ["Send anonymously"], ["Send on behalf of my party"], ["Send on my behalf"], ["Cancel"],
+            ]);
+        }
+
+        // 2. choose privacy and reject replays of the removed controls
+        let confirmation;
+        {
+            await click(context, privacy[0][0].callback_data);
+            confirmation = embedded_grid(context.state.edits.at(-1)!);
+            assert.deepEqual(confirmation.map(row => row.map(button => button.text)), [["Send!"], ["Cancel"]]);
+            const count = context.state.edits.length;
+            await click(context, privacy[2][0].callback_data);
+            assert.equal(context.state.edits.length, count);
+        }
+
+        // 3. complete or fail the flow and check the visible controls
+        {
+            await click(context, confirmation[outcome === "cancel" ? 1 : 0][0].callback_data);
+            assert.equal(widget.finished(), true);
+            if (outcome === "failure") {
+                assert.deepEqual(embedded_grid(context.state.edits.at(-1)!), []);
+            } else {
+                assert.deepEqual(context.state.deletions, [1]);
+            }
+        }
+
+        // 4. replay both grids and verify no duplicate publication or edit
+        {
+            const edits = context.state.edits.length;
+            const calls = registration.mock.callCount();
+            await click(context, privacy[0][0].callback_data);
+            await click(context, confirmation[0][0].callback_data);
+            assert.equal(registration.mock.callCount(), calls);
+            assert.equal(context.state.edits.length, edits);
+            registration.mock.restore();
+        }
+    });
+}
+
+test("a failed feedback edit ends the flow and invalidates its controls", async () => {
+    // Motivation: a grid that could not be replaced must not keep actions
+    // alive or allow the flow to report successful completion.
+
+    // 1. show a details prompt and record the cancel control
+    let context;
+    let widget;
+    let cancel;
+    {
+        context = fixture();
+        widget = new FeedbackWidget(context.user, journal);
+        assert.equal((await widget.start()).ok, true);
+        cancel = embedded_grid(context.state.edits.at(-1)!)[0][0].callback_data;
+    }
+
+    // 2. reject the next update and ensure the error reaches the caller
+    {
+        context.bot.api.editMessageText = async () => { throw new Error("offline"); };
+        const status = await widget.consume_message({ message_id: 2, date: 1,
+            chat: { id: 123, type: "private" }, text: "My idea" });
+        assert.equal(status.ok, false);
+        assert.match(status.error, /offline/);
+        assert.equal(widget.finished(), true);
+    }
+
+    // 3. replay the old control and verify that it cannot change the message
+    {
+        await click(context, cancel);
+        assert.deepEqual(context.state.deletions, []);
     }
 });

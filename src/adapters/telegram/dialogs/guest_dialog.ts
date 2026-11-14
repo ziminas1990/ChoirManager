@@ -4,6 +4,7 @@ import { Expected, Status } from "@src/utils/expected.js";
 import { IJournal } from "@src/interfaces/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { seconds_since } from "@src/utils.js";
+import { with_button_grid } from "@src/adapters/telegram/button_grid.js";
 
 
 export class GuestDialog {
@@ -21,12 +22,6 @@ export class GuestDialog {
     }
 
     private async maybe_send_welcome(): Promise<Status> {
-        const keyboard: TelegramBot.InlineKeyboardMarkup = {
-            inline_keyboard: [
-                [{ text: "Заполнить анкету", url: "https://forms.gle/zz1hbvCvFypLYupz5" }]
-            ]
-        }
-
         if (seconds_since(this.last_welcome) < 5) {
             return Expected.ok(undefined);
         }
@@ -39,11 +34,11 @@ export class GuestDialog {
             " нового участника и мы тебе ответим в ближайшее время!"
         ];
 
-        return (await this.user.send_message(
-            text.join("\n"),
-            {
-                reply_markup: keyboard,
-            }
-        )).as_status();
+        const status = await this.user.send_message(
+            with_button_grid(text.join("\n"), [
+                [{ text: "Заполнить анкету", url: "https://forms.gle/zz1hbvCvFypLYupz5" }],
+            ])
+        );
+        return status.as_status();
     }
 }

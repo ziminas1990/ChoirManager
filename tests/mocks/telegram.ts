@@ -60,13 +60,12 @@ export function telegram_token(t: TestContext) {
     } };
 }
 
-export function inline_keyboard(options?: Omit<TelegramBot.SendMessageParams, "chat_id" | "text">)
-: TelegramBot.InlineKeyboardButton[][] {
-    const markup = options?.reply_markup;
-    if (!markup || !markup.inline_keyboard) {
-        throw new Error("Expected inline keyboard");
-    }
-    return markup.inline_keyboard;
+export function embedded_grid(html: string): { text: string; callback_data?: string; url?: string }[][] {
+    const decode = (text: string) => text.replace(/&quot;/g, '"').replace(/&gt;/g, ">")
+        .replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+    return [...html.matchAll(/<tg-button-row>(.*?)<\/tg-button-row>/gs)].map(row =>
+        [...row[1].matchAll(/<tg-button type="(callback_data|url)"(?: style="[^"]*")? (?:data|url)="([^"]*)">(.*?)<\/tg-button>/gs)]
+            .map(button => ({ text: decode(button[3]), [button[1]]: decode(button[2]) })));
 }
 
 export async function emit_telegram(

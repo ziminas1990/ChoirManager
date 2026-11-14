@@ -1,5 +1,3 @@
-import * as TelegramBot from "node-telegram-bot-api";
-
 import { IJournal } from "@src/interfaces/journal.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { current_month, Formatter, GlobalFormatter } from "@src/utils.js";
@@ -10,6 +8,7 @@ import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Transaction } from "@src/interfaces/transactions_storage.js";
+import { with_button_grid } from "@src/adapters/telegram/button_grid.js";
 
 
 export class DepositOwnerDialog implements IDepositOwnerAgent {
@@ -32,7 +31,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
     }
 
     async send_deposit_info(info: Deposit | undefined): Promise<Status> {
-        const get_transactions_button = this.user.create_keyboard_button(
+        const get_transactions_button = this.user.create_callback_button(
                 this.orator.get_transactions_button(this.user.info().lang),
                 `open transactions for ${user_tg_username(this.user.info())}`,
                 async () => {
@@ -42,16 +41,13 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
                 }
             );
 
-        const keyboard: TelegramBot.InlineKeyboardMarkup = {
-            inline_keyboard: [
-                [get_transactions_button]
-            ]
-        };
-
-        return (await this.user.send_message(
-            this.orator.deposit_info(info, this.user.info().lang),{
-                reply_markup: keyboard
-            })).as_status();
+        const status = await this.user.send_message(
+            with_button_grid(
+                this.orator.deposit_info(info, this.user.info().lang),
+                [[get_transactions_button]]
+            )
+        );
+        return status.as_status();
     }
 
     async send_transactions_info(transactions: Transaction[] | undefined): Promise<Status>
@@ -87,7 +83,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
         ].join("\n");
 
 
-        const have_paid_botton = this.user.create_keyboard_button(
+        const have_paid_botton = this.user.create_callback_button(
             this.orator.have_paid_already(this.user.info().lang),
             `already paid by @${user_tg_username(this.user.info())}`,
             async () => {
@@ -95,19 +91,11 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
             }
         );
 
-        const keyboard: TelegramBot.InlineKeyboardMarkup = {
-            inline_keyboard: [
-                [have_paid_botton]
-            ]
-        };
+        const status = await this.user.send_message(
+            with_button_grid(message, [[have_paid_botton]])
+        );
 
-        const sent = await this.user.send_message(
-            message,
-            {
-                reply_markup: keyboard,
-                format: "html"
-            });
-        return sent.as_status();
+        return status.as_status();
     }
 }
 
