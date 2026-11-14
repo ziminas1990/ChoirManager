@@ -68,11 +68,11 @@ function fixture(lang = Language.EN) {
     Environment.set_global(environment);
 
     const bot = mock_telegram({
-        async sendMessage(chat_id, text, options) {
+        async sendMessage({ chat_id, text, ...options }) {
             state.messages.push({ chat_id, text, options, message_id: state.messages.length + 1, file: rendered_links.get(text) });
             return { message_id: state.messages.length };
         },
-        async answerCallbackQuery(id) { state.answers.push(id); },
+        async answerCallbackQuery({ callback_query_id: id }) { state.answers.push(id); },
     });
     const users = mock_user_replica({ resolve_user: () => Expected.ok(state.user) });
     const user = new TelegramUser(state.user!, 123, telegram_config(), { users }, journal);
@@ -267,9 +267,9 @@ test("a failed link delivery allows retrying the same button", async () => {
     let data;
     {
         context = fixture();
-        send = context.bot.sendMessage;
-        context.bot.sendMessage = async (...args) => {
-            if (context.rendered_links.has(args[1])) {
+        send = context.bot.api.sendMessage;
+        context.bot.api.sendMessage = async (...args) => {
+            if (context.rendered_links.has(args[0].text)) {
                 throw new Error("send failed");
             }
             return send(...args);
@@ -285,7 +285,7 @@ test("a failed link delivery allows retrying the same button", async () => {
 
     // 3. restore Telegram delivery
     {
-        context.bot.sendMessage = send;
+        context.bot.api.sendMessage = send;
     }
 
     // 4. retry the same button and verify successful delivery
@@ -415,7 +415,7 @@ test("answerCallbackQuery failure does not prevent downloading", async () => {
     let context;
     {
         context = fixture();
-        context.bot.answerCallbackQuery = async () => {
+        context.bot.api.answerCallbackQuery = async () => {
             throw new Error("query is too old");
         };
     }

@@ -1,4 +1,5 @@
-import TelegramBot from "node-telegram-bot-api";
+import * as TelegramBot from "node-telegram-bot-api";
+import { fromPath } from "node-telegram-bot-api/node";
 
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -35,7 +36,7 @@ export type TelegramUserEnv = {
 export class TelegramUser implements IUserAgent {
     private journal: IJournal;
     private queue: IcomingItem[] = [];
-    private bot?: TelegramBot;
+    private bot?: TelegramBot.Bot;
     private callbacks_registry: TelegramCallbacks
     private callback_roles: Set<Role>;
 
@@ -65,7 +66,7 @@ export class TelegramUser implements IUserAgent {
         this.timings = {};
     }
 
-    init(bot: TelegramBot): Status {
+    init(bot: TelegramBot.Bot): Status {
         this.bot = bot;
 
         const status = CoreAPI.on_new_user_agent(this.userid(), this);
@@ -163,15 +164,17 @@ export class TelegramUser implements IUserAgent {
     // From IUserAgent
     async send_message(
         message: string,
-        options?: TelegramBot.SendMessageOptions,
+        options?: Omit<TelegramBot.SendMessageParams, "chat_id" | "text">,
     ): Promise<Expected<number>> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal);
         }
         try {
             await this.wait_api_cooldown();
-            const sent = await this.bot.sendMessage(this.chat_id, message, {
+            const sent = await this.bot.api.sendMessage({
                 ...options,
+                chat_id: this.chat_id,
+                text: message,
                 parse_mode: "HTML"
             });
             this.journal.info({ message }, "message sent")
@@ -181,13 +184,48 @@ export class TelegramUser implements IUserAgent {
         }
     }
 
-    async send_chat_action(action: TelegramBot.ChatAction): Promise<Status> {
+    async send_rich_message(html: string): Promise<Expected<number>> {
+        if (!this.bot) {
+            return return_fail("API is not initialized", this.journal);
+        }
+        try {
+            await this.wait_api_cooldown();
+            const sent = await this.bot.api.sendRichMessage({
+                chat_id: this.chat_id,
+                rich_message: { html },
+            });
+            return Expected.ok(sent.message_id);
+        } catch (error) {
+            return return_exception(error, this.journal);
+        }
+    }
+
+    async edit_rich_message(message_id: number, html: string): Promise<Status> {
+        if (!this.bot) {
+            return return_fail("API is not initialized", this.journal);
+        }
+        try {
+            await this.wait_api_cooldown();
+            await this.bot.api.editMessageText({
+                chat_id: this.chat_id,
+                message_id,
+                rich_message: { html },
+                // Clear the separate keyboard when refreshing a pre-migration message.
+                reply_markup: { inline_keyboard: [] },
+            });
+            return Expected.ok(undefined);
+        } catch (error) {
+            return return_exception(error, this.journal);
+        }
+    }
+
+    async send_chat_action(action: TelegramBot.SendChatActionParams["action"]): Promise<Status> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal);
         }
         try {
             // Note: do not wait for cooldown here
-            await this.bot.sendChatAction(this.chat_id, action);
+            await this.bot.api.sendChatAction({ chat_id: this.chat_id, action });
             return Expected.ok(undefined);
         } catch (e) {
             return return_exception(e, this.journal);
@@ -216,14 +254,12 @@ export class TelegramUser implements IUserAgent {
             return return_fail("API is not initialized", this.journal);
         }
         try {
-            const options: TelegramBot.SendDocumentOptions = {
-                caption,
-            };
-            const file_options: TelegramBot.FileOptions = {
-                contentType: content_type,
-            };
             await this.wait_api_cooldown();
-            await this.bot.sendDocument(this.chat_id, filename, options, file_options);
+            await this.bot.api.sendDocument({
+                chat_id: this.chat_id,
+                document: await fromPath(filename, { contentType: content_type }),
+                caption,
+            });
             this.journal.info({ document: filename }, "document sent")
             return Expected.ok(undefined);
         } catch (e) {
@@ -242,9 +278,10 @@ export class TelegramUser implements IUserAgent {
         try {
             if (what.text != undefined) {
                 await this.wait_api_cooldown();
-                await this.bot.editMessageText(what.text, {
+                await this.bot.api.editMessageText({
                     chat_id: this.chat_id,
                     message_id: message_id,
+                    text: what.text,
                     parse_mode: "HTML",
                     reply_markup: what.inline_keyboard ? {
                         inline_keyboard: what.inline_keyboard,
@@ -252,15 +289,13 @@ export class TelegramUser implements IUserAgent {
                 });
             } else if (what.inline_keyboard != undefined) {
                 await this.wait_api_cooldown();
-                await this.bot.editMessageReplyMarkup(
-                    {
+                await this.bot.api.editMessageReplyMarkup({
+                    reply_markup: {
                         inline_keyboard: what.inline_keyboard,
                     },
-                    {
-                        chat_id: this.chat_id,
-                        message_id: message_id
-                    }
-                );
+                    chat_id: this.chat_id,
+                    message_id: message_id,
+                });
             }
             return Expected.ok(undefined);
         } catch (e) {
@@ -274,7 +309,7 @@ export class TelegramUser implements IUserAgent {
         }
         try {
             await this.wait_api_cooldown();
-            const ok = await this.bot.deleteMessage(this.chat_id, message_id);
+            const ok = await this.bot.api.deleteMessage({ chat_id: this.chat_id, message_id });
             return ok ? Expected.ok(undefined) : return_fail("Failed to delete message", this.journal);
         } catch(e) {
             return return_exception(e, this.journal);
@@ -367,7 +402,7 @@ export class TelegramUser implements IUserAgent {
 
     private async handle_callback(query: TelegramBot.CallbackQuery, now: Date): Promise<Status> {
         try {
-            await this.bot?.answerCallbackQuery(query.id);
+            await this.bot?.api.answerCallbackQuery({ callback_query_id: query.id });
         } catch (error) {
             this.journal.warning({ error }, "Failed to answer callback query");
         }

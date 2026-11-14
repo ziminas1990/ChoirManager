@@ -48,11 +48,11 @@ function fixture(lang = Language.EN) {
     Environment.set_global(environment);
 
     const bot = mock_telegram({
-        async sendMessage(chat_id, text, options) {
+        async sendMessage({ chat_id, text, ...options }) {
             state.messages.push({ chat_id, text, options, message_id: state.messages.length + 1 });
             return { message_id: state.messages.length };
         },
-        async answerCallbackQuery(id) {
+        async answerCallbackQuery({ callback_query_id: id }) {
             state.answers.push(id);
         },
         async editMessageReplyMarkup() {

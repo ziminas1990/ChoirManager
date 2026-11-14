@@ -46,6 +46,7 @@ export class MessengerTools implements IToolchain {
                     "Send an HTML-formatted message to chat.",
                     "This is the only way to send a visible response.",
                     "Only Telegram-safe HTML tags are allowed: <b>, <i>, <code>, <s>, <u>, <pre>.",
+                    "Escape literal ampersands and angle brackets as &amp;, &lt;, and &gt;."
                 ].join("\n"),
                 messenger_send_message_schema,
             )],

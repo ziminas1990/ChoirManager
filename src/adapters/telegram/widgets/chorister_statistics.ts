@@ -1,12 +1,15 @@
-import TelegramBot from "node-telegram-bot-api";
+import * as TelegramBot from "node-telegram-bot-api";
 
 import { ChoristerAttendanceStat, IAnalyticService } from "@src/interfaces/analytic_service.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { IJournal } from "@src/interfaces/journal.js";
 import { Language, Role, user_has_role } from "@src/entities/user.js";
-import { apply_interval, GlobalFormatter, shorten } from "@src/utils.js";
+import { apply_interval, escape_html } from "@src/utils.js";
 import { Environment } from "@src/components/environment.js";
+
+const statistics_prefix = "stats:v1:";
+const statistics_period_days = [30, 60, 90, 180] as const;
 
 type StatisticsAction =
     | { type: "close" }
@@ -17,8 +20,6 @@ function analytic_service(): IAnalyticService {
 }
 
 export class ChoristerStatisticsWidget {
-    private static readonly prefix = "stats:v1:";
-    private static readonly period_days = [30, 60, 90, 180] as const;
     private readonly journal: IJournal;
 
     constructor(
@@ -59,31 +60,11 @@ export class ChoristerStatisticsWidget {
         return await this.show_statistics(30);
     }
 
-    private get_inline_keyboard(): TelegramBot.InlineKeyboardButton[][] {
-        const ru = this.user.info().lang === Language.RU;
-        const period_button = (days: number): TelegramBot.InlineKeyboardButton => ({
-            text: ru ? `За ${days} дней` : `For ${days} days`,
-            callback_data: ChoristerStatisticsWidget.prefix + days,
-        });
-        const periods = ChoristerStatisticsWidget.period_days.map(period_button);
-        return [
-            periods.slice(0, 2),
-            periods.slice(2),
-            [
-                {
-                    text: ru ? "За все время" : "All time",
-                    callback_data: ChoristerStatisticsWidget.prefix + "all",
-                },
-                { text: "❌", callback_data: ChoristerStatisticsWidget.prefix + "close" },
-            ],
-        ];
-    }
-
     private static parse_action(data: string | undefined): StatisticsAction | undefined {
-        if (!data?.startsWith(this.prefix)) {
+        if (!data?.startsWith(statistics_prefix)) {
             return undefined;
         }
-        const raw = data.slice(this.prefix.length);
+        const raw = data.slice(statistics_prefix.length);
         if (raw === "close") {
             return { type: "close" };
         }
@@ -92,7 +73,7 @@ export class ChoristerStatisticsWidget {
         }
         const days = Number.parseInt(raw, 10);
         if (!Number.isSafeInteger(days) || String(days) !== raw
-            || !(this.period_days as readonly number[]).includes(days))
+            || !(statistics_period_days as readonly number[]).includes(days))
         {
             return undefined;
         }
@@ -130,7 +111,8 @@ export class ChoristerStatisticsWidget {
                 return await this.report_failure(statistic.as_status());
             }
             const updated = await this.update_widget(
-                Messages.statistics(statistic.value, profile.lang));
+                Messages.statistics(statistic.value, profile.lang, period_days)
+                + Messages.controls(profile.lang));
             return updated.ok ? updated : await this.report_failure(updated);
         } catch (error) {
             return await this.report_failure(Expected.exception("failed to collect statistics", error));
@@ -143,18 +125,12 @@ export class ChoristerStatisticsWidget {
         return status;
     }
 
-    private async update_widget(text: string): Promise<Status> {
-        const keyboard = this.get_inline_keyboard();
+    private async update_widget(html: string): Promise<Status> {
         if (this.message_id === undefined) {
-            return (await this.user.send_message(text, {
-                reply_markup: { inline_keyboard: keyboard },
-            })).as_status();
+            return (await this.user.send_rich_message(html)).as_status();
         }
-        const updated = await this.user.edit_message(this.message_id, {
-            text,
-            inline_keyboard: keyboard,
-        });
-        // Repeated clicks can produce identical text and keyboard contents.
+        const updated = await this.user.edit_rich_message(this.message_id, html);
+        // Repeated clicks can produce identical message contents.
         if (!updated.ok && updated.error.includes("message is not modified")) {
             return Expected.ok(undefined);
         }
@@ -175,67 +151,62 @@ class Messages {
             : "This statistics button is unavailable. Open a new widget using Statistics.";
     }
 
-    static statistics(data: ChoristerAttendanceStat, lang: Language): string {
-        const parts = (() => {
-            switch (lang) {
-                case Language.RU:
-                    return {
-                        header: "Твоя статистика посещений за последние",
-                        days: "дней",
-                        rehersals_status: "Ты посетил(а) {visited_rehersals} из {total_rehersals} репетиций",
-                        hours_status: "Ты репетировал(а) {visited_hours} из {total_hours} часов",
-                        attendance: "Твоя посещаемость",
-                        songs: "Твоя статистика по произведениям",
-                        of: "из",
-                    }
-                case Language.EN:
-                default:
-                    return {
-                        header: "Your statistics for the last",
-                        days: "days",
-                        rehersals_status: "You visited {visited_rehersals} out of {total_rehersals} rehearsals",
-                        hours_status: "You spent {visited_hours} out of {total_hours} hours",
-                        attendance: "Your attendance",
-                        songs: "Your statistics by songs",
-                        of: "out of",
-                    }
-            }
-        })();
-
-        const formatter = GlobalFormatter.instance();
-
-        const attendance = data.attendance_percent ?? 0;
-        const diff_ms = data.period.to.getTime() - data.period.from.getTime();
-        const days = Math.ceil(diff_ms / (1000 * 60 * 60 * 24));
-
-        const rehersals_stat = parts.rehersals_status
-            .replace("{visited_rehersals}", data.visited_rehersals.toFixed(0))
-            .replace("{total_rehersals}", data.total_rehersals.toFixed(0));
-
-        const hours_stat = parts.hours_status
-            .replace("{visited_hours}", data.visited_hours.toFixed(0))
-            .replace("{total_hours}", data.total_hours.toFixed(0));
-
-        const songs_stat = data.songs.map(stat => {
-            const name = stat.name;
-            return [
-                shorten(name, 16).padEnd(16),
-                (stat.actual / 60).toFixed(1).padStart(4),
-                parts.of,
-                (stat.ideal / 60).toFixed(1).padEnd(4),
-                `~${(stat.attendance_percent ?? 0).toFixed(0)}%`.padStart(5),
-            ].join(" ");
-        }).join("\n");
-
+    static statistics(data: ChoristerAttendanceStat, lang: Language, period_days?: number): string {
+        const ru = lang === Language.RU;
+        const covered_days = Math.ceil((data.period.to.getTime() - data.period.from.getTime())
+            / (1000 * 60 * 60 * 24));
+        const title = period_days === undefined
+            ? (ru ? `Твоя статистика посещений за всё время (${covered_days} дн.)`
+                : `Your attendance statistics for all time (${covered_days} ${covered_days === 1 ? "day" : "days"})`)
+            : (ru ? `Твоя статистика посещений за последние ${period_days} дней`
+                : `Your attendance statistics for the last ${period_days} days`);
+        const rehearsals = ru
+            ? `Ты посетил(а) ${data.visited_rehersals} из ${data.total_rehersals} репетиций`
+            : `You visited ${data.visited_rehersals} out of ${data.total_rehersals} rehearsals`;
+        const hours = ru
+            ? `Ты репетировал(а) ${data.visited_hours.toFixed(1)} из ${data.total_hours.toFixed(1)} часов`
+            : `You spent ${data.visited_hours.toFixed(1)} out of ${data.total_hours.toFixed(1)} hours`;
+        const attendance = ru ? "Твоя посещаемость" : "Your attendance";
+        const songs = ru ? "Твоя статистика по произведениям" : "Your statistics by songs";
+        const headings = ru
+            ? ["Произведение", "Твои часы", "Всего часов", "Посещаемость"]
+            : ["Piece", "Your hours", "Total hours", "Attendance"];
+        const song_rows = data.songs.map(stat => [
+            "<tr>",
+            `<td>${escape_html(stat.name)}</td>`,
+            `<td align="right">${(stat.actual / 60).toFixed(1)}</td>`,
+            `<td align="right">${(stat.ideal / 60).toFixed(1)}</td>`,
+            `<td align="right">${Messages.percent(stat.attendance_percent)}</td>`,
+            "</tr>",
+        ].join(""));
+        const table = data.songs.length === 0
+            ? `<p>${ru ? "За этот период нет произведений." : "No pieces for this period."}</p>`
+            : [
+                "<table bordered striped compact>",
+                `<tr>${headings.map(heading => `<th>${heading}</th>`).join("")}</tr>`,
+                ...song_rows,
+                "</table>",
+            ].join("");
         return [
-            formatter.bold(`${parts.header} ${days} ${parts.days}:`),
-            rehersals_stat,
-            hours_stat,
-            `${parts.attendance}: ${attendance.toFixed(0)}%`,
-            "",
-            parts.songs,
-            formatter.preformatted(songs_stat),
+            `<h2>${title}</h2>`,
+            `<p>${rehearsals}<br>${hours}<br>${attendance}: ${Messages.percent(data.attendance_percent)}</p>`,
+            `<h3>${songs}</h3>`,
+            table,
         ].join("\n");
+    }
+
+    static controls(lang: Language): string {
+        const ru = lang === Language.RU;
+        const periods = statistics_period_days.map(days =>
+            `<tg-button type="callback_data" data="${statistics_prefix}${days}">${ru ? `За ${days} дней` : `For ${days} days`}</tg-button>`);
+        const buttons = [
+            ...periods,
+            `<tg-button type="callback_data" data="${statistics_prefix}all">${ru ? "За всё время" : "All time"}</tg-button>`,
+            `<tg-button type="callback_data" style="danger" data="${statistics_prefix}close">${ru ? "Закрыть" : "Close"}</tg-button>`,
+        ];
+        return [buttons.slice(0, 2), buttons.slice(2, 4), buttons.slice(4)]
+            .map(row => `<tg-button-row>${row.join("")}</tg-button-row>`)
+            .join("\n");
     }
 
     static fail_message(lang: Language): string {
@@ -247,6 +218,9 @@ class Messages {
         }
     }
 
+    private static percent(value: number | null): string {
+        return value === null ? "—" : `${value.toFixed(0)}%`;
+    }
 }
 
 class Helpers {

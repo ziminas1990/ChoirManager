@@ -1,4 +1,5 @@
-import TelegramBot from "node-telegram-bot-api";
+import * as TelegramBot from "node-telegram-bot-api";
+import { fromPath } from "node-telegram-bot-api/node";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { return_exception, return_fail } from "@src/utils.js";
@@ -14,7 +15,7 @@ export class GroupChat implements IGroupChat {
     constructor(
         private readonly chat_id: number,
         private readonly thread_id: number | undefined,
-        private readonly bot: TelegramBot,
+        private readonly bot: TelegramBot.Bot,
         parent_journal: IJournal)
     {
         this.journal = parent_journal.child(`group.${chat_id}`);
@@ -26,7 +27,9 @@ export class GroupChat implements IGroupChat {
         }
         try {
             await this.wait_api_cooldown();
-            const sent = await this.bot.sendMessage(this.chat_id, message, {
+            const sent = await this.bot.api.sendMessage({
+                chat_id: this.chat_id,
+                text: message,
                 parse_mode: "HTML",
                 message_thread_id: this.thread_id,
             });
@@ -41,7 +44,9 @@ export class GroupChat implements IGroupChat {
             return return_fail("API is not initialized", this.journal);
         }
         try {
-            await this.bot.sendChatAction(this.chat_id, "typing", {
+            await this.bot.api.sendChatAction({
+                chat_id: this.chat_id,
+                action: "typing",
                 message_thread_id: this.thread_id,
             });
             return Expected.ok(undefined);
@@ -56,14 +61,13 @@ export class GroupChat implements IGroupChat {
             return return_fail("API is not initialized", this.journal);
         }
         try {
-            const options: TelegramBot.SendDocumentOptions = {
-                caption,
-            };
-            const file_options: TelegramBot.FileOptions = {
-                contentType: content_type,
-            };
             await this.wait_api_cooldown();
-            await this.bot.sendDocument(this.chat_id, filename, options, file_options);
+            await this.bot.api.sendDocument({
+                chat_id: this.chat_id,
+                document: await fromPath(filename, { contentType: content_type }),
+                caption,
+                message_thread_id: this.thread_id,
+            });
             return Expected.ok(undefined);
         } catch (e) {
             return return_exception(e, this.journal);

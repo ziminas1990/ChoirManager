@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { TestContext, afterEach, mock, test } from "node:test";
 
-import TelegramBot from "node-telegram-bot-api";
+import * as TelegramBot from "node-telegram-bot-api";
 
 import { LocalBroadcaster } from "@src/adapters/local_message_queue/local_broadcaster.js";
 import { TgAdapter } from "@src/adapters/telegram/adapter.js";
@@ -164,7 +164,7 @@ test("Telegram replies load full chains only before an LLM response, including a
 
     // 2. collect an unmentioned reply without triggering the bot
     {
-        context.emit("message", reply);
+        await context.emit("message", reply);
         await context.proceed();
         assert.equal(context.requests.length, 0);
         assert.equal(context.stored(20)!.reply_to, "10");
@@ -176,7 +176,7 @@ test("Telegram replies load full chains only before an LLM response, including a
     let live_reply;
     let live_chain;
     {
-        context.emit("message", chain);
+        await context.emit("message", chain);
         await context.proceed();
         assert.equal(context.requests.length, 1);
         live_reply = context_message(context.requests[0], 20);
@@ -201,7 +201,7 @@ test("Telegram replies load full chains only before an LLM response, including a
         await context.restart();
         assert.deepEqual(context.id_reads, [["10"], ["5"]]);
         assert.equal(context.requests.length, 1);
-        context.emit("message", telegram_message(40, "@test_bot What did we agree on?"));
+        await context.emit("message", telegram_message(40, "@test_bot What did we agree on?"));
         await context.proceed();
         assert.equal(context.requests.length, 2);
         assert.deepEqual(context.id_reads, [["10"], ["5"], ["10"], ["5"]]);
@@ -220,7 +220,7 @@ test("Telegram replies load full chains only before an LLM response, including a
             time: new Date(original.date * 1000), message_id: "10",
             sender_id: "original-author", text: "Updated Sunday proposal",
         })).ok, true);
-        context.emit("message", telegram_message(50, "@test_bot Summarize again"));
+        await context.emit("message", telegram_message(50, "@test_bot Summarize again"));
         await context.proceed();
         assert.ok(context_message(context.requests[2], 10).endsWith("text:\nUpdated Sunday proposal"));
     }
@@ -230,7 +230,7 @@ test("Telegram replies load full chains only before an LLM response, including a
         const later = Date.now() + 4 * 86400_000;
         mock.method(Date, "now", () => later);
         const query_count = context.id_reads.length;
-        context.emit("message", telegram_message(60, "@test_bot A new topic"));
+        await context.emit("message", telegram_message(60, "@test_bot A new topic"));
         await context.proceed();
         assert.equal(context.id_reads.length, query_count);
         assert.equal(context.requests[3].some(message => message.content?.startsWith("id: 10\n")), false);
@@ -260,7 +260,7 @@ test("each managers response uses a fresh chat snapshot while retaining its tool
 
     // 2. complete a tool round trip using a single context snapshot
     {
-        context.emit("message", telegram_message(20, "@test_bot Answer"));
+        await context.emit("message", telegram_message(20, "@test_bot Answer"));
         await context.proceed();
         assert.equal(context.requests.length, 2);
         assert.equal(context.ranges.length, 1);
@@ -271,7 +271,7 @@ test("each managers response uses a fresh chat snapshot while retaining its tool
 
     // 3. persist the visible bot message and edit the original trigger
     {
-        context.emit("edited_message", telegram_message(20, "Edited request"));
+        await context.emit("edited_message", telegram_message(20, "Edited request"));
         await context.proceed();
         assert.equal(context.stored(1000)!.text, "Sunday works");
         assert.equal(context.requests.length, 2);
@@ -280,7 +280,7 @@ test("each managers response uses a fresh chat snapshot while retaining its tool
 
     // 4. use current chat text without duplicating the previous internal history
     {
-        context.emit("message", telegram_message(30, "@test_bot Explain"));
+        await context.emit("message", telegram_message(30, "@test_bot Explain"));
         await context.proceed();
         assert.equal(context.requests.length, 3);
         assert.equal(context.ranges.length, 1);
@@ -331,7 +331,7 @@ for (const failure of ["error", "throw"]) {
 
         // 2. complete the tool round trip despite the failed outgoing write
         {
-            context.emit("message", telegram_message(20, "@test_bot Answer"));
+            await context.emit("message", telegram_message(20, "@test_bot Answer"));
             await context.proceed();
             assert.equal(context.requests.length, 2);
             const result = context.requests[1].find(message => message.role === "tool_result");
@@ -373,10 +373,10 @@ test("queued mentions run one per tick and see the previous persisted bot reply"
 
     // 2. skip ordinary messages and handle only the first queued mention
     {
-        context.emit("message", telegram_message(10, "Ordinary conversation"));
-        context.emit("message", telegram_message(20, "@test_bot First question"));
-        context.emit("message", telegram_message(25, "Another ordinary message"));
-        context.emit("message", telegram_message(30, "@test_bot Follow-up"));
+        await context.emit("message", telegram_message(10, "Ordinary conversation"));
+        await context.emit("message", telegram_message(20, "@test_bot First question"));
+        await context.emit("message", telegram_message(25, "Another ordinary message"));
+        await context.emit("message", telegram_message(30, "@test_bot Follow-up"));
         await context.proceed();
         assert.equal(context.requests.length, 2);
     }
@@ -418,8 +418,8 @@ test("a failed response still leaves the next mention for another tick", async t
 
     // 2. attempt only the first of two queued mentions
     {
-        context.emit("message", telegram_message(20, "@test_bot First question"));
-        context.emit("message", telegram_message(30, "@test_bot Second question"));
+        await context.emit("message", telegram_message(20, "@test_bot First question"));
+        await context.emit("message", telegram_message(30, "@test_bot Second question"));
         await context.proceed();
         assert.equal(context.requests.length, 1);
     }
@@ -453,7 +453,7 @@ test("Telegram processing and LLM context do not wait for a pending backlog writ
 
     // 2. finish adapter processing and respond with the locally accepted message
     {
-        context.emit("message", telegram_message(20, "@test_bot Answer"));
+        await context.emit("message", telegram_message(20, "@test_bot Answer"));
         await context.proceed();
         await entered;
         assert.equal(context.stored(20), undefined);
@@ -480,7 +480,7 @@ test("failed background writes retain local context without retrying persistence
     {
         context = await fixture(t);
         context.fail_writes(new Error("Write unavailable"));
-        context.emit("message", telegram_message(20, "@test_bot Answer"));
+        await context.emit("message", telegram_message(20, "@test_bot Answer"));
     }
 
     // 2. respond using the locally accepted message despite the failed write
@@ -497,7 +497,7 @@ test("failed background writes retain local context without retrying persistence
         await context.proceed();
         assert.equal(context.stored(20), undefined);
         assert.equal(context.requests.length, 1);
-        context.emit("message", telegram_message(30, "@test_bot Next question"));
+        await context.emit("message", telegram_message(30, "@test_bot Next question"));
         await context.proceed();
         assert.equal(context.requests.length, 2);
         assert.deepEqual(context_ids(context.requests[1]), ["20", "30"]);
@@ -540,7 +540,7 @@ test("context requests resolve shared chains in batches and terminate at cycles 
 
     // 4. load the context with ancestors before the recent messages
     {
-        context.emit("message", telegram_message(50, "@test_bot Summarize"));
+        await context.emit("message", telegram_message(50, "@test_bot Summarize"));
         await context.proceed();
         assert.equal(context.id_reads.length, 2);
         assert.equal(context.id_reads[0].length, 2);
@@ -571,7 +571,7 @@ test("context snapshots keep reachable chains and drop chains after all recent r
             sender_id: "original-author", text: "Parent", reply_to: "5" })).ok, true);
         assert.equal((await backlog.add_message({ time: old_time, message_id: "5",
             sender_id: "original-author", text: "Ancestor", reply_to: null })).ok, true);
-        context.emit("message", telegram_message(20, "Older reply", {
+        await context.emit("message", telegram_message(20, "Older reply", {
             date: Math.floor((now - 2 * 86400_000) / 1000), reply_to_message: { message_id: 10 },
         }));
         await context.proceed();
@@ -582,7 +582,7 @@ test("context snapshots keep reachable chains and drop chains after all recent r
     {
         now += 12 * 3600_000;
         mock.method(Date, "now", () => now);
-        context.emit("message", telegram_message(30, "Fresh reply", { reply_to_message: { message_id: 10 } }));
+        await context.emit("message", telegram_message(30, "Fresh reply", { reply_to_message: { message_id: 10 } }));
         await context.proceed();
         assert.equal(context.requests.length, 0);
         assert.equal(context.id_reads.length, 0);
@@ -591,7 +591,7 @@ test("context snapshots keep reachable chains and drop chains after all recent r
     // 3. retain both ancestors after the first root expires, without duplicates
     {
         now += 2 * 86400_000;
-        context.emit("message", telegram_message(40, "@test_bot Summarize"));
+        await context.emit("message", telegram_message(40, "@test_bot Summarize"));
         await context.proceed();
         const ids = context_ids(context.requests[0]);
         assert.deepEqual(new Set(ids), new Set(["5", "10", "30", "40"]));
@@ -608,7 +608,7 @@ test("context snapshots keep reachable chains and drop chains after all recent r
     // 4. remove the whole chain when no recent message reaches it
     {
         now += 4 * 86400_000;
-        context.emit("message", telegram_message(50, "@test_bot New topic"));
+        await context.emit("message", telegram_message(50, "@test_bot New topic"));
         await context.proceed();
         assert.ok(context.stored(50));
         assert.equal(context.ranges.length, 1);
@@ -618,11 +618,11 @@ test("context snapshots keep reachable chains and drop chains after all recent r
 
     // 5. load the chain again on demand after another reply references it
     {
-        context.emit("message", telegram_message(60, "Another reply", { reply_to_message: { message_id: 10 } }));
+        await context.emit("message", telegram_message(60, "Another reply", { reply_to_message: { message_id: 10 } }));
         await context.proceed();
         assert.equal(context.requests.length, 2);
         assert.deepEqual(context.id_reads, [["10"], ["5"]]);
-        context.emit("message", telegram_message(70, "@test_bot Summarize again"));
+        await context.emit("message", telegram_message(70, "@test_bot Summarize again"));
         await context.proceed();
         const ids = context_ids(context.requests[2]);
         assert.deepEqual(context.id_reads, [["10"], ["5"]]);
@@ -650,8 +650,8 @@ test("a failed context lookup retains the queued reply and retries with a fresh 
 
     // 2. defer processing the reply while the chain is incomplete
     {
-        context.emit("message", telegram_message(20, "@test_bot Summarize", { reply_to_message: { message_id: 10 } }));
-        context.emit("message", telegram_message(30, "@test_bot Follow-up"));
+        await context.emit("message", telegram_message(20, "@test_bot Summarize", { reply_to_message: { message_id: 10 } }));
+        await context.emit("message", telegram_message(30, "@test_bot Follow-up"));
         const status = await context.proceed(false);
         assert.match(status.error, /Temporary read failure/);
         assert.equal(context.requests.length, 0);
@@ -692,7 +692,7 @@ for (const chat_type of ["group", "supergroup"] as const) {
                 chat: { id: managers_chat_id, type: chat_type },
                 reply_to_message: telegram_message(10, "Proposal", { from: original_author }),
             });
-            context.emit("message", reply);
+            await context.emit("message", reply);
             await context.proceed();
             snapshot = context.stored(20)!;
         }
@@ -700,7 +700,7 @@ for (const chat_type of ["group", "supergroup"] as const) {
         // 2. persist an edit that omits reply metadata, even with a bot mention
         {
             const { reply_to_message, ...edited } = reply;
-            context.emit("edited_message", { ...edited, text: "@test_bot I agree with Sunday" });
+            await context.emit("edited_message", { ...edited, text: "@test_bot I agree with Sunday" });
             await context.proceed();
             assert.equal(context.stored(20)!.text, "@test_bot I agree with Sunday");
             assert.deepEqual(context.stored(20), { ...snapshot, text: "@test_bot I agree with Sunday" });
@@ -710,9 +710,9 @@ for (const chat_type of ["group", "supergroup"] as const) {
 
         // 3. ignore edits in another chat or a topic of the managers chat
         {
-            context.emit("edited_message", { ...reply, text: "Other chat",
+            await context.emit("edited_message", { ...reply, text: "Other chat",
                 chat: { id: -200, type: chat_type } });
-            context.emit("edited_message", { ...reply, text: "Other topic", message_thread_id: 7 });
+            await context.emit("edited_message", { ...reply, text: "Other topic", message_thread_id: 7 });
             await context.proceed();
             assert.equal(context.updates.length, 1);
         }
@@ -720,7 +720,7 @@ for (const chat_type of ["group", "supergroup"] as const) {
         // 4. confirm the edited text and original relationship survive reload
         {
             await context.restart();
-            context.emit("message", telegram_message(30, "@test_bot Summarize"));
+            await context.emit("message", telegram_message(30, "@test_bot Summarize"));
             await context.proceed();
             const restored = context_message(context.requests[0], 20);
             assert.ok(restored.endsWith("text:\n@test_bot I agree with Sunday"));
@@ -750,7 +750,7 @@ test("unavailable originals remain ID references without copying Telegram snapsh
 
     // 2. persist each relationship and omit text and captions from LLM metadata
     for (const [index, item] of cases.entries()) {
-        context.emit("message", telegram_message(20 + index, "@test_bot Yes", {
+        await context.emit("message", telegram_message(20 + index, "@test_bot Yes", {
             reply_to_message: sdk_message(item.original),
         }));
         await context.proceed();
@@ -777,7 +777,7 @@ test("legacy metadata stays unknown while ordinary messages are explicitly non-r
         });
         assert.equal(result.ok, true);
         assert.equal(Object.hasOwn(context.stored("legacy")!, "reply_to"), false);
-        context.emit("message", telegram_message(20, "Yes, I agree. reply_to: 10"));
+        await context.emit("message", telegram_message(20, "Yes, I agree. reply_to: 10"));
         await context.proceed();
         assert.equal(context.stored(20)!.reply_to, null);
         assert.equal(context.requests.length, 0);
@@ -786,7 +786,7 @@ test("legacy metadata stays unknown while ordinary messages are explicitly non-r
     // 2. reload both records and omit reply_to unless the target id is known
     {
         await context.restart();
-        context.emit("message", telegram_message(30, "@test_bot Summarize"));
+        await context.emit("message", telegram_message(30, "@test_bot Summarize"));
         await context.proceed();
         const request = context.requests[0];
         assert.equal(Object.hasOwn(context.stored("legacy")!, "reply_to"), false);

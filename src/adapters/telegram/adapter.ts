@@ -1,5 +1,5 @@
 import fs from "fs";
-import TelegramBot from "node-telegram-bot-api";
+import * as TelegramBot from "node-telegram-bot-api";
 
 import { Expected, Status } from "@src/utils/expected.js";
 import { IJournal } from "@src/interfaces/journal.js";
@@ -58,7 +58,7 @@ export type PackedTgAdapter = {
 }
 
 export class TgAdapter extends Logic<void> implements IAdapter {
-    private bot?: TelegramBot;
+    private bot?: TelegramBot.Bot;
     private users: Map<number, TelegramUser> = new Map();
 
     // Queue of incoming messages, processed in proceed()
@@ -112,24 +112,37 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             if (!token) {
                 return Expected.err("Telegram token not found");
             }
-            this.bot = new TelegramBot(token, { polling: true });
-            this.bot.on("message", (msg) => {
+            this.bot = new TelegramBot.Bot(token);
+            this.bot.on("message", (context) => {
+                const msg = context.message;
+                if (!msg) {
+                    return;
+                }
                 const status = this.handle_message(msg);
                 if (!status.ok) {
                     this.journal.warning(`failed to handle message: ${status.error}`);
                 }
             });
-            this.bot.on("edited_message", (msg) => {
-                if (msg.chat.type != "group" && msg.chat.type != "supergroup") {
+            this.bot.on("edited_message", (context) => {
+                const msg = context.editedMessage;
+                if (!msg || (msg.chat.type != "group" && msg.chat.type != "supergroup")) {
                     return;
                 }
                 this.edited_messages_queue.push(msg);
             });
-            this.bot.on("callback_query", (query) => {
+            this.bot.on("callback_query", (context) => {
+                const query = context.callbackQuery;
+                if (!query) {
+                    return;
+                }
                 const status = this.handle_callback(query);
                 if (!status.ok) {
                     this.journal.error(`failed to handle callback: ${status.error}`);
                 }
+            });
+
+            this.bot.catch(error => {
+                this.journal.error({ error }, "Failed to process Telegram update");
             });
 
             const fetched = await this.users_collection.get_all();
@@ -151,6 +164,11 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                     this.users.delete(telegram_id);
                 }
             }
+            await this.bot.init();
+            // The v2 polling promise runs until stopped; do not await the loop here.
+            void this.bot.startPolling().catch(error => {
+                this.journal.error({ error }, "Telegram polling stopped");
+            });
             return Expected.ok(undefined);
         } catch (e) {
             return (((e) instanceof Error) ? Expected.err((e).message) : Expected.err(String(e)));
@@ -405,7 +423,9 @@ export class TgAdapter extends Logic<void> implements IAdapter {
     }
 
     private async on_set_announce_thread_message(msg: TelegramBot.Message): Promise<Status> {
-        this.bot!.sendMessage(msg.chat.id, "Got it! This will be announces thread now.", {
+        await this.bot!.api.sendMessage({
+            chat_id: msg.chat.id,
+            text: "Got it! This will be announces thread now.",
             message_thread_id: msg.message_thread_id,
         });
         this.choir_chat_id = msg.chat.id;
@@ -422,7 +442,10 @@ export class TgAdapter extends Logic<void> implements IAdapter {
     }
 
     private async on_set_manager_chat_message(msg: TelegramBot.Message): Promise<Status> {
-        this.bot!.sendMessage(msg.chat.id, "Got it! This will be managers chat now.");
+        await this.bot!.api.sendMessage({
+            chat_id: msg.chat.id,
+            text: "Got it! This will be managers chat now.",
+        });
         this.managers_chat_id = msg.chat.id;
         const message = [
             `Manager chat set:`,

@@ -96,6 +96,14 @@ export function next_month(): Date {
     return new Date(Date.UTC(current.getFullYear(), current.getMonth() + 1));
 }
 
+// Escape literal text before inserting it into Telegram HTML or attributes.
+export function escape_html(text: string): string {
+    return text.replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
 export type Formatting = "markdown" | "html" | "plain";
 
 export class Formatter {

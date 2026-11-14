@@ -1,4 +1,4 @@
-import TelegramBot from "node-telegram-bot-api";
+import * as TelegramBot from "node-telegram-bot-api";
 
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";

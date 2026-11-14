@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { TestContext, afterEach, mock, test } from "node:test";
 
-import TelegramBot from "node-telegram-bot-api";
+import * as TelegramBot from "node-telegram-bot-api";
 
 import { TgAdapter } from "@src/adapters/telegram/adapter.js";
 import { TgAdapterFactory } from "@src/adapters/telegram/factory.js";
@@ -94,8 +94,9 @@ test("restored Telegram chat routes work with an injected collection", async t =
     const deliveries: { id: TelegramBot.ChatId; text: string; thread?: number }[] = [];
     const packed = { choir_chat_id: -100, announce_thread_id: 12, managers_chat_id: -200 };
     {
-        mock.method(TelegramBot.prototype, "sendMessage", async (id: TelegramBot.ChatId, text: string, options?: TelegramBot.SendMessageOptions) => {
-            deliveries.push({ id, text, thread: options?.message_thread_id });
+        mock.method(TelegramBot.Api.prototype, "sendMessage", async ({ chat_id, text, message_thread_id }: TelegramBot.SendMessageParams) => {
+            assert.ok(chat_id !== undefined);
+            deliveries.push({ id: chat_id, text, thread: message_thread_id });
             return { message_id: deliveries.length };
         });
         adapter = TgAdapter.unpack({ token_file: token_file(t), formatting: "html" },

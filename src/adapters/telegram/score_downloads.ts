@@ -1,4 +1,4 @@
-import type TelegramBot from "node-telegram-bot-api";
+import type * as TelegramBot from "node-telegram-bot-api";
 
 import type { TelegramUser } from "./telegram_user.js";
 import { Score } from "@src/entities/score.js";

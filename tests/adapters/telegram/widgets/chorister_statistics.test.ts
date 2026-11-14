@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, mock, test } from "node:test";
 
-import TelegramBot from "node-telegram-bot-api";
+import * as TelegramBot from "node-telegram-bot-api";
 
 import { ChoristerDialog } from "@src/adapters/telegram/dialogs/chorister_dialog.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
@@ -17,7 +17,7 @@ import { Expected } from "@src/utils/expected.js";
 import { telegram_config } from "@tests/helpers/config.js";
 import { value } from "@tests/helpers/expected.js";
 import { mock_analytic } from "@tests/mocks/analytic.js";
-import { TelegramDelivery, inline_keyboard, mock_telegram, telegram_callback, telegram_message } from "@tests/mocks/telegram.js";
+import { TelegramDelivery, mock_telegram, telegram_callback, telegram_message } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
 
@@ -31,7 +31,8 @@ type State = {
     minutes: number;
     queries: ChoristerStatisticsRequest[];
     messages: TelegramDelivery[];
-    edits: (TelegramBot.EditMessageTextOptions & { text: string })[];
+    rich_messages: TelegramBot.SendRichMessageParams[];
+    edits: TelegramBot.EditMessageTextParams[];
     deletions: { chat_id: TelegramBot.ChatId; message_id: number }[];
     answers: string[];
     access_checks: Partial<UserId>[];
@@ -39,14 +40,14 @@ type State = {
     broken_analytic: boolean;
 };
 
-function fixture(lang = Language.EN) {
+function fixture(lang = Language.EN, coverage_days = 17.25) {
     const state: State = {
         profile: {
             id: { system_id: "member-id", tg_username: "member" },
             name: "Member", surname: "Singer", lang, voice: Voice.Alto,
             roles: [Role.Chorister],
         },
-        minutes: 60, queries: [], messages: [], edits: [], deletions: [], answers: [],
+        minutes: 60, queries: [], messages: [], rich_messages: [], edits: [], deletions: [], answers: [],
         access_checks: [], no_change: false, broken_analytic: false,
     };
     const environment = new Environment();
@@ -58,14 +59,18 @@ function fixture(lang = Language.EN) {
                 return Expected.err("statistics unavailable");
             }
             return Expected.ok({
-                period: { from: request.from, to: request.to },
+                period: {
+                    from: new Date(Math.max(request.from.getTime(),
+                        request.to.getTime() - coverage_days * 24 * 60 * 60 * 1000)),
+                    to: request.to,
+                },
                 total_rehersals: 1,
                 visited_rehersals: 1,
                 last_skipped_rehersals: 0,
                 total_hours: 2,
                 visited_hours: state.minutes / 60,
                 attendance_percent: state.minutes / 120 * 100,
-                songs: [{ name: "Song", ideal: 120, actual: state.minutes,
+                songs: [{ name: 'Long <b>piece</b> & "friends" beyond sixteen characters', ideal: 120, actual: state.minutes,
                     attendance_percent: state.minutes / 120 * 100 }],
             });
         },
@@ -79,23 +84,31 @@ function fixture(lang = Language.EN) {
     });
     Environment.set_global(environment);
     const bot = mock_telegram({
-        async sendMessage(chat_id, text, options) {
+        async sendMessage({ chat_id, text, ...options }) {
             const message_id = state.messages.length + 100;
             state.messages.push({ chat_id, text, options, message_id });
             return { message_id };
         },
-        async editMessageText(text, options) {
+        async sendRichMessage(params) {
+            const message_id = state.messages.length + 100;
+            state.rich_messages.push(params);
+            assert.ok(params.rich_message.html);
+            state.messages.push({ chat_id: params.chat_id, text: params.rich_message.html, message_id });
+            return { message_id };
+        },
+        async editMessageText(params) {
             if (state.no_change) {
                 throw new Error("Bad Request: message is not modified");
             }
-            state.edits.push({ text, ...options });
+            assert.ok(params);
+            state.edits.push(params);
             return true;
         },
-        async deleteMessage(chat_id, message_id) {
+        async deleteMessage({ chat_id, message_id }) {
             state.deletions.push({ chat_id, message_id });
             return true;
         },
-        async answerCallbackQuery(id) { state.answers.push(id); },
+        async answerCallbackQuery({ callback_query_id: id }) { state.answers.push(id); },
     });
     function new_session() {
         const users = mock_user_replica({ resolve_user: () => Expected.ok(state.profile) });
@@ -107,6 +120,11 @@ function fixture(lang = Language.EN) {
         return user;
     }
     return { state, environment, bot, new_session, user: new_session() };
+}
+
+function embedded_buttons(html: string): { callback_data: string }[] {
+    return [...html.matchAll(/<tg-button[^>]*data="([^"]+)"/g)]
+        .map(match => ({ callback_data: match[1] }));
 }
 
 async function click(context: ReturnType<typeof fixture>, data: string | undefined, message_id = 100, overrides: Partial<TelegramBot.CallbackQuery> = {}) {
@@ -123,8 +141,8 @@ async function click(context: ReturnType<typeof fixture>, data: string | undefin
 
 for (const lang of [Language.EN, Language.RU]) {
     test(`new widgets have stable buttons (${lang})`, async () => {
-        // Motivation: the normal menu path must issue durable buttons without
-        // changing the existing layout or relying on callback registrations.
+        // Motivation: the menu must send a rich table with literal piece names
+        // and durable controls arranged as three rows of two visible buttons.
 
         // 1. create a session and the normal chorister dialog
         let context;
@@ -144,10 +162,28 @@ for (const lang of [Language.EN, Language.RU]) {
         // 3. verify layout, default period, and stable identifiers
         {
             const message = context.state.messages[0];
-            const keyboard = inline_keyboard(message.options);
-            assert.deepEqual(keyboard.map(row => row.length), [2, 2, 2]);
-            assert.deepEqual(keyboard.flat().map(button => button.callback_data),
+            const payload = context.state.rich_messages[0];
+            assert.equal(payload.chat_id, 123);
+            assert.equal(payload.reply_markup, undefined);
+            assert.equal(message.options, undefined);
+            assert.match(message.text, /<table bordered striped compact>/);
+            assert.match(message.text, /<th>(Piece|Произведение)<\/th>/);
+            assert.ok(message.text.includes('<td>Long &lt;b&gt;piece&lt;/b&gt; &amp; &quot;friends&quot; beyond sixteen characters</td>'));
+            assert.match(message.text, /<td align="right">1\.0<\/td>/);
+            assert.match(message.text, /<td align="right">2\.0<\/td>/);
+            assert.match(message.text, /<td align="right">50%<\/td>/);
+            assert.doesNotMatch(message.text, /<pre>|<b>piece/);
+            const keyboard = embedded_buttons(message.text);
+            assert.deepEqual(keyboard.map(button => button.callback_data),
                 ["30", "60", "90", "180", "all", "close"].map(action => `stats:v1:${action}`));
+            const rows = [...message.text.matchAll(/<tg-button-row>(.*?)<\/tg-button-row>/g)];
+            assert.deepEqual(rows.map(row => embedded_buttons(row[1]).map(button => button.callback_data)), [
+                ["stats:v1:30", "stats:v1:60"],
+                ["stats:v1:90", "stats:v1:180"],
+                ["stats:v1:all", "stats:v1:close"],
+            ]);
+            assert.doesNotMatch(message.text, /style="link"/);
+            assert.match(message.text, /<tg-button type="callback_data" style="danger" data="stats:v1:close">/);
 
             const { from, to } = context.state.queries[0];
             assert.deepEqual(from, apply_interval(to, { days: -30 }));
@@ -169,7 +205,7 @@ test("all period buttons and close survive a fresh session without widget state"
         await new ChoristerStatisticsWidget(context.user, journal).start();
         await new ChoristerStatisticsWidget(context.user, journal).start();
         [first, second] = context.state.messages;
-        buttons = inline_keyboard(first.options).flat();
+        buttons = embedded_buttons(first.text);
     }
 
     // 2. replace the session and change current profile and attendance data
@@ -196,9 +232,18 @@ test("all period buttons and close survive a fresh session without widget state"
             const end: Date = to;
             assert.ok(end.getTime() >= clicked_at && end.getTime() <= Date.now());
             assert.deepEqual(from, days ? apply_interval(end, { days: -days }) : new Date(0));
-            const edit: TelegramBot.EditMessageTextOptions & { text: string } = context.state.edits.at(-1)!;
+            const edit: TelegramBot.EditMessageTextParams = context.state.edits.at(-1)!;
             assert.equal(edit.message_id, first.message_id);
             assert.equal(edit.chat_id, 123);
+            assert.equal(edit.text, undefined);
+            assert.equal(edit.parse_mode, undefined);
+            assert.deepEqual(edit.reply_markup, { inline_keyboard: [] });
+            assert.match(edit.rich_message!.html!, /Твоя статистика посещений/);
+            assert.match(edit.rich_message!.html!, /<td align="right">100%<\/td>/);
+            assert.equal(embedded_buttons(edit.rich_message!.html!).length, 6);
+            if (days === undefined) {
+                assert.match(edit.rich_message!.html!, /за всё время \(18 дн\.\)/);
+            }
         }
     }
 
@@ -289,7 +334,7 @@ for (const failure of ["profile error", "profile exception", "analytic error", "
         {
             context = fixture();
             resolve = context.environment.user_service.resolve_user;
-            edit = context.bot.editMessageText;
+            edit = context.bot.api.editMessageText;
         }
 
         // 2. configure a failure and click a period button
@@ -301,7 +346,7 @@ for (const failure of ["profile error", "profile exception", "analytic error", "
             } else if (failure === "analytic error") {
                 context.state.broken_analytic = true;
             } else {
-                context.bot.editMessageText = async () => { throw new Error("offline"); };
+                context.bot.api.editMessageText = async () => { throw new Error("offline"); };
             }
             await click(context, "stats:v1:60");
         }
@@ -316,7 +361,7 @@ for (const failure of ["profile error", "profile exception", "analytic error", "
         // 4. restore services and retry the same button
         {
             context.environment.user_service.resolve_user = resolve;
-            context.bot.editMessageText = edit;
+            context.bot.api.editMessageText = edit;
             context.state.broken_analytic = false;
             await click(context, "stats:v1:60");
             assert.equal(context.state.edits.at(-1)!.message_id, 100);
@@ -355,8 +400,107 @@ test("repeated identical updates are harmless and legacy buttons are unavailable
     {
         context.state.no_change = false;
         assert.equal((await new ChoristerStatisticsWidget(context.user, journal).start()).ok, true);
-        const keyboard = inline_keyboard(context.state.messages[0].options);
-        await click(context, keyboard[0][0].callback_data, context.state.messages[0].message_id);
+        const keyboard = embedded_buttons(context.state.messages[0].text);
+        await click(context, keyboard[0].callback_data, context.state.messages[0].message_id);
         assert.equal(context.state.edits.length, 1);
     }
 });
+
+test("a rejected rich statistics send reports failure and can be retried", async () => {
+    // Motivation: a Telegram markup error must not be reported as a successful
+    // statistics display or leave the user without actionable feedback.
+
+    // 1. reject the initial Rich HTML request
+    let context;
+    let send;
+    {
+        context = fixture();
+        send = context.bot.api.sendRichMessage;
+        context.bot.api.sendRichMessage = async () => {
+            throw new Error("Bad Request: unsupported rich message tag");
+        };
+    }
+
+    // 2. check the failed outcome and ordinary HTML feedback
+    {
+        const status = await new ChoristerStatisticsWidget(context.user, journal).start();
+        assert.equal(status.ok, false);
+        assert.match(status.error, /unsupported rich message tag/);
+        assert.equal(context.state.rich_messages.length, 0);
+        assert.equal(context.state.messages.length, 1);
+        assert.match(context.state.messages[0].text, /couldn't collect statistics/);
+    }
+
+    // 3. restore delivery and open the same statistics successfully
+    {
+        context.bot.api.sendRichMessage = send;
+        assert.equal((await new ChoristerStatisticsWidget(context.user, journal).start()).ok, true);
+        assert.equal(context.state.rich_messages.length, 1);
+    }
+});
+
+for (const lang of [Language.EN, Language.RU]) {
+    test(`empty statistics keep controls and distinguish missing percentages (${lang})`, async () => {
+        // Motivation: users with no rehearsals in the period need a usable
+        // report without misleading zero percentages or an empty HTML table.
+
+        // 1. supply a valid period with no expected attendance
+        let context;
+        {
+            context = fixture(lang);
+            context.environment.analytic_service.chorister_statistic_request = async request => Expected.ok({
+                period: { from: request.to, to: request.to },
+                total_rehersals: 0, visited_rehersals: 0, last_skipped_rehersals: 0,
+                total_hours: 0, visited_hours: 0, attendance_percent: null, songs: [],
+            });
+        }
+
+        // 2. open statistics and inspect the empty state
+        {
+            assert.equal((await new ChoristerStatisticsWidget(context.user, journal).start()).ok, true);
+            const html = context.state.rich_messages[0].rich_message.html!;
+            assert.match(html, /(No pieces for this period|За этот период нет произведений)/);
+            assert.match(html, /: —<\/p>/);
+            assert.doesNotMatch(html, /<table|NaN|Infinity|0%/);
+            assert.equal(embedded_buttons(html).length, 6);
+        }
+
+        // 3. select all time and verify that an empty history covers zero days
+        {
+            await click(context, "stats:v1:all");
+            const html = context.state.edits.at(-1)!.rich_message!.html!;
+            assert.ok(html.includes(lang === Language.RU
+                ? "за всё время (0 дн.)" : "for all time (0 days)"));
+        }
+    });
+}
+
+for (const [lang, coverage_days, expected] of [
+    [Language.RU, 17.25, "за всё время (18 дн.)"],
+    [Language.EN, 17.25, "for all time (18 days)"],
+    [Language.RU, 1, "за всё время (1 дн.)"],
+    [Language.EN, 1, "for all time (1 day)"],
+] as const) {
+    test(`all-time statistics show the actual covered days (${lang}, ${coverage_days})`, async () => {
+        // Motivation: the all-time request starts at the Unix epoch, while the
+        // visible day count must reflect the period returned by analytics.
+
+        // 1. prepare statistics whose recorded history is shorter than the request
+        let context;
+        {
+            context = fixture(lang, coverage_days);
+        }
+
+        // 2. select all time using a durable period control
+        {
+            await click(context, "stats:v1:all");
+        }
+
+        // 3. verify the actual duration instead of the epoch-based request span
+        {
+            assert.deepEqual(context.state.queries[0].from, new Date(0));
+            const html = context.state.edits[0].rich_message!.html!;
+            assert.ok(html.includes(expected));
+        }
+    });
+}

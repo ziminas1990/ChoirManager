@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import TelegramBot from "node-telegram-bot-api";
+import * as TelegramBot from "node-telegram-bot-api";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IJournal } from "@src/interfaces/journal.js";
 import { Logic } from '@src/logic/abstracts.js';
