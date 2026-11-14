@@ -9,6 +9,7 @@ import { Bot } from "node-telegram-bot-api";
 import { GroupChat } from "@src/adapters/telegram/group_chat.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { MemoryJournal } from "@src/components/memory_journal.js";
+import { IUserAgent, SendMessageOptions } from "@src/interfaces/user_agent.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { escape_html } from "@src/utils.js";
 import { Expected } from "@src/utils/expected.js";
@@ -23,13 +24,16 @@ after(() => mock.restoreAll());
 
 function fixture() {
     const calls: { method: string; fields: FormData }[] = [];
-    const state = { reject: false };
+    const state = { reject: false, network_error: false };
     const bot = new Bot("test-only-token", {
         maxRetries: 0,
         fetch: async (input, options) => {
             const request = new Request(input, options);
             calls.push({ method: new URL(request.url).pathname.split("/").at(-1)!,
                 fields: await request.formData() });
+            if (state.network_error) {
+                throw new Error("Network unavailable");
+            }
             return new Response(JSON.stringify(state.reject
                 ? { ok: false, error_code: 400, description: "Bad Request: unsupported markup" }
                 : { ok: true, result: telegram_message({ message_id: calls.length }) }), {
@@ -62,8 +66,10 @@ test("Rich HTML is serialized through the SDK for sending and editing", async ()
     // 2. send through the real SDK and verify the nested HTML payload
     let message_id;
     {
-        const sent = await context.user.send_rich_message(html);
+        const agent: IUserAgent = context.user;
+        const sent = await agent.send_message(html, { format: "rich_html" });
         assert.equal(sent.ok, true, sent.ok ? undefined : sent.error);
+        assert.equal(sent.value, 1);
         message_id = sent.value;
         const { method, fields } = context.calls[0];
         assert.equal(method, "sendRichMessage");
@@ -124,6 +130,107 @@ test("ordinary HTML content is identical in private previews and group topics", 
     }
 });
 
+test("user-agent sends default to ordinary HTML without a keyboard", async () => {
+    // Motivation: callers using only IUserAgent must retain the existing
+    // default format without adopting platform-specific send parameters.
+
+    // 1. create a user behind the public interface
+    let context;
+    let agent: IUserAgent;
+    {
+        context = fixture();
+        agent = context.user;
+    }
+
+    // 2. send without options and check the identifier and exact payload
+    {
+        const sent = await agent.send_message("<b>Hello</b>");
+        assert.equal(sent.ok, true);
+        assert.equal(sent.value, 1);
+        const { method, fields } = context.calls[0];
+        assert.equal(method, "sendMessage");
+        assert.equal(fields.get("text"), "<b>Hello</b>");
+        assert.equal(fields.get("parse_mode"), "HTML");
+        assert.equal(fields.has("rich_message"), false);
+        assert.equal(fields.has("reply_markup"), false);
+    }
+});
+
+const keyboards: NonNullable<SendMessageOptions["reply_markup"]>[] = [
+    { inline_keyboard: [[
+        { text: "Confirm", callback_data: "confirm:1" },
+        { text: "Join", url: "https://example.com/join" },
+    ]] },
+    { keyboard: [[{ text: "Statistics" }]], is_persistent: true, resize_keyboard: true },
+];
+
+for (const format of ["html", "rich_html"] as const) {
+    for (const keyboard of keyboards) {
+        const kind = "inline_keyboard" in keyboard ? "inline" : "reply";
+        test(`user-agent preserves ${kind} keyboards in ${format} mode`, async () => {
+            // Motivation: both formatting paths must honor the same limited
+            // keyboard options exposed by IUserAgent, including reply flags.
+
+            // 1. create a sender through the public interface
+            let context;
+            let agent: IUserAgent;
+            {
+                context = fixture();
+                agent = context.user;
+            }
+
+            // 2. send with explicit formatting and inspect SDK serialization
+            {
+                const sent = await agent.send_message("<b>Hello</b>", { format, reply_markup: keyboard });
+                assert.equal(sent.ok, true);
+                assert.equal(sent.value, 1);
+                const { method, fields } = context.calls[0];
+                assert.equal(fields.get("chat_id"), "123");
+                assert.deepEqual(JSON.parse(String(fields.get("reply_markup"))), keyboard);
+                if (format === "rich_html") {
+                    assert.equal(method, "sendRichMessage");
+                    assert.deepEqual(JSON.parse(String(fields.get("rich_message"))), { html: "<b>Hello</b>" });
+                    assert.equal(fields.has("text"), false);
+                    assert.equal(fields.has("parse_mode"), false);
+                } else {
+                    assert.equal(method, "sendMessage");
+                    assert.equal(fields.get("text"), "<b>Hello</b>");
+                    assert.equal(fields.get("parse_mode"), "HTML");
+                    assert.equal(fields.has("rich_message"), false);
+                }
+            }
+        });
+    }
+
+    for (const failure of ["uninitialized", "network"]) {
+        test(`user-agent handles ${failure} sends in ${format} mode`, async () => {
+            // Motivation: uninitialized clients and transport failures must
+            // remain handled errors in both branches of the unified sender.
+
+            // 1. prepare a sender that cannot deliver the message
+            let agent: IUserAgent;
+            {
+                if (failure === "uninitialized") {
+                    agent = new TelegramUser(user_profile("member"), 123, telegram_config(),
+                        { users: mock_user_replica() }, new MemoryJournal());
+                } else {
+                    const context = fixture();
+                    context.state.network_error = true;
+                    agent = context.user;
+                }
+            }
+
+            // 2. check the error outcome through the public interface
+            {
+                const sent = await agent.send_message("<b>Hello</b>", { format });
+                assert.equal(sent.ok, false);
+                assert.match(sent.error, failure === "uninitialized"
+                    ? /API is not initialized/ : /Network request failed/);
+            }
+        });
+    }
+}
+
 for (const operation of ["rich send", "rich edit", "private HTML", "group HTML"]) {
     test(`Telegram markup errors return failure for ${operation}`, async () => {
         // Motivation: an API rejection must reach the caller as an error so
@@ -139,7 +246,7 @@ for (const operation of ["rich send", "rich edit", "private HTML", "group HTML"]
         // 2. perform the operation and inspect the handled failure
         {
             const result = operation === "rich send"
-                ? await context.user.send_rich_message("<unsupported>value</unsupported>")
+                ? await context.user.send_message("<unsupported>value</unsupported>", { format: "rich_html" })
                 : operation === "rich edit"
                     ? await context.user.edit_rich_message(42, "<unsupported>value</unsupported>")
                     : operation === "private HTML"

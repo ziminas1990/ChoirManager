@@ -3,8 +3,8 @@
 Project rules live in [`.cursor/rules/`](.cursor/rules/). Read the rules that
 apply to your work; rules marked `alwaysApply` apply across the project.
 
-- [general_rules.mdc](.cursor/rules/general_rules.mdc) — comment style and
-  mandatory task workflow; always applies.
+- [general_rules.mdc](.cursor/rules/general_rules.mdc) — comment style,
+  documentation policy, and mandatory task workflow; always applies.
 - [architecture_guideline.mdc](.cursor/rules/architecture_guideline.mdc) —
   storage, service, and factory boundaries; always applies.
 - [typescript_codestyle.mdc](.cursor/rules/typescript_codestyle.mdc) — class

@@ -1,5 +1,5 @@
 ---
-description: Comment style and mandatory development task workflow
+description: Comment style, documentation policy, and mandatory development task workflow
 alwaysApply: true
 ---
 
@@ -28,6 +28,14 @@ export function remember() {}
 ```
 
 This applies to TypeScript, JavaScript, and similar languages in this repo.
+
+## Documentation
+
+Create new documentation only at the user's explicit request.
+Make targeted edits to existing documentation so it describes the current
+state. Do not add descriptions of the state before a change or behavior that
+no longer exists. Follow [docs/AGENT.md](../../docs/AGENT.md) for documentation
+work and the separate rules for development tracking records.
 
 ## Development tasks
 

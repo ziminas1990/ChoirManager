@@ -1,101 +1,86 @@
-# TASK-014: Consolidate report calculations in the Analytic service
+# TASK-014: Complete and verify Analytic report calculations
 
 ## Background
 
-Personal attendance calculations live in a static use-case class, while the
-low-attendance list is calculated inside AttendanceTracker's formatting code.
-Activity-period calculations also exist, but have no current callers. A separate
-HTML analytics prototype is unfinished and no longer needed.
+The asynchronous Analytic service already provides personal attendance and
+activity reports, low-attendance lists, and monthly reports. Personal statistics
+and AttendanceTracker use it, and the old use-case and HTML prototype are removed.
 
-A single service should own these calculations and provide monthly choir report
-data using consistent, explicit source-data rules.
+Historical reports use each chorister's current voice, but per-part rehearsal
+durations retain values calculated under earlier voice assignments. For example,
+a 60-minute alto moved to tenor can be compared against a previously calculated
+30-minute tenor duration, producing 200% attendance. Database updates only
+increase stored maxima, so later refreshes can also retain obsolete durations
+for the former part.
+
+The calculations have no focused service tests. README links to a missing
+docs/analytics.md guide, leaving the source-data rules incompletely documented.
 
 ## Require
 
-Add a stateless Analytic service with an asynchronous IAnalyticService contract
-that accepts transport-mappable requests and returns structured report data.
-Use Date objects for dates; transport adapters own their encoding and restoration.
-Recalculate results from the current source snapshot on every request, without
-an Analytic cache or report store.
+Make report inputs consistent with current voice assignments on every request,
+including historical reports. A part's rehearsal duration remains the maximum
+presence of participants assigned to that part in the current snapshot. A voice
+change must affect both individual eligibility and per-part duration on the next
+request, without waiting for an attendance refresh or restart. Attendance
+refreshes must not retain obsolete maxima or contributions to former parts.
 
-Consolidate the existing calculations in this service:
+Preserve the asynchronous, transport-mappable service contract with Date values
+and no Analytic result cache or report store. Keep presentation and reminder
+orchestration with the existing consumers.
 
-- Personal attendance for a requested period, including expected and attended
-  rehearsal counts and hours, consecutive recent absences, and piece statistics.
-- Activity periods, including first attendance and the start of the latest active
-  period, with a configurable inactivity gap.
-- Low-attendance lists for a requested period, including attendance percentages
-  and the existing selection and ordering rules.
+Document the calculation rules in docs/analytics.md and ensure README's link
+resolves. Cover:
 
-Switch the personal statistics widget and AttendanceTracker to the service.
-Keep presentation and reminder orchestration with their existing consumers.
-Remove src/use_cases/analytic.ts after migrating its calculations.
+- UTC reporting boundaries and the definition of a held rehearsal.
+- Overall and per-part durations, including current voices in historical reports.
+- Membership eligibility and expected attendance since the first recorded visit.
+- The common rehearsal selection for individual counts and hours, consecutive
+  absences, and piece statistics.
+- Identity matching by system ID and Telegram username, including unmatched
+  attendance records and profiles without a username.
+- Full piece-time credit for positive partial attendance.
+- Empty periods, zero denominators, rounding, and deterministic tie ordering.
+- Monthly champions, part averages, and the two explicit leader selection modes.
 
-Add MonthlyAttendanceReport for a requested calendar month, containing:
-
-- Total rehearsal count and total rehearsal hours.
-- Rehearsed pieces, ordered by accumulated rehearsal time descending.
-- Champions who attended every held rehearsal for their voice part in the month.
-- Average attendance and attendance leaders for each voice part.
-
-Support two explicit leader selection modes per part: all eligible choristers
-strictly above 80%, or the top three eligible choristers. Both modes order by
-attendance descending; do not switch modes based on how many exceed 80%.
-
-Document calculation rules supported by the available data:
-
-- Reporting timezone and period boundaries.
-- Which rehearsals count as held and how overall and per-part durations are
-  determined, given that current per-part duration is maximum participant presence.
-- Membership eligibility and expected time since the first recorded attendance.
-- Rehearsal eligibility for each chorister: positive duration for their current
-  voice part, within the requested period and since their first recorded visit.
-  Apply it consistently to all individual attendance measures.
-- Use of current voice assignments for historical reports.
-- Identity matching between system IDs and attendance records keyed by Telegram
-  username, including unmatched records.
-- Piece-time attribution when a chorister attended only part of a rehearsal.
-- Empty periods, zero expected time, rounding, and deterministic tie ordering.
-
-Remove the abandoned HTML analytics prototype under src/analytic/ and its
-exclusive build configuration and dependencies.
+Add focused regression coverage for the calculations and their source-data
+integration, including voice changes and repeated attendance refreshes. Verify
+that AttendanceTracker consumes service results while preserving reminder
+orchestration.
 
 ## Acceptance
 
-- All report calculations are available through the asynchronous Analytic service
-  as transport-mappable data with Date values, independently of presentation.
-  Analytic has no report persistence or result cache; subsequent requests reflect
-  changes in its input snapshot.
-- Personal statistics and AttendanceTracker use the service without duplicating
-  attendance calculations. Existing reminder orchestration is preserved. The
-  low-attendance list preserves its current rounded-up percentage comparison
-  against 60% and descending ordering.
-- Personal statistics use only rehearsals for the chorister's current voice part
-  since their first recorded attendance. The same selection applies to rehearsal
-  counts and hours, consecutive absences, and piece statistics. Rehearsals with
-  zero duration for that part and dates before joining cannot count as absences.
-  Partial presence retains the current piece-time attribution. Zero expected time
-  has explicit handling and cannot produce NaN or infinite percentages.
-- Activity results retain the existing inactivity-gap semantics and distinguish
-  ongoing periods from closed periods.
-- Monthly results cover the requested calendar month with an inclusive start and
-  exclusive end in the documented reporting timezone, including year boundaries.
-- Monthly totals include only held rehearsals. Rehearsal hours are counted once,
-  without multiplying by participants or voice parts. Piece times are accumulated
-  and ordered descending.
-- Champions attended every held rehearsal for their current voice part over the
-  whole month; positive partial attendance counts as a visit. Attending only the
-  remaining rehearsals after joining does not waive earlier rehearsals for that
-  part. A part with no rehearsals has no champions. Empty months have no champions
-  or misleading rankings.
-- Monthly individual attendance is attended minutes divided by expected minutes.
-  Each part average is the arithmetic mean of eligible individual percentages.
-  Zero-denominator cases are excluded from monthly averages and rankings.
-- Monthly threshold mode includes all and only eligible choristers strictly above
-  80%. Top-three mode returns the three highest-ranked eligible choristers, or all
-  if fewer than three exist. Monthly comparisons use unrounded values and ties
-  have deterministic ordering.
-- src/use_cases/analytic.ts and the abandoned HTML analytics prototype are removed;
-  active code and build configuration no longer reference them.
-- Focused checks cover migrated calculations and monthly report edge cases.
-  npm run compile and npm run autotests pass after the migration and cleanup.
+- Moving a 60-minute alto to tenor alongside a 30-minute tenor immediately gives
+  a 60-minute tenor duration. Their attendance becomes 100% and 50%, respectively;
+  the monthly tenor average is 75%, and only the first qualifies above 80%.
+- Voice changes remove obsolete contributions to the former part. A part with
+  no remaining positive attendance has zero duration. Repeated refreshes and
+  decreases in recorded attendance do not leave stale duration maxima.
+- Subsequent requests reflect the current source snapshot without an Analytic
+  cache or report store. Focused checks exercise the production source adapter,
+  not only an artificial snapshot or mocked service response.
+- Personal counts and hours use only rehearsals with positive duration for the
+  current part, within the requested period and since the first recorded visit.
+  Consecutive absences and piece statistics use the same selection. Positive
+  partial attendance credits the rehearsal's full piece times; zero expected
+  time cannot produce NaN or infinite percentages.
+- Activity coverage verifies the configurable inactivity gap, including equality
+  at the gap boundary, and distinguishes ongoing periods from closed periods.
+- Low-attendance selection compares rounded-up percentages against 60% and
+  orders them descending. AttendanceTracker preserves its reminder trigger and
+  notification behavior while using service results.
+- Monthly coverage verifies inclusive UTC month starts and exclusive ends,
+  including year boundaries. Only held rehearsals count; their hours count once.
+  Piece times accumulate and sort descending.
+- Champions require a positive visit to every held rehearsal for the current
+  part over the whole month. Joining during the month does not waive earlier
+  rehearsals. Empty months and parts without rehearsals have no champions.
+- Monthly individual percentages use attended minutes divided by expected
+  minutes; part averages are arithmetic means. Zero-denominator cases are
+  excluded from averages and rankings, including empty months.
+- Threshold mode uses unrounded percentages strictly above 80%; top-three mode
+  returns up to three eligible choristers regardless of that threshold. Both
+  order attendance descending with deterministic ties.
+- The analytics guide resolves from README and explains all calculation rules
+  listed above, including identity matching and rounding.
+- Focused regression checks pass, as do npm run compile and npm run autotests.

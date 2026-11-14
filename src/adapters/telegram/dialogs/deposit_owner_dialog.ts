@@ -105,7 +105,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
             message,
             {
                 reply_markup: keyboard,
-                parse_mode: "HTML"
+                format: "html"
             });
         return sent.as_status();
     }

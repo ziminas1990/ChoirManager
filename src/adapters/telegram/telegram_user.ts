@@ -1,7 +1,7 @@
 import * as TelegramBot from "node-telegram-bot-api";
 import { fromPath } from "node-telegram-bot-api/node";
 
-import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
+import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent, SendMessageOptions } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IJournal } from "@src/interfaces/journal.js";
 import { Role, UserData, is_guest_user, user_has_role, user_tg_username } from "@src/entities/user.js";
@@ -164,39 +164,29 @@ export class TelegramUser implements IUserAgent {
     // From IUserAgent
     async send_message(
         message: string,
-        options?: Omit<TelegramBot.SendMessageParams, "chat_id" | "text">,
+        options?: SendMessageOptions,
     ): Promise<Expected<number>> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal);
         }
         try {
             await this.wait_api_cooldown();
-            const sent = await this.bot.api.sendMessage({
-                ...options,
-                chat_id: this.chat_id,
-                text: message,
-                parse_mode: "HTML"
-            });
+            const sent = options?.format === "rich_html"
+                ? await this.bot.api.sendRichMessage({
+                    chat_id: this.chat_id,
+                    rich_message: { html: message },
+                    reply_markup: options.reply_markup,
+                })
+                : await this.bot.api.sendMessage({
+                    chat_id: this.chat_id,
+                    text: message,
+                    parse_mode: "HTML",
+                    reply_markup: options?.reply_markup,
+                });
             this.journal.info({ message }, "message sent")
             return Expected.ok(sent.message_id);
         } catch (e) {
             return return_exception(e, this.journal);
-        }
-    }
-
-    async send_rich_message(html: string): Promise<Expected<number>> {
-        if (!this.bot) {
-            return return_fail("API is not initialized", this.journal);
-        }
-        try {
-            await this.wait_api_cooldown();
-            const sent = await this.bot.api.sendRichMessage({
-                chat_id: this.chat_id,
-                rich_message: { html },
-            });
-            return Expected.ok(sent.message_id);
-        } catch (error) {
-            return return_exception(error, this.journal);
         }
     }
 

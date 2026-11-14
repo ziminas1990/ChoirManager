@@ -127,7 +127,7 @@ export class ChoristerStatisticsWidget {
 
     private async update_widget(html: string): Promise<Status> {
         if (this.message_id === undefined) {
-            return (await this.user.send_rich_message(html)).as_status();
+            return (await this.user.send_message(html, { format: "rich_html" })).as_status();
         }
         const updated = await this.user.edit_rich_message(this.message_id, html);
         // Repeated clicks can produce identical message contents.

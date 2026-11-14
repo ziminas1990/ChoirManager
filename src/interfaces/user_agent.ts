@@ -10,6 +10,19 @@ export enum ConfirmationError {
     TimedOut = 1,
 }
 
+// Omitted format uses ordinary HTML; rich_html supports tables and embedded controls.
+// Omitted reply_markup leaves keyboard behavior to the messaging platform.
+export type SendMessageOptions = {
+    format?: "html" | "rich_html";
+    reply_markup?: {
+        inline_keyboard: { text: string; callback_data?: string; url?: string }[][];
+    } | {
+        keyboard: { text: string }[][];
+        is_persistent?: boolean;
+        resize_keyboard?: boolean;
+    };
+};
+
 export interface IUserAgent
 {
     agent_name(): string;
@@ -17,7 +30,7 @@ export interface IUserAgent
     // Canonical identity: UserData.id.system_id, not telegram username.
     userid(): string;
 
-    send_message(message: string): Promise<Expected<number>>;
+    send_message(message: string, options?: SendMessageOptions): Promise<Expected<number>>;
 
     send_file(filename: string, caption?: string, content_type?: string): Promise<Status>;
 

@@ -24,9 +24,14 @@ and `Steps`. These formats apply to tracking documents, not general guides.
 ## Working with documentation
 
 Read relevant guides and any referenced task or epic before changing code.
-Update affected guides when implemented behavior, configuration, or operational
-procedures change. Keep guides consistent with the current implementation;
-record planned changes and their acceptance criteria in tasks.
+Create new documentation only at the user's explicit request.
+
+Make targeted edits to existing guides when implemented behavior, configuration,
+or operational procedures change. Describe only the current state; do not
+include before-and-after accounts or mention behavior that no longer exists.
+Keep edits limited to the affected content. Record planned changes and their
+acceptance criteria in tasks, following the development tracking rules above.
+Closed tasks and epics remain immutable historical records.
 
 Before closing a task, verify its acceptance criteria and relevant checks.
 Before closing an epic, verify that its steps are complete, or record why it
