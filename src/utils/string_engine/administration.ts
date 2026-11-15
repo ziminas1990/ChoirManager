@@ -18,7 +18,7 @@ export function render_confirmation(operation: AdministrationOperation): string 
             "Подтвердите создание пользователя:",
             "",
             ...format_user_lines(operation.user, false),
-        ].join("\n");
+        ].join("<br>");
     }
 
     if (operation.what === "remove_member") {
@@ -28,7 +28,7 @@ export function render_confirmation(operation: AdministrationOperation): string 
             escape_html(format_identity(operation.target)),
             format_labeled_value("Текущие роли", format_roles_list(operation.target.roles)),
             "Все роли будут отозваны. Профиль и история сохранятся.",
-        ].join("\n");
+        ].join("<br>");
     }
 
     // Roleless profiles already exist. Adding one is neither a new user nor a
@@ -45,7 +45,7 @@ export function render_confirmation(operation: AdministrationOperation): string 
             "",
             "Не удалось показать предлагаемые изменения:",
             preview.error,
-        ].join("\n");
+        ].join("<br>");
     }
 
     const after = preview.value;
@@ -56,7 +56,7 @@ export function render_confirmation(operation: AdministrationOperation): string 
         "",
         ...format_change_lines(collect_profile_changes(operation.target, after)),
         format_resulting_roles(operation.target.roles, after.roles),
-    ].join("\n");
+    ].join("<br>");
 }
 
 export function render_result(result: OperationResult): string {
@@ -65,7 +65,7 @@ export function render_result(result: OperationResult): string {
             "Пользователь создан:",
             "",
             ...format_user_lines(result.user, true),
-        ].join("\n");
+        ].join("<br>");
     }
 
     if (result.what === "member_removed") {
@@ -74,7 +74,7 @@ export function render_result(result: OperationResult): string {
             "",
             escape_html(format_identity(result.after)),
             "Все роли отозваны. Профиль и история сохранены.",
-        ].join("\n");
+        ].join("<br>");
     }
 
     const lines = [
@@ -83,7 +83,7 @@ export function render_result(result: OperationResult): string {
         `${bold("ID:")} ${escape_html(result.after.id.system_id)}`,
         ...format_change_lines(collect_user_changes(result.before, result.after, result.patch)),
     ];
-    return lines.join("\n");
+    return lines.join("<br>");
 }
 
 export function render_rejected(): string {

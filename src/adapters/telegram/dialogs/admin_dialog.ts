@@ -17,7 +17,7 @@ export class AdminDialog implements IAdminAgent {
             formatter.bold("Admin's notification:"),
             "",
             message,
-        ].join("\n"))).as_status();
+        ].join("<br>"))).as_status();
     }
 
     async send_runtime_backup(filepath: string): Promise<Status> {

@@ -8,7 +8,6 @@ import {
     IChorister,
     IDepositOwnerAgent,
     IUserAgent,
-    SendMessageOptions,
     EditMessageOptions,
 } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
@@ -28,6 +27,7 @@ import { GuestDialog } from "./dialogs/guest_dialog.js";
 import { AdminDialog } from "./dialogs/admin_dialog.js";
 import { ChoristerStatisticsWidget } from "./widgets/chorister_statistics.js";
 import { ConfirmationWidget } from "./widgets/confirmation.js";
+import { TelegramCommands } from "./commands.js";
 import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
@@ -48,6 +48,7 @@ export class TelegramUser implements IUserAgent {
     private bot?: TelegramBot.Bot;
     private callbacks_registry: TelegramCallbacks
     private callback_roles: Set<Role>;
+    private applied_commands?: string;
 
     private deposit_owner_dialog?: DepositOwnerDialog;
     private accounter_dialog?: AccounterDialog;
@@ -60,6 +61,7 @@ export class TelegramUser implements IUserAgent {
 
     private timings: {
         next_user_info_update?: number;
+        next_commands_update?: number;
     };
 
     constructor(
@@ -77,6 +79,7 @@ export class TelegramUser implements IUserAgent {
 
     init(bot: TelegramBot.Bot): Status {
         this.bot = bot;
+        this.applied_commands = undefined;
 
         const status = CoreAPI.on_new_user_agent(this.userid(), this);
         if (!status.ok) {
@@ -171,10 +174,7 @@ export class TelegramUser implements IUserAgent {
     }
 
     // From IUserAgent
-    async send_message(
-        message: string,
-        options?: SendMessageOptions,
-    ): Promise<Expected<number>> {
+    async send_message(message: string): Promise<Expected<number>> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal);
         }
@@ -183,7 +183,8 @@ export class TelegramUser implements IUserAgent {
             const sent = await this.bot.api.sendRichMessage({
                 chat_id: this.chat_id,
                 rich_message: { html: message },
-                reply_markup: options?.reply_markup,
+                // Also removes keyboards retained by clients from older versions.
+                reply_markup: { remove_keyboard: true },
             });
             this.journal.info({ message }, "message sent")
             return Expected.ok(sent.message_id);
@@ -278,6 +279,19 @@ export class TelegramUser implements IUserAgent {
         } catch (error) {
             this.journal.warning({ error }, "Failed to refresh user info");
         }
+
+        if (this.queue.length > 0) {
+            const refresh_status = this.refresh_user_info_from_cache();
+            if (!refresh_status.ok) {
+                this.journal.warning({ error: refresh_status.error }, "Failed to refresh user info");
+                this.set_user_info({ ...this.user_info, roles: [] });
+            }
+            const commands = await this.update_commands(now);
+            if (!commands.ok) {
+                this.journal.warning(`Failed to update commands: ${commands.error}`);
+            }
+        }
+
         // Handle clicks before registry cleanup so valid_until is checked on
         // the click itself, even when background expiry has not run yet.
         for (const item of this.queue) {
@@ -324,6 +338,30 @@ export class TelegramUser implements IUserAgent {
             return;
         }
         this.set_user_info(resolved.value);
+    }
+
+    private async update_commands(now: Date): Promise<Status> {
+        if (!this.bot) {
+            return return_fail("API is not initialized", this.journal);
+        }
+        const commands = TelegramCommands.for_user(this.user_info);
+        const signature = commands
+            .map(command => command.command).sort().join(",");
+        if (signature === this.applied_commands
+            || (this.timings.next_commands_update ?? 0) > now.getTime()) {
+            return Expected.ok(undefined);
+        }
+        try {
+            await this.bot.api.setMyCommands({
+                scope: { type: "chat" as const, chat_id: this.chat_id },
+                commands,
+            });
+            this.applied_commands = signature;
+            return Expected.ok(undefined);
+        } catch (error) {
+            this.timings.next_commands_update = now.getTime() + 30000;
+            return return_exception(error, this.journal);
+        }
     }
 
     private refresh_user_info_from_cache(): Status {

@@ -7,13 +7,22 @@ import { after, mock, test } from "node:test";
 import { Bot } from "node-telegram-bot-api";
 
 import { GroupChat } from "@src/adapters/telegram/group_chat.js";
+import { DepositOwnerDialog } from "@src/adapters/telegram/dialogs/deposit_owner_dialog.js";
+import { ManagersGroup } from "@src/adapters/telegram/dialogs/managers_group.js";
+import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { MemoryJournal } from "@src/components/memory_journal.js";
+import { Deposit } from "@src/entities/deposit.js";
+import { create_task_update, TaskData } from "@src/entities/task.js";
+import { Language } from "@src/entities/user.js";
 import { IUserAgent } from "@src/interfaces/user_agent.js";
+import { TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
 import { CoreAPI } from "@src/use_cases/core.js";
-import { escape_html } from "@src/utils.js";
+import { current_month, escape_html, Formatter, GlobalFormatter } from "@src/utils.js";
 import { render_button_grid, with_button_grid } from "@src/adapters/telegram/button_grid.js";
 import { Expected } from "@src/utils/expected.js";
+import { render_confirmation, render_result } from "@src/utils/string_engine/administration.js";
+import { render_task_tracker_event } from "@src/utils/string_engine/task_tracker.js";
 
 import { telegram_config } from "@tests/helpers/config.js";
 import { user_profile } from "@tests/helpers/user.js";
@@ -21,6 +30,7 @@ import { embedded_grid, telegram_message } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 
 mock.method(CoreAPI, "on_new_user_agent", () => Expected.ok(undefined));
+GlobalFormatter.init("html");
 after(() => mock.restoreAll());
 
 function fixture() {
@@ -60,7 +70,8 @@ test("Rich HTML is serialized through the SDK for sending and editing", async ()
     let html;
     {
         context = fixture();
-        html = '<table><tr><td>Piece</td><td>50%</td></tr></table>'
+        html = '<table>\n<tr><td>Piece</td><td>50%</td></tr>\n</table>'
+            + '<pre><code>first line\n  second line</code></pre>'
             + '<p><tg-button type="callback_data" data="stats:v1:60">60 days</tg-button></p>';
     }
 
@@ -78,7 +89,7 @@ test("Rich HTML is serialized through the SDK for sending and editing", async ()
         assert.deepEqual(JSON.parse(String(fields.get("rich_message"))), { html });
         assert.equal(fields.has("text"), false);
         assert.equal(fields.has("parse_mode"), false);
-        assert.equal(fields.has("reply_markup"), false);
+        assert.deepEqual(JSON.parse(String(fields.get("reply_markup"))), { remove_keyboard: true });
     }
 
     // 3. update that message and clear any previous external keyboard
@@ -98,21 +109,19 @@ test("Rich HTML is serialized through the SDK for sending and editing", async ()
 
 test("private and group messages use Rich HTML with identical content", async () => {
     // Motivation: previews and publications must use the same rendering
-    // contract while preserving destinations and reply navigation.
+    // contract while preserving destinations and removing old navigation.
 
     // 1. create a sender and escaped content
     let context;
     let html;
-    let keyboard;
     {
         context = fixture();
-        html = `<b>Report</b>\n${escape_html('A & B <C> "D"')}`;
-        keyboard = { keyboard: [[{ text: "Statistics" }]], is_persistent: true, resize_keyboard: true };
+        html = `<b>Report</b><br>${escape_html('A & B <C> "D"')}`;
     }
 
     // 2. send privately and to the group topic
     {
-        assert.equal((await context.user.send_message(html, { reply_markup: keyboard })).ok, true);
+        assert.equal((await context.user.send_message(html)).ok, true);
         assert.equal((await context.group.send_message(html)).ok, true);
     }
 
@@ -126,9 +135,233 @@ test("private and group messages use Rich HTML with identical content", async ()
             assert.equal(call.fields.has("text"), false);
         }
         assert.equal(preview.fields.get("chat_id"), "123");
-        assert.deepEqual(JSON.parse(String(preview.fields.get("reply_markup"))), keyboard);
+        assert.deepEqual(JSON.parse(String(preview.fields.get("reply_markup"))), { remove_keyboard: true });
         assert.equal(publication.fields.get("chat_id"), "-100");
         assert.equal(publication.fields.get("message_thread_id"), "12");
+    }
+});
+
+for (const lang of [Language.RU, Language.EN]) {
+    test(`transaction history has visible Rich HTML line breaks in ${lang}`, async () => {
+        // Motivation: Rich HTML collapses raw newlines, so each transaction
+        // needs an explicit break in the actual Telegram request.
+
+        // 1. prepare a localized dialog and two different transaction types
+        let context;
+        let dialog;
+        let month;
+        {
+            context = fixture();
+            context.user.set_user_info({ ...context.user.info(), lang });
+            dialog = new DepositOwnerDialog(context.user, new MemoryJournal(),
+                undefined, new Formatter("html"));
+            month = new Date(new Date().getFullYear(), 0, 1);
+        }
+
+        // 2. send the history through the real dialog and SDK
+        {
+            const status = await dialog.send_transactions_info([
+                { date: month, tgid: "member", type: "balance", before: 0, after: 140 },
+                { date: month, tgid: "member", type: "membership", before: 140,
+                    after: 90, membership_month: month },
+            ]);
+            assert.equal(status.ok, true);
+        }
+
+        // 3. verify the header and each transaction occupy separate lines
+        {
+            const html = JSON.parse(String(context.calls[0].fields.get("rich_message"))).html;
+            const header = lang === Language.RU ? "Список транзакций:" : "List of transactions:";
+            const date = lang === Language.RU ? "01 ЯНВ" : "01 JAN";
+            const balance = lang === Language.RU ? "Депозит" : "Deposit";
+            const membership = lang === Language.RU ? "Членский за" : "Membership for";
+            assert.equal(html, `${header}<br>${date} | ${balance}: 0 -> 140 (+ 140 GEL)`
+                + `<br>${date} | ${membership} 1/${month.getFullYear() % 100}: 140 -> 90 (- 50 GEL)`);
+        }
+    });
+}
+
+test("deposit information, reminders and changes preserve lines and blank lines", async () => {
+    // Motivation: nested deposit templates must retain their spacing when
+    // embedded with payment details and Rich HTML callback controls.
+
+    // 1. prepare a deposit dialog with payment details and an unpaid month
+    let context;
+    let dialog;
+    let deposit;
+    {
+        context = fixture();
+        dialog = new DepositOwnerDialog(context.user, new MemoryJournal(), {
+            membership_fee: 140,
+            accounts: [{ title: "Bank", account: "GE123", receiver: "Singer" }],
+        }, new Formatter("html"));
+        deposit = new Deposit("member", "Member", 90, new Map());
+    }
+
+    // 2. send the deposit summary, reminder and change notification
+    {
+        assert.equal((await dialog.send_deposit_info(deposit)).ok, true);
+        assert.equal((await dialog.send_membership_reminder(50)).ok, true);
+        assert.equal((await dialog.send_deposit_changes(deposit, {
+            total_change: 90, balance: [0, 90], membership: [[current_month(), 0, 20]],
+        })).ok, true);
+    }
+
+    // 3. check nested line breaks, formatting and embedded controls on the wire
+    {
+        const [summary, reminder, change] = context.calls.map(call =>
+            JSON.parse(String(call.fields.get("rich_message"))).html as string);
+        assert.ok(summary.startsWith("Your deposit:<br><br>Funds on deposit: 90 GEL<br>Paid for"));
+        assert.match(summary, /<br><br>You are expected to pay another 50 GEL/);
+        assert.match(summary, /<b>Bank<\/b>:<br>Account: <code>GE123<\/code><br>Receiver: <code>Singer<\/code>/);
+        assert.equal(embedded_grid(summary)[0][0].text, "Transactions");
+        assert.match(reminder, /fee\.<br><br>The membership fee can be transferred/);
+        assert.equal(embedded_grid(reminder)[0][0].text, "I have paid already 🤷");
+        assert.ok(change.startsWith("<b>Deposit changes: credited 90 GEL</b><br><br>Funds on deposit:"));
+        assert.match(change, /\(credited 90 GEL\)<br>Membership for/);
+        assert.match(change, /\(credited 20 GEL\)<br><br>You are expected/);
+    }
+});
+
+test("feedback edits and group publications preserve literal multiline text", async () => {
+    // Motivation: typed feedback must retain its lines in the editable preview
+    // and the managers' copy without interpreting literal HTML as markup.
+
+    // 1. prepare feedback with mixed newline conventions and literal markup
+    let context;
+    let widget;
+    let managers;
+    let details;
+    {
+        context = fixture();
+        details = 'First & <b>literal</b>\r\n\r\nSecond\rThird\nLast';
+        widget = new FeedbackWidget(context.user, new MemoryJournal());
+        widget.on_details_provided(details);
+        managers = new ManagersGroup(context.group, new MemoryJournal());
+    }
+
+    // 2. render the editable preview and publish the same feedback to the group
+    {
+        assert.equal((await widget.start()).ok, true);
+        assert.equal((await managers.on_new_feedback({ date: new Date(), details })).ok, true);
+    }
+
+    // 3. check both destinations retain explicit breaks and escaped literals
+    {
+        const preview = context.calls.find(call => call.method === "editMessageText")!;
+        const publication = context.calls.at(-1)!;
+        for (const call of [preview, publication]) {
+            const html = JSON.parse(String(call.fields.get("rich_message"))).html;
+            assert.ok(html.includes('<blockquote>First &amp; &lt;b&gt;literal&lt;/b&gt;'
+                + '<br><br>Second<br>Third<br>Last</blockquote>'));
+        }
+        assert.equal(publication.fields.get("chat_id"), "-100");
+        assert.equal(publication.fields.get("message_thread_id"), "12");
+    }
+});
+
+test("table record notifications retain field boundaries and multiline answers", async () => {
+    // Motivation: a form notification must separate fields and preserve blank
+    // lines inside an answer after being sent as Rich HTML to managers.
+
+    // 1. prepare a managers chat and a form response with a multiline answer
+    let context;
+    let managers;
+    {
+        context = fixture();
+        managers = new ManagersGroup(context.group, new MemoryJournal());
+    }
+
+    // 2. send a record containing two fields
+    {
+        assert.equal((await managers.on_new_table_record({ table_name: "Form", fields: [
+            { name: "Answer", value: "First\n\nSecond & <third>" },
+            { name: "Empty", value: "" },
+        ] })).ok, true);
+    }
+
+    // 3. inspect explicit field separators and escaped answer content
+    {
+        const html = JSON.parse(String(context.calls[0].fields.get("rich_message"))).html;
+        assert.equal(html, 'Новая запись в таблице "Form":<br><br>'
+            + '<b>Answer</b><br>First<br><br>Second &amp; &lt;third&gt;<br><br>'
+            + '<b>Empty</b><br>(нет ответа)<br>');
+    }
+});
+
+test("task event publications separate fields and preserve multiline comments", async () => {
+    // Motivation: automatic task events bypass the AI formatter and must
+    // already contain visible breaks before reaching the group transport.
+
+    // 1. prepare all task event types, including a multiline comment update
+    let context;
+    let now;
+    let events: TaskTrackerEvent[];
+    {
+        context = fixture();
+        now = new Date(2026, 0, 1);
+        const task: TaskData = { id: "task", schema: 1, created_at: now,
+            author: "Member", title: "Prepare & sing", status: "pending",
+            comment: "First\n\nSecond <line>", deadline: new Date(2026, 0, 5) };
+        events = [
+            { what: "new_task", task },
+            { what: "task_updated", update: [create_task_update(task, {
+                ...task, comment: "Updated\r\nComment <line>",
+            })] },
+            { what: "task_deleted", task },
+            { what: "deadline_notification", tasks: [task] },
+        ];
+    }
+
+    // 2. publish every event using the same renderer as the managers' agent
+    for (const event of events) {
+        const html = render_task_tracker_event(event, now);
+        assert.equal((await context.group.send_message(html)).ok, true);
+    }
+
+    // 3. verify each event's field boundaries and both comment variants
+    {
+        const messages = context.calls.map(call =>
+            JSON.parse(String(call.fields.get("rich_message"))).html as string);
+        for (const html of messages) {
+            assert.match(html, /<br><br><b>/);
+            assert.ok(html.includes("Prepare &amp; sing"));
+            assert.doesNotMatch(html, /[\r\n]/);
+        }
+        assert.ok(messages[0].includes("<b>Комментарий:</b><br>First<br><br>Second &lt;line&gt;"));
+        assert.ok(messages[1].includes("<b>Комментарий:</b><br>Updated<br>Comment &lt;line&gt;"));
+    }
+});
+
+test("administration confirmations and outcomes retain separate profile fields", async () => {
+    // Motivation: administration renders its own HTML, so fixing dialog
+    // wrappers alone cannot restore profile spacing in these messages.
+
+    // 1. prepare a user profile and Telegram sender
+    let context;
+    let profile;
+    {
+        context = fixture();
+        profile = user_profile("new_member");
+    }
+
+    // 2. send a confirmation inside an admin notification and its outcome
+    {
+        const confirmation = render_confirmation({ what: "create_user", user: profile });
+        assert.equal((await context.user.as_admin().send_notification(confirmation)).ok, true);
+        const outcome = render_result({ what: "user_created", user: profile });
+        assert.equal((await context.user.send_message(outcome)).ok, true);
+    }
+
+    // 3. check header spacing and explicit separators between profile fields
+    {
+        const messages = context.calls.map(call =>
+            JSON.parse(String(call.fields.get("rich_message"))).html as string);
+        assert.ok(messages[0].startsWith("<b>Admin's notification:</b><br><br>Подтвердите"));
+        assert.ok(messages[1].startsWith("Пользователь создан:<br><br><b>ID:</b> new_member<br>"));
+        for (const html of messages) {
+            assert.ok(html.includes("<br><b>Язык:</b> en<br><b>Голос:</b> alto<br><b>Роли:</b>"));
+        }
     }
 });
 

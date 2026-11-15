@@ -62,8 +62,12 @@ test("Telegram adapter loads and registers users from an injected collection", a
 
     // 2. initialize the adapter and observe the reconstructed user agent
     let adapter;
+    let commands;
     {
-        adapter = new TgAdapter({ token_file: token_file(t), formatting: "html" },
+        const filename = token_file(t);
+        const menu = mock.method(TelegramBot.Api.prototype, "setChatMenuButton", async () => true);
+        commands = mock.method(TelegramBot.Api.prototype, "setMyCommands", async (_params: TelegramBot.SetMyCommandsParams) => true);
+        adapter = new TgAdapter({ token_file: filename, formatting: "html" },
             telegram_config(), { users: mock_user_replica() }, collection, new MemoryJournal());
         assert.equal(reads.mock.callCount(), 0);
         const initialized = await adapter.init();
@@ -75,6 +79,8 @@ test("Telegram adapter loads and registers users from an injected collection", a
         assert.ok(agent instanceof TelegramUser);
         assert.deepEqual(agent.info(), user);
         assert.equal(agent.private_chat_id(), 456);
+        assert.deepEqual(menu.mock.calls[0].arguments, [{ menu_button: { type: "commands" } }]);
+        assert.equal(commands.mock.callCount(), 0);
     }
 
     // 3. maintain the same injected collection during adapter processing
@@ -82,6 +88,10 @@ test("Telegram adapter loads and registers users from an injected collection", a
         const now = new Date();
         assert.equal((await adapter.proceed(now)).ok, true);
         assert.deepEqual(ticks.mock.calls[0].arguments, [now]);
+        const agent = registration.mock.calls[0].arguments[1];
+        assert.ok(agent);
+        await agent.proceed(now);
+        assert.equal(commands.mock.callCount(), 0);
     }
 });
 

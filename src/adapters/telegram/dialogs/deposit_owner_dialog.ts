@@ -80,7 +80,7 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
             this.orator.deposit_reminder(amount, this.user.info().lang),
             "",
             this.orator.account_info(this.user.info().lang)
-        ].join("\n");
+        ].join("<br>");
 
 
         const have_paid_botton = this.user.create_callback_button(
@@ -149,7 +149,7 @@ export class Orator {
         lines.push("");
         lines.push(this.waiting_membership(deposit, lang));
 
-        return lines.join("\n")
+        return lines.join("<br>")
     }
 
     deposit_changes_test(amount: number, lang: Language): string {
@@ -219,7 +219,7 @@ export class Orator {
         lines.push((lang == Language.RU ? "Внесено за" : "Paid for") + ` ${month}: ${paid} GEL`)
         lines.push("")
         lines.push(this.waiting_membership(deposit, lang));
-        return lines.join("\n")
+        return lines.join("<br>")
     }
 
     transactions_info(transactions: Transaction[] | undefined, lang: Language): string {
@@ -254,7 +254,7 @@ export class Orator {
             lines.push(`${dateStr} | ${target}: ${tx.before} -> ${tx.after} (${sign} ${amount} ${currency})`);
         }
 
-        return lines.join("\n");
+        return lines.join("<br>");
     }
 
     waiting_membership(deposit: Deposit, lang: Language): string {
@@ -276,13 +276,13 @@ export class Orator {
                     `За ${month} нужно внести ещё ${diff} GEL`,
                     "",
                     this.account_info(lang)
-                ].join("\n");
+                ].join("<br>");
             } else {
                 return [
                     `You are expected to pay another ${diff} GEL for ${month}`,
                     "",
                     this.account_info(lang)
-                ].join("\n");
+                ].join("<br>");
             }
         }
 
@@ -339,7 +339,7 @@ export class Orator {
             lines.push("");
         }
 
-        return lines.join("\n");
+        return lines.join("<br>");
     }
 
     have_paid_already(lang: Language): string {

@@ -104,6 +104,11 @@ export function escape_html(text: string): string {
         .replace(/"/g, "&quot;");
 }
 
+// Render literal text with visible line breaks in Rich HTML.
+export function html_text(text: string): string {
+    return escape_html(text).replace(/\r\n|\r|\n/g, "<br>");
+}
+
 export type Formatting = "markdown" | "html" | "plain";
 
 export class Formatter {

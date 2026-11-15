@@ -165,6 +165,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 }
             }
             await this.bot.init();
+            await this.bot.api.setChatMenuButton({ menu_button: { type: "commands" } });
             // The v2 polling promise runs until stopped; do not await the loop here.
             void this.bot.startPolling().catch(error => {
                 this.journal.error({ error }, "Telegram polling stopped");
@@ -436,7 +437,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             `Announce thread set:`,
             `Group: ${msg.chat.title} (${this.choir_chat_id})`,
             `Thread: ${this.announce_thread_id}`,
-        ].join("\n");
+        ].join("<br>");
         await AdminActions.notify_all_admins(message, this.journal);
         return Expected.ok(undefined);
     }
@@ -450,7 +451,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         const message = [
             `Manager chat set:`,
             `Group: ${msg.chat.title} (${this.managers_chat_id})`,
-        ].join("\n")
+        ].join("<br>")
         await AdminActions.notify_all_admins(message, this.journal);
         return Expected.ok(undefined);
     }

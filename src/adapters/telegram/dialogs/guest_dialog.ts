@@ -35,7 +35,7 @@ export class GuestDialog {
         ];
 
         const status = await this.user.send_message(
-            with_button_grid(text.join("\n"), [
+            with_button_grid(text.join("<br>"), [
                 [{ text: "Заполнить анкету", url: "https://forms.gle/zz1hbvCvFypLYupz5" }],
             ])
         );

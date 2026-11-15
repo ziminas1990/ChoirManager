@@ -23,6 +23,7 @@ type TelegramOverrides = {
     editMessageText?: TelegramBot.Api["editMessageText"];
     editMessageReplyMarkup?: TelegramBot.Api["editMessageReplyMarkup"];
     deleteMessage?: TelegramBot.Api["deleteMessage"];
+    setMyCommands?: TelegramBot.Api["setMyCommands"];
 };
 
 // Keep the SDK object and update dispatch, replacing only network operations.
@@ -39,6 +40,7 @@ export function mock_telegram(overrides: TelegramOverrides): TelegramBot.Bot {
     bot.api.deleteMessage = overrides.deleteMessage ?? unexpected;
     bot.api.sendDocument = unexpected;
     bot.api.sendChatAction = unexpected;
+    bot.api.setMyCommands = overrides.setMyCommands ?? (async () => true);
     return bot;
 }
 
@@ -49,6 +51,8 @@ export function telegram_token(t: TestContext) {
     const filename = join(directory, "token");
     writeFileSync(filename, "test-only-token");
     mock.method(TelegramBot.Api.prototype, "getMe", async () => ({ id: 999, is_bot: true, first_name: "Test", username: "test_bot" }));
+    mock.method(TelegramBot.Api.prototype, "setChatMenuButton", async () => true);
+    mock.method(TelegramBot.Api.prototype, "setMyCommands", async () => true);
     mock.method(TelegramBot.Bot.prototype, "startPolling", async function(this: TelegramBot.Bot) {
         client = this;
     });

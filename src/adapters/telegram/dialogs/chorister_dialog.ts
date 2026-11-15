@@ -7,7 +7,7 @@ import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { ScoresActions } from "@src/use_cases/scores_actions.js";
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { AdminActions } from "@src/use_cases/admin_actions.js";
-import { GlobalFormatter, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
+import { GlobalFormatter, html_text, return_fail, seconds_since, split_to_columns } from "@src/utils.js";
 import { ChoristerAgent } from "@src/components/ai/agents/chorister_agent.js";
 import { Score } from "@src/entities/score.js";
 import { Language, Role } from "@src/entities/user.js";
@@ -23,6 +23,7 @@ import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { Environment } from "@src/components/environment.js";
 import { ScoreDownloads } from "@src/adapters/telegram/score_downloads.js";
 import { with_button_grid } from "../button_grid.js";
+import { TelegramCommands } from "../commands.js";
 
 
 export class ChoristerDialog implements IChorister {
@@ -91,44 +92,16 @@ export class ChoristerDialog implements IChorister {
     }
 
     async on_message(msg: TelegramBot.Message): Promise<Status> {
-        let text = msg.text;
+        const text = msg.text;
         if (!text) {
             return Expected.ok(undefined);
         }
-        if (text == "/start") {
-            text = Messages.again();
+
+        const command = TelegramCommands.parse(text, this.user.info().lang);
+        if (command) {
+            return await this.on_command(command);
         }
-
-        // Check for service messages
-        if (text.startsWith("/")) {
-            return this.on_service_message(text);
-        }
-
-        const lang = this.user.info().lang;
-
-        // First of all check if user hit any of the buttons
-        if (text === Messages.again()) {
-            for (const widget of this.widgets) {
-                await widget.interrupt();
-            }
-            this.widgets = [];
-            return await this.send_welcome();
-
-        } else if (text === Messages.download_scores(lang)) {
-            return await ScoresActions.scores_list_requested(
-                this.user,
-                this.journal
-            );
-        } else if (text == Messages.get_deposit_info(lang)) {
-            return await DepositActions.deposit_requested(
-                this.user,
-                this.journal
-            );
-        } else if (text == Messages.feedback_button(lang)) {
-            return await this.start_feedback_activity();
-        } else if (text == Messages.statistics_button(lang)) {
-            return await this.create_statistics_widget();
-        } else if (this.widgets.length > 0) {
+        if (this.widgets.length > 0) {
             const waiting_widgets = this.widgets.filter(widget => widget.waits_for_message());
             // Only the most recent widget should receive a message
             const first = waiting_widgets.shift();
@@ -194,10 +167,7 @@ export class ChoristerDialog implements IChorister {
         const user_info = this.user.info();
 
         const sent = await this.user.send_message(
-            Messages.greet(user_info.name, user_info.lang),
-            {
-                reply_markup: this.get_keyboard(),
-            });
+            Messages.greet(user_info.name, user_info.lang));
         return sent.as_status();
     }
 
@@ -222,26 +192,36 @@ export class ChoristerDialog implements IChorister {
     }
 
     private async send_assistant_message(message: string): Promise<Status> {
-        const status = await this.user.send_message(message, {
-            reply_markup: this.get_keyboard(),
-        });
+        const status = await this.user.send_message(message);
         return status.as_status();
     }
 
-    private async on_service_message(text: string): Promise<Status> {
-        const command = text.split(/\s/)[0].split("@")[0];
-        this.journal.info(`Processing service message: ${command}`);
+    private async on_command(command: string): Promise<Status> {
+        this.journal.info(`Processing command: ${command}`);
 
-        const user = this.user.info();
-
-        if (command == "/backup") {
-            return AdminActions.send_runtime_backup(user, this.runtime_config, this.journal);
-        } else if (command == "/get_logs") {
-            return AdminActions.send_logs(user, this.runtime_config, this.journal);
-        } else if (command == "/stop") {
-            return AdminActions.stop_application(this.journal);
-        } else {
-            return return_fail(`unknown service command: ${command}`, this.journal);
+        switch (command) {
+            case "/start":
+                for (const widget of this.widgets) {
+                    await widget.interrupt();
+                }
+                this.widgets = [];
+                return await this.send_welcome();
+            case "/deposit":
+                return await DepositActions.deposit_requested(this.user, this.journal);
+            case "/statistics":
+                return await this.create_statistics_widget();
+            case "/feedback":
+                return await this.start_feedback_activity();
+            case "/scores":
+                return await ScoresActions.scores_list_requested(this.user, this.journal);
+            case "/backup":
+                return AdminActions.send_runtime_backup(this.user.info(), this.runtime_config, this.journal);
+            case "/get_logs":
+                return AdminActions.send_logs(this.user.info(), this.runtime_config, this.journal);
+            case "/stop":
+                return AdminActions.stop_application(this.journal);
+            default:
+                return return_fail(`unknown service command: ${command}`, this.journal);
         }
     }
 
@@ -284,77 +264,22 @@ export class ChoristerDialog implements IChorister {
                 return "No available scores";
         }
     }
-
-    private get_keyboard(): TelegramBot.ReplyKeyboardMarkup {
-        const lang = this.user.info().lang;
-        return {
-            keyboard: [
-                [{ text: Messages.again() },
-                 { text: Messages.get_deposit_info(lang)},
-                 { text: Messages.statistics_button(lang)}],
-                [{ text: Messages.feedback_button(lang)},
-                 { text: Messages.download_scores(lang)}]
-            ],
-            is_persistent: true,
-            resize_keyboard: true,
-        }
-    }
 }
 
 class Messages {
-
-    static again(): string {
-        return "🔄";
-    }
-
-    static download_scores(lang: Language): string {
-        switch (lang) {
-            case Language.RU: return "Скачать ноты";
-            case Language.EN:
-            default:
-                return "Download scores";
-        }
-    }
-
-    static get_deposit_info(lang: Language): string {
-        switch (lang) {
-            case Language.RU: return "Мой депозит";
-            case Language.EN:
-            default:
-                return "My deposit";
-        }
-    }
-
-    static feedback_button(lang: Language): string {
-        switch (lang) {
-            case Language.RU: return "Обратная связь";
-            case Language.EN:
-            default:
-                return "Leave a feedback";
-        }
-    }
-
-    static statistics_button(lang: Language): string {
-        switch (lang) {
-            case Language.RU: return "Статистика";
-            case Language.EN:
-            default:
-                return "Statistics";
-        }
-    }
 
     static greet(username: string, lang: Language): string {
         switch (lang) {
             case Language.RU: return [
                 `Привет, ${username}!`,
                 "Как я могу помочь?"
-            ].join("\n");
+            ].join("<br>");
             case Language.EN:
             default:
                 return [
                     `Hello, ${username}!`,
                     "How can I help you?"
-                ].join("\n");
+                ].join("<br>");
         }
     }
 
@@ -382,7 +307,7 @@ class Messages {
         const message: string[] = [
             parts.header,
             "",
-            GlobalFormatter.instance().quote(feedback.details),
+            GlobalFormatter.instance().quote(html_text(feedback.details)),
             "",
         ];
 
@@ -402,7 +327,7 @@ class Messages {
             message.push(GlobalFormatter.instance().italic("(anonymous feedback)"));
         }
 
-        return message.join("\n");
+        return message.join("<br>");
     }
 }
 

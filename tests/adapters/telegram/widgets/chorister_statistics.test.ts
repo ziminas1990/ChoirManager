@@ -155,7 +155,7 @@ for (const lang of [Language.EN, Language.RU]) {
 
         // 2. request statistics through the menu
         {
-            const text = lang === Language.RU ? "Статистика" : "Statistics";
+            const text = "/statistics";
             assert.equal((await dialog.on_message(telegram_message({ text }))).ok, true);
         }
 
@@ -164,7 +164,7 @@ for (const lang of [Language.EN, Language.RU]) {
             const message = context.state.messages[0];
             const payload = context.state.rich_messages[0];
             assert.equal(payload.chat_id, 123);
-            assert.equal(payload.reply_markup, undefined);
+            assert.deepEqual(payload.reply_markup, { remove_keyboard: true });
             assert.equal(message.options, undefined);
             assert.match(message.text, /<table bordered striped compact>/);
             assert.match(message.text, /<th>(Piece|Произведение)<\/th>/);

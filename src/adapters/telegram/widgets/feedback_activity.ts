@@ -6,7 +6,7 @@ import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { AbstractWidget as AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Language, user_tg_username } from "@src/entities/user.js";
-import { GlobalFormatter, log_and_return, escape_html } from "@src/utils.js";
+import { GlobalFormatter, log_and_return, escape_html, html_text } from "@src/utils.js";
 import { FeedbackActions } from "@src/use_cases/feedback_actions.js";
 import { Feedback } from "@src/entities/feedback.js";
 
@@ -301,9 +301,9 @@ class Messages {
         const formatter = GlobalFormatter.instance();
         return [
             formatter.bold(parts.header),
-            formatter.quote(escape_html(feedback.details!)),
+            formatter.quote(html_text(feedback.details!)),
             parts.question
-        ].join("\n\n");
+        ].join("<br><br>");
     }
 
     static confirm_widget_text(feedback: Partial<Feedback>, lang: Language): string {
@@ -337,10 +337,10 @@ class Messages {
         const formatter = GlobalFormatter.instance();
         return [
             parts.header,
-            formatter.quote(escape_html(feedback.details!)),
+            formatter.quote(html_text(feedback.details!)),
             `${formatter.bold(parts.on_behalf)}: ${escape_html(who)}`,
             parts.question
-        ].join("\n\n");
+        ].join("<br><br>");
     }
 
     static failed_widget_text(lang: Language): string {

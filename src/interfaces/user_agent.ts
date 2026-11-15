@@ -10,16 +10,8 @@ export enum ConfirmationError {
     TimedOut = 1,
 }
 
-// Text messages use Rich HTML; reply keyboards remain platform navigation.
-export type SendMessageOptions = {
-    reply_markup?: {
-        keyboard: { text: string }[][];
-        is_persistent?: boolean;
-        resize_keyboard?: boolean;
-    };
-};
-
 // Edits replace the complete Rich HTML body and its embedded controls.
+// Use <br> or block tags for visible line breaks; raw newlines are whitespace.
 export type EditMessageOptions = {
     text: string;
 };
@@ -31,7 +23,9 @@ export interface IUserAgent
     // Canonical identity: UserData.id.system_id, not telegram username.
     userid(): string;
 
-    send_message(message: string, options?: SendMessageOptions): Promise<Expected<number>>;
+    // Text messages use Rich HTML, including embedded controls.
+    // Use <br> or block tags for visible line breaks.
+    send_message(message: string): Promise<Expected<number>>;
 
     edit_message(message_id: number, options: EditMessageOptions): Promise<Status>;
 

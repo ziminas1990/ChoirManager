@@ -6,7 +6,7 @@ import { parse_tool_parameters, tool_from_schema } from "./tool_schema.js";
 import { return_error, return_success, status_to_expected } from "./tool_response.js";
 
 const messenger_send_message_schema = z.object({
-    html_text: z.string().trim().min(1).describe("Telegram HTML text to send."),
+    html_text: z.string().trim().min(1).describe("Telegram Rich HTML text to send. Use <br> or <p> for line breaks."),
 }).strict();
 
 type MessengerToolsConfig = {
@@ -45,7 +45,8 @@ export class MessengerTools implements IToolchain {
                 [
                     "Send an HTML-formatted message to chat.",
                     "This is the only way to send a visible response.",
-                    "Only Telegram-safe HTML tags are allowed: <b>, <i>, <code>, <s>, <u>, <pre>.",
+                    "Only Telegram-safe HTML tags are allowed: <b>, <i>, <code>, <s>, <u>, <pre>, <br>, <p>.",
+                    "Use <br> for line breaks and <p> for paragraphs; raw newlines collapse into spaces outside <pre>.",
                     "Escape literal ampersands and angle brackets as &amp;, &lt;, and &gt;."
                 ].join("\n"),
                 messenger_send_message_schema,

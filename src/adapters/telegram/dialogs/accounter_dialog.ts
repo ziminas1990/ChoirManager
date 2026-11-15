@@ -1,6 +1,6 @@
 import { Status } from "@src/utils/expected.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
-import { Formatter, GlobalFormatter } from "@src/utils.js";
+import { Formatter, GlobalFormatter, html_text } from "@src/utils.js";
 import { Language, UserData, user_tg_username } from "@src/entities/user.js";
 import { Deposit, DepositChange } from "@src/entities/deposit.js";
 import { Orator } from "./deposit_owner_dialog.js";
@@ -36,17 +36,17 @@ export class AccounterDialog implements IAccounterAgent {
 
     async mirror_message(message: string, receiver?: UserData): Promise<Status> {
         const prefix = receiver
-            ? `Notification for ${receiver.name} ${receiver.surname} (@${user_tg_username(receiver)}):\n`
-            : "Notification:\n";
-        const full_message = [prefix, message].filter(line => line.trim().length > 0).join("\n");
+            ? `Notification for ${receiver.name} ${receiver.surname} (@${user_tg_username(receiver)}):<br>`
+            : "Notification:<br>";
+        const full_message = [prefix, message].filter(line => line.trim().length > 0).join("<br>");
         return (await this.user.send_message(full_message)).as_status();
     }
 
     async mirror_deposit_changes(who: UserData, deposit: Deposit, changes: DepositChange): Promise<Status> {
         const orator = new Orator(this.formatter);
         const changes_msg = orator.deposit_change(deposit, changes, this.user.info().lang);
-        const who_msg = `Notification for ${who.name} ${who.surname} (@${user_tg_username(who)}):\n`;
-        const message = [who_msg, changes_msg].join("\n");
+        const who_msg = `Notification for ${who.name} ${who.surname} (@${user_tg_username(who)}):<br>`;
+        const message = [who_msg, changes_msg].join("<br>");
         return (await this.user.send_message(message)).as_status();
     }
 
@@ -83,8 +83,8 @@ export class AccounterDialog implements IAccounterAgent {
         }
 
         lines.push("");
-        lines.push(this.formatter.quote(original_message));
-        return lines.join("\n");
+        lines.push(this.formatter.quote(html_text(original_message)));
+        return lines.join("<br>");
     }
 
     private mirrored_reminder(who: UserData, amount: number, lang: Language): string {
@@ -108,6 +108,6 @@ export class AccounterDialog implements IAccounterAgent {
                 ]);
                 break;
         }
-        return message.join("\n");
+        return message.join("<br>");
     }
 }

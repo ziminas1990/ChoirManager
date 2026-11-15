@@ -3,7 +3,7 @@ import { Feedback } from "@src/entities/feedback.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IGroupChat } from "@src/interfaces/group_chat.js";
 import { IJournal } from "@src/interfaces/journal.js";
-import { GlobalFormatter } from "@src/utils.js";
+import { GlobalFormatter, html_text } from "@src/utils.js";
 
 function escape_html(text: string): string {
     return text
@@ -35,7 +35,7 @@ export class ManagersGroup implements IManagersChat {
         const message: string[] = [
             formatter.bold("New feedback received"),
             "",
-            formatter.quote(feedback.details),
+            formatter.quote(html_text(feedback.details)),
         ];
 
         if (feedback.who) {
@@ -53,7 +53,7 @@ export class ManagersGroup implements IManagersChat {
         message.push("");
         message.push("#feedback");
 
-        return (await this.chat.send_message(message.join("\n"))).as_status();
+        return (await this.chat.send_message(message.join("<br>"))).as_status();
     }
 
     async on_new_table_record(record: TableRecord): Promise<Status> {
@@ -64,11 +64,11 @@ export class ManagersGroup implements IManagersChat {
             "",
             ...record.fields.map(field => [
                 `<b>${escape_html(field.name)}</b>`,
-                field.value.trim().length > 0 ? escape_html(field.value) : "(нет ответа)",
+                field.value.trim().length > 0 ? html_text(field.value) : "(нет ответа)",
                 "",
-            ].join("\n")),
+            ].join("<br>")),
         ];
 
-        return (await this.chat.send_message(message.join("\n"))).as_status();
+        return (await this.chat.send_message(message.join("<br>"))).as_status();
     }
 }

@@ -1,5 +1,6 @@
 import { TaskData, TaskStatus, TaskUpdate } from "@src/entities/task.js";
 import { TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
+import { html_text } from "@src/utils.js";
 
 type TaskField = Exclude<keyof TaskData, "id" | "schema" | "created_at">;
 
@@ -9,13 +10,6 @@ type ChangedField = {
     new_value?: string;
     multiline: boolean;
 };
-
-function escape_html(text: string): string {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-}
 
 function format_status(status: TaskStatus): string {
     switch (status) {
@@ -89,7 +83,7 @@ function format_task_value(field: keyof TaskData, value: TaskData[keyof TaskData
 }
 
 function bold(text: string): string {
-    return `<b>${escape_html(text)}</b>`;
+    return `<b>${html_text(text)}</b>`;
 }
 
 function collect_changes(update: TaskUpdate): ChangedField[] {
@@ -130,34 +124,34 @@ function format_new_task_message(task: TaskData, now: Date): string {
     const lines: string[] = [
         "Создана новая задача:",
         "",
-        `${bold("Автор:")} ${escape_html(task.author)}`,
-        `${bold("Заголовок:")} ${escape_html(task.title)}`,
+        `${bold("Автор:")} ${html_text(task.author)}`,
+        `${bold("Заголовок:")} ${html_text(task.title)}`,
     ];
 
     if (task.deadline) {
         lines.push(
-            `${bold("Дедлайн:")} ${escape_html(format_date(task.deadline))} (${days_left(task.deadline, now)} дней)`,
+            `${bold("Дедлайн:")} ${html_text(format_date(task.deadline))} (${days_left(task.deadline, now)} дней)`,
         );
     }
     if (task.manager) {
-        lines.push(`${bold("Менеджер:")} ${escape_html(task.manager)}`);
+        lines.push(`${bold("Менеджер:")} ${html_text(task.manager)}`);
     }
     if (task.assignee) {
-        lines.push(`${bold("Исполнитель:")} ${escape_html(task.assignee)}`);
+        lines.push(`${bold("Исполнитель:")} ${html_text(task.assignee)}`);
     }
     if (task.comment) {
-        lines.push("", `${bold("Комментарий:")}`, escape_html(task.comment));
+        lines.push("", `${bold("Комментарий:")}`, html_text(task.comment));
     }
 
-    return lines.join("\n");
+    return lines.join("<br>");
 }
 
 function format_task_update_message(updates: TaskUpdate[]): string {
     const lines = ["Задача обновлена:", ""];
 
     for (const update of updates) {
-        const old_title = escape_html(update.previous.title);
-        const new_title = escape_html(update.next.title);
+        const old_title = html_text(update.previous.title);
+        const new_title = html_text(update.next.title);
         if (update.previous.title === update.next.title) {
             lines.push(`${bold("Заголовок:")} ${new_title}`);
         } else {
@@ -167,7 +161,7 @@ function format_task_update_message(updates: TaskUpdate[]): string {
         const changes = collect_changes(update);
         for (const change of changes) {
             const label = `${bold(`${field_label(change.field)}:`)}`;
-            const new_value = escape_html(change.new_value ?? "(empty)");
+            const new_value = html_text(change.new_value ?? "(empty)");
 
             if (change.multiline) {
                 lines.push(label, new_value);
@@ -189,7 +183,7 @@ function format_task_update_message(updates: TaskUpdate[]): string {
                 continue;
             }
 
-            lines.push(`${label} ${escape_html(change.old_value)} -&gt; ${new_value}`);
+            lines.push(`${label} ${html_text(change.old_value)} -&gt; ${new_value}`);
         }
 
         lines.push("");
@@ -199,7 +193,7 @@ function format_task_update_message(updates: TaskUpdate[]): string {
         lines.pop();
     }
 
-    return lines.join("\n");
+    return lines.join("<br>");
 }
 
 function format_deadline_message(tasks: TaskData[], now: Date): string {
@@ -213,35 +207,35 @@ function format_deadline_message(tasks: TaskData[], now: Date): string {
             lines.push("");
         }
 
-        lines.push(`${bold("Заголовок:")} ${escape_html(task.title)}`);
+        lines.push(`${bold("Заголовок:")} ${html_text(task.title)}`);
         if (task.manager) {
-            lines.push(`${bold("Менеджер:")} ${escape_html(task.manager)}`);
+            lines.push(`${bold("Менеджер:")} ${html_text(task.manager)}`);
         }
         if (task.deadline) {
             lines.push(
-                `${bold("Дедлайн:")} ${escape_html(format_date(task.deadline))} (${days_left(task.deadline, now)} days left)`,
+                `${bold("Дедлайн:")} ${html_text(format_date(task.deadline))} (${days_left(task.deadline, now)} days left)`,
             );
         }
     });
 
-    return lines.join("\n");
+    return lines.join("<br>");
 }
 
 function format_task_deleted_message(task: TaskData): string {
     const lines: string[] = [
         "Задача удалена:",
         "",
-        `${bold("Заголовок:")} ${escape_html(task.title)}`,
+        `${bold("Заголовок:")} ${html_text(task.title)}`,
     ];
 
     if (task.manager) {
-        lines.push(`${bold("Менеджер:")} ${escape_html(task.manager)}`);
+        lines.push(`${bold("Менеджер:")} ${html_text(task.manager)}`);
     }
     if (task.assignee) {
-        lines.push(`${bold("Исполнитель:")} ${escape_html(task.assignee)}`);
+        lines.push(`${bold("Исполнитель:")} ${html_text(task.assignee)}`);
     }
 
-    return lines.join("\n");
+    return lines.join("<br>");
 }
 
 export function render_task_tracker_event(event: TaskTrackerEvent, now: Date): string {
