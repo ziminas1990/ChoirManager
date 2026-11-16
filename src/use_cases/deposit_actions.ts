@@ -7,6 +7,7 @@ import { UserLogic } from "@src/logic/user.js";
 import { DepositEvent } from "@src/interfaces/deposit_service.js";
 import { Deposit, DepositChange } from "@src/entities/deposit.js";
 import { Role, user_has_role, user_tg_username } from "@src/entities/user.js";
+import { Transaction } from "@src/interfaces/transactions_storage.js";
 import { Environment } from "@src/components/environment.js";
 
 
@@ -173,9 +174,21 @@ export class DepositActions {
             return Expected.err(`user ${tgid} has no agents`);
         }
 
+        let transactions: Transaction[] | undefined;
+        try {
+            const service = Environment.global.maybe_deposit_service;
+            if (service) {
+                transactions = await service.fetch_transactions(tgid, { limit: 5, order: "desc" });
+            } else {
+                journal.warning(`Deposit service unavailable when loading transactions for ${tgid}`);
+            }
+        } catch (error) {
+            journal.warning(`Failed to fetch recent transactions for ${tgid}: ${error}`);
+        }
+
         let total = 0;
         for (const dialog of deposit_owner_dialog) {
-            const status = await dialog.send_deposit_changes(deposit, changes);
+            const status = await dialog.send_deposit_changes(deposit, changes, transactions);
             if (status.ok) {
                 total += 1;
             }
@@ -190,7 +203,7 @@ export class DepositActions {
         for (const accounter of accountants) {
             const accounter_dialog = accounter.as_accounter() ?? [];
             for (const dialog of accounter_dialog) {
-                await dialog.mirror_deposit_changes(user.data, deposit, changes);
+                await dialog.mirror_deposit_changes(user.data, deposit, changes, transactions);
             }
         }
 

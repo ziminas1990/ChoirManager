@@ -3,6 +3,7 @@ import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { Formatter, GlobalFormatter, html_text } from "@src/utils.js";
 import { Language, UserData, user_tg_username } from "@src/entities/user.js";
 import { Deposit, DepositChange } from "@src/entities/deposit.js";
+import { Transaction } from "@src/interfaces/transactions_storage.js";
 import { Orator } from "./deposit_owner_dialog.js";
 import { IAccounterAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 
@@ -42,9 +43,12 @@ export class AccounterDialog implements IAccounterAgent {
         return (await this.user.send_message(full_message)).as_status();
     }
 
-    async mirror_deposit_changes(who: UserData, deposit: Deposit, changes: DepositChange): Promise<Status> {
+    async mirror_deposit_changes(
+        who: UserData, deposit: Deposit, changes: DepositChange,
+        transactions: readonly Transaction[] | undefined,
+    ): Promise<Status> {
         const orator = new Orator(this.formatter);
-        const changes_msg = orator.deposit_change(deposit, changes, this.user.info().lang);
+        const changes_msg = orator.deposit_change(deposit, changes, this.user.info().lang, transactions);
         const who_msg = `Notification for ${who.name} ${who.surname} (@${user_tg_username(who)}):<br>`;
         const message = [who_msg, changes_msg].join("<br>");
         return (await this.user.send_message(message)).as_status();

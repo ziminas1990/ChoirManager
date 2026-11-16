@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import * as TelegramBot from "node-telegram-bot-api";
 import { after, mock, test } from "node:test";
 
+import { AccounterDialog } from "@src/adapters/telegram/dialogs/accounter_dialog.js";
 import { DepositOwnerDialog } from "@src/adapters/telegram/dialogs/deposit_owner_dialog.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
 import { DepositTransactionsWidget } from "@src/adapters/telegram/widgets/deposit_transactions.js";
@@ -12,6 +13,7 @@ import { Language, Role } from "@src/entities/user.js";
 import { Transaction } from "@src/interfaces/transactions_storage.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { GlobalFormatter } from "@src/utils.js";
+import { DepositTransactionsMessages } from "@src/utils/string_engine/deposit_transactions.js";
 import { Expected } from "@src/utils/expected.js";
 
 import { telegram_config } from "@tests/helpers/config.js";
@@ -254,3 +256,130 @@ for (const lang of [Language.RU, Language.EN]) {
     });
 }
 
+
+for (const lang of [Language.RU, Language.EN]) {
+    for (const count of [5, 2, 0, undefined]) {
+        test(`deposit changes append recent transactions in ${lang} (${count})`, async () => {
+            // Motivation: notifications must include recent activity in the same
+            // message, including older records and distinct empty/error states.
+
+            // 1. prepare localized transactions older than the history window
+            let context;
+            let transactions;
+            {
+                context = fixture(lang);
+                transactions = count === undefined ? undefined : history(count);
+                transactions?.forEach(tx => { tx.date = new Date("2020-01-01T00:00:00Z"); });
+            }
+
+            // 2. send a change notification with the supplied recent history
+            {
+                const status = await context.dialog.send_deposit_changes(
+                    new Deposit("member", "Member", 100, new Map()),
+                    { total_change: 50, balance: [50, 100] }, transactions);
+                assert.equal(status.ok, true);
+            }
+
+            // 3. check the table or localized explanation at the message end
+            {
+                assert.equal(context.state.messages.length, 1);
+                const html = context.state.messages[0];
+                const ru = lang === Language.RU;
+                assert.ok(html.startsWith(ru ? "<b>Изменения на твоём депозите:" : "<b>Deposit changes:"));
+                assert.equal(rows(html).length, count ?? 0);
+                if (count) {
+                    assert.ok(html.endsWith("</table>"));
+                    assert.ok(html.includes(ru ? "Последние транзакции:" : "Recent transactions:"));
+                    assert.deepEqual(rows(html).map(row => row[2]),
+                        transactions!.map(tx => `50 -> ${tx.after}`));
+                    assert.ok(html.includes(ru ? "оплата членского взноса" : "Membership fee payment"));
+                    assert.ok(html.includes("2020 01"));
+                } else {
+                    const ending = count === 0
+                        ? (ru ? "Нет транзакций." : "No transactions found.")
+                        : (ru ? "Транзакции временно недоступны." : "Transactions are temporarily unavailable.");
+                    assert.ok(html.endsWith(ending));
+                    assert.doesNotMatch(html, /<table/);
+                }
+                assert.deepEqual(context.state.requests, []);
+            }
+        });
+    }
+}
+
+for (const lang of [Language.RU, Language.EN]) {
+    test(`deposit notifications survive table rendering errors in ${lang}`, async t => {
+        // Motivation: table rendering failures must preserve the main deposit
+        // notification and its accountant copy in the recipient's language.
+
+        // 1. prepare notifications and force transaction table rendering to fail
+        let context;
+        let accountant;
+        let deposit;
+        {
+            context = fixture(lang, history(2));
+            accountant = new AccounterDialog(context.user);
+            deposit = new Deposit("member", "Member", 100, new Map());
+            t.mock.method(DepositTransactionsMessages, "table", () => {
+                throw new Error("Transaction formatting failed");
+            });
+        }
+
+        // 2. send both the owner notification and its accountant copy
+        {
+            const changes = { total_change: 50, balance: [50, 100] as [number, number] };
+            assert.equal((await context.dialog.send_deposit_changes(
+                deposit, changes, context.transactions)).ok, true);
+            assert.equal((await accountant.mirror_deposit_changes(
+                context.user.info(), deposit, changes, context.transactions)).ok, true);
+        }
+
+        // 3. verify both messages retain the change and explain missing history
+        {
+            const ru = lang === Language.RU;
+            assert.equal(context.state.messages.length, 2);
+            for (const html of context.state.messages) {
+                assert.ok(html.includes(ru ? "Изменения на твоём депозите:" : "Deposit changes:"));
+                assert.ok(html.includes("50 -> 100"));
+                assert.ok(html.endsWith(ru ? "Транзакции временно недоступны."
+                    : "Transactions are temporarily unavailable."));
+                assert.doesNotMatch(html, /<table/);
+            }
+        }
+    });
+}
+
+for (const lang of [Language.RU, Language.EN]) {
+    test(`deposit notifications have no empty payment block before the table in ${lang}`, async () => {
+        // Motivation: omitted payment details must not leave several blank
+        // lines between the deposit update and its transaction table.
+
+        // 1. prepare owner and accountant dialogs without payment configuration
+        let context;
+        let accountant;
+        let deposit;
+        {
+            context = fixture(lang, history(1));
+            accountant = new AccounterDialog(context.user);
+            deposit = new Deposit("member", "Member", 90, new Map());
+        }
+
+        // 2. send the update and its accountant copy
+        {
+            assert.equal((await context.dialog.send_deposit_changes(
+                deposit, { total_change: 100, balance: [-10, 90] }, context.transactions)).ok, true);
+            assert.equal((await accountant.mirror_deposit_changes(context.user.info(),
+                deposit, { total_change: 100, balance: [-10, 90] }, context.transactions)).ok, true);
+        }
+
+        // 3. verify the table heading immediately follows the balance line
+        {
+            assert.equal(context.state.messages.length, 2);
+            const title = lang === Language.RU ? "Последние транзакции:" : "Recent transactions:";
+            for (const html of context.state.messages) {
+                assert.ok(html.includes(`100 GEL)<br><h3>${title}</h3>`));
+                assert.doesNotMatch(html, /(?:<br>){2,}<h3>/);
+            }
+        }
+    });
+}

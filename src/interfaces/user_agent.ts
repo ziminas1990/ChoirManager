@@ -74,14 +74,18 @@ export interface IDepositOwnerAgent {
 
     send_deposit_info(deposit: Deposit | undefined): Promise<Status>;
 
-    send_deposit_changes(deposit: Deposit, changes: DepositChange): Promise<Status>;
+    send_deposit_changes(
+        deposit: Deposit,
+        changes: DepositChange,
+        transactions: readonly Transaction[] | undefined,
+    ): Promise<Status>;
 
     send_already_paid_response(): Promise<Status>;
 
     send_membership_reminder(amount: number): Promise<Status>;
 
     send_thanks_for_information(): Promise<Status>;
-    
+
     send_transactions_info(transactions: Transaction[] | undefined): Promise<Status>;
 }
 
@@ -93,7 +97,10 @@ export interface IAccounterAgent {
 
     send_top_up_notification(who: UserData, amount: number, original_message: string): Promise<Status>;
 
-    mirror_deposit_changes(who: UserData, deposit: Deposit, changes: DepositChange): Promise<Status>;
+    mirror_deposit_changes(
+        who: UserData, deposit: Deposit, changes: DepositChange,
+        transactions: readonly Transaction[] | undefined,
+    ): Promise<Status>;
 
     mirror_reminder(who: UserData, amount: number): Promise<Status>;
 }

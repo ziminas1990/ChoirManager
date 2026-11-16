@@ -8,6 +8,7 @@ import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Transaction } from "@src/interfaces/transactions_storage.js";
+import { DepositTransactionsMessages } from "@src/utils/string_engine/deposit_transactions.js";
 import { DepositTransactionsWidget } from "@src/adapters/telegram/widgets/deposit_transactions.js";
 
 
@@ -51,10 +52,14 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
         return await new DepositTransactionsWidget(this.user, transactions).start();
     }
 
-    async send_deposit_changes(deposit: Deposit, changes: DepositChange) : Promise<Status>
+    async send_deposit_changes(
+        deposit: Deposit,
+        changes: DepositChange,
+        transactions: readonly Transaction[] | undefined,
+    ): Promise<Status>
     {
         return (await this.user.send_message(
-            this.orator.deposit_change(deposit, changes, this.user.info().lang)
+            this.orator.deposit_change(deposit, changes, this.user.info().lang, transactions)
         )).as_status();
     }
 
@@ -107,7 +112,10 @@ export class Orator {
         private readonly deposit_presentation?: DepositPresentationConfig,
     ) {}
 
-    deposit_change(deposit: Deposit, change: DepositChange, lang: Language): string {
+    deposit_change(
+        deposit: Deposit, change: DepositChange, lang: Language,
+        transactions: readonly Transaction[] | undefined,
+    ): string {
         const lines: string[] = [];
         lines.push(this.formatter.bold(this.deposit_changes_test(change.total_change, lang)));
         lines.push("");
@@ -123,8 +131,12 @@ export class Orator {
             lines.push(this.membership_change(date, before, after, lang));
         }
 
-        lines.push("");
-        lines.push(this.waiting_membership(deposit, lang));
+        const waiting_membership = this.waiting_membership(deposit, lang);
+        if (waiting_membership) {
+            lines.push("");
+            lines.push(waiting_membership);
+        }
+        lines.push(DepositTransactionsMessages.recent(transactions, lang));
 
         return lines.join("<br>")
     }

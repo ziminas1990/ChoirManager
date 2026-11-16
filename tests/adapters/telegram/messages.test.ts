@@ -211,7 +211,7 @@ test("deposit information, reminders and changes preserve lines and blank lines"
         assert.equal((await dialog.send_membership_reminder(50)).ok, true);
         assert.equal((await dialog.send_deposit_changes(deposit, {
             total_change: 90, balance: [0, 90], membership: [[current_month(), 0, 20]],
-        })).ok, true);
+        }, [{ date: current_month(), tgid: "member", type: "balance", before: 0, after: 90 }])).ok, true);
     }
 
     // 3. check nested line breaks, formatting and inline controls on the wire
@@ -227,6 +227,8 @@ test("deposit information, reminders and changes preserve lines and blank lines"
         assert.ok(change.startsWith("<b>Deposit changes: credited 90 GEL</b><br><br>Funds on deposit:"));
         assert.match(change, /\(credited 90 GEL\)<br>Membership for/);
         assert.match(change, /\(credited 20 GEL\)<br><br>You are expected/);
+        assert.ok(change.includes("<h3>Recent transactions:</h3><table bordered striped compact>"));
+        assert.ok(change.endsWith('<td align="right">0 -&gt; 90</td><td>Deposit top-up</td></tr></table>'));
     }
 });
 
