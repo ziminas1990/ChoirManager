@@ -345,8 +345,8 @@ export class TelegramUser implements IUserAgent {
             return return_fail("API is not initialized", this.journal);
         }
         const commands = TelegramCommands.for_user(this.user_info);
-        const signature = commands
-            .map(command => command.command).sort().join(",");
+        const signature = [this.user_info.lang, ...commands
+            .map(command => command.command).sort()].join(",");
         if (signature === this.applied_commands
             || (this.timings.next_commands_update ?? 0) > now.getTime()) {
             return Expected.ok(undefined);

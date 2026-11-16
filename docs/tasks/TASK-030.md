@@ -7,29 +7,32 @@ are difficult to scan, and comparing amounts across transactions is cumbersome.
 
 ## Require
 
-Rework the transaction history widget to display transactions in a Rich HTML
-table with pagination. Preserve the existing entry point and transaction order.
-Support Russian and English, including a clear response when no transactions
-are available.
+Rework the transaction history widget to display transactions from the last six
+months in a Rich HTML table without buttons or pagination. Preserve the existing
+entry point and transaction order. Support Russian and English, including a clear
+response when no transactions are available in this period.
 
 ## Acceptance
 
 - Each transaction occupies a separate row beneath these labeled columns:
   - Date, using the current date format.
-  - Action: debit or credit.
-  - Amount.
-  - Balance change, showing the signed difference.
-  - Comment, left empty for now.
-- Amounts identify GEL as the currency.
-- The first page shows the 10 most recent transactions, and each subsequent
-  page shows up to 10 older transactions in their original order.
-- Buttons below the table navigate between pages: “Later” shows older
-  transactions, and “Earlier” returns to newer transactions.
-- Navigation cannot move before the first page or beyond the last page.
-- If Rich HTML supports it, a current page / total pages counter appears between
-  the navigation buttons.
-- Transactions retain their original values across pages.
+  - Operation: top-up or withdrawal followed by the absolute value of
+    `after - before`, without a sign.
+  - Balance: `before -> after` when the values differ, otherwise only `after`.
+  - Comment: deposit top-up or withdrawal for `balance`, and membership fee
+    payment for `membership`, localized into the selected language.
+- The operation is a top-up for a nonnegative difference and a withdrawal for
+  a negative difference. There is no separate balance-change column.
+- The table does not display a currency.
+- Only transactions dated within the last six calendar months through the
+  current time appear, including both boundaries. The cutoff retains the UTC
+  time of day and uses the last day of the target month when needed.
+- The period is based on the transaction date, not the membership month.
+- All matching transactions appear in one table in their original order and
+  retain their original values. The title identifies the six-month period.
+- The history message has no buttons or page counter and does not require
+  message editing.
 - The table is readable in Telegram on mobile devices in both supported
   languages.
-- Empty transaction history produces a localized message instead of an empty
-  table.
+- A history with no transactions in this period produces a localized message
+  identifying the period instead of an empty table.

@@ -9,6 +9,7 @@ import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Transaction } from "@src/interfaces/transactions_storage.js";
 import { with_button_grid } from "@src/adapters/telegram/button_grid.js";
+import { DepositTransactionsWidget } from "@src/adapters/telegram/widgets/deposit_transactions.js";
 
 
 export class DepositOwnerDialog implements IDepositOwnerAgent {
@@ -35,7 +36,6 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
                 this.orator.get_transactions_button(this.user.info().lang),
                 `open transactions for ${user_tg_username(this.user.info())}`,
                 async () => {
-                    // todo: make limited transactions request
                     return await DepositActions.transactions_requested(
                         this.user, this.journal );
                 }
@@ -51,9 +51,8 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
     }
 
     async send_transactions_info(transactions: Transaction[] | undefined): Promise<Status>
-    {// todo: add keyboard button with request for all transactions
-        return (await this.user.send_message(
-            this.orator.transactions_info(transactions, this.user.info().lang))).as_status();
+    {
+        return await new DepositTransactionsWidget(this.user, transactions).start();
     }
 
     async send_deposit_changes(deposit: Deposit, changes: DepositChange) : Promise<Status>
@@ -104,24 +103,6 @@ const monthes: {[key in Language]: string[]} = {
            "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
     "en": ["January", "February", "March", "April", "May", "June",
            "July", "August", "September", "October", "November", "December"]
-}
-
-const months_short: {[key in Language]: string[]} = {
-        "ru": ["ЯНВ","ФЕВ","МАР","АПР","МАЙ","ИЮН",
-               "ИЮЛ","АВГ","СЕН","ОКТ","НОЯ","ДЕК"],
-        "en": ["JAN","FEB","MAR","APR","MAY","JUN",
-               "JUL","AUG","SEP","OCT","NOV","DEC"]
-    };
-
-export function format_date(date: Date, lang: Language): string {
-    const year = date.getFullYear();
-    const now_year = new Date().getFullYear();
-
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = months_short[lang][date.getMonth()];
-
-    const base = `${day} ${month}`;
-    return year !== now_year ? `${year} ${base}` : base;
 }
 
 export class Orator {
@@ -220,41 +201,6 @@ export class Orator {
         lines.push("")
         lines.push(this.waiting_membership(deposit, lang));
         return lines.join("<br>")
-    }
-
-    transactions_info(transactions: Transaction[] | undefined, lang: Language): string {
-        if (!transactions?.length) {
-            return lang == Language.RU
-            ? "Нет транзакций для твоего депозита."
-            : "No transactions found for your deposit.";
-        }
-
-        const currency = "GEL";
-        const lblTop = lang === Language.RU ? "Список транзакций:" : "List of transactions:";
-
-        const lines: string[] = [];
-        lines.push(lblTop);
-        for (const tx of transactions) {
-            let target = "";
-            switch (tx.type) {
-                case "balance":
-                    target = lang === Language.RU ? "Депозит" : "Deposit";
-                    break;
-                case "membership":
-                    const month = tx.membership_month!.getMonth() + 1;
-                    const year = tx.membership_month!.getFullYear() % 100;
-                    target = lang === Language.RU ? `Членский за ${month}/${year}` : `Membership for ${month}/${year}`;
-                    break;
-            }
-            const change = tx.after - tx.before;
-            const sign = change >= 0 ? "+" : "-";
-            const amount  = Math.abs(change).toFixed(0);
-            const dateStr = format_date(new Date(tx.date), lang);
-
-            lines.push(`${dateStr} | ${target}: ${tx.before} -> ${tx.after} (${sign} ${amount} ${currency})`);
-        }
-
-        return lines.join("<br>");
     }
 
     waiting_membership(deposit: Deposit, lang: Language): string {

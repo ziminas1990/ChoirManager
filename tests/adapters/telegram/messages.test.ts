@@ -142,9 +142,9 @@ test("private and group messages use Rich HTML with identical content", async ()
 });
 
 for (const lang of [Language.RU, Language.EN]) {
-    test(`transaction history has visible Rich HTML line breaks in ${lang}`, async () => {
-        // Motivation: Rich HTML collapses raw newlines, so each transaction
-        // needs an explicit break in the actual Telegram request.
+    test(`transaction history sends a localized Rich HTML table in ${lang}`, async () => {
+        // Motivation: the real SDK request must preserve the table columns,
+        // transaction values and localized comments without a currency.
 
         // 1. prepare a localized dialog and two different transaction types
         let context;
@@ -155,7 +155,7 @@ for (const lang of [Language.RU, Language.EN]) {
             context.user.set_user_info({ ...context.user.info(), lang });
             dialog = new DepositOwnerDialog(context.user, new MemoryJournal(),
                 undefined, new Formatter("html"));
-            month = new Date(new Date().getFullYear(), 0, 1);
+            month = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
         }
 
         // 2. send the history through the real dialog and SDK
@@ -168,15 +168,24 @@ for (const lang of [Language.RU, Language.EN]) {
             assert.equal(status.ok, true);
         }
 
-        // 3. verify the header and each transaction occupy separate lines
+        // 3. verify the table and both transaction rows in the wire payload
         {
             const html = JSON.parse(String(context.calls[0].fields.get("rich_message"))).html;
-            const header = lang === Language.RU ? "Список транзакций:" : "List of transactions:";
-            const date = lang === Language.RU ? "01 ЯНВ" : "01 JAN";
-            const balance = lang === Language.RU ? "Депозит" : "Deposit";
-            const membership = lang === Language.RU ? "Членский за" : "Membership for";
-            assert.equal(html, `${header}<br>${date} | ${balance}: 0 -> 140 (+ 140 GEL)`
-                + `<br>${date} | ${membership} 1/${month.getFullYear() % 100}: 140 -> 90 (- 50 GEL)`);
+            const header = lang === Language.RU
+                ? "Транзакции за последние 6 месяцев:" : "Transactions for the last 6 months:";
+            const date = /<tr><td>(01 [A-ZА-Я]{3})<\/td>/.exec(html)?.[1];
+            assert.ok(date);
+            const credit = lang === Language.RU ? "Пополнение" : "Top-up";
+            const debit = lang === Language.RU ? "Списание" : "Withdrawal";
+            const balance = lang === Language.RU ? "пополнение депозита" : "Deposit top-up";
+            const membership = lang === Language.RU ? "оплата членского взноса" : "Membership fee payment";
+            assert.ok(html.startsWith(`<h3>${header}</h3><table bordered striped compact>`));
+            assert.ok(html.includes(`<tr><td>${date}</td><td>${credit} 140</td>`
+                + `<td align="right">0 -&gt; 140</td><td>${balance}</td></tr>`));
+            assert.ok(html.includes(`<tr><td>${date}</td><td>${debit} 50</td>`
+                + `<td align="right">140 -&gt; 90</td><td>${membership}</td></tr>`));
+            assert.equal((html.match(/<tr>/g) ?? []).length, 3);
+            assert.doesNotMatch(html, /GEL|₾/);
         }
     });
 }
