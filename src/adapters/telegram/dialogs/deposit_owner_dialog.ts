@@ -8,7 +8,6 @@ import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory
 import { DepositActions } from "@src/use_cases/deposit_actions.js";
 import { IDepositOwnerAgent, IUserAgent } from "@src/interfaces/user_agent.js";
 import { Transaction } from "@src/interfaces/transactions_storage.js";
-import { with_button_grid } from "@src/adapters/telegram/button_grid.js";
 import { DepositTransactionsWidget } from "@src/adapters/telegram/widgets/deposit_transactions.js";
 
 
@@ -41,12 +40,9 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
                 }
             );
 
-        const status = await this.user.send_message(
-            with_button_grid(
-                this.orator.deposit_info(info, this.user.info().lang),
-                [[get_transactions_button]]
-            )
-        );
+        const status = await this.user.send_message(this.orator.deposit_info(info, this.user.info().lang), {
+            buttons: [[get_transactions_button]],
+        });
         return status.as_status();
     }
 
@@ -90,9 +86,9 @@ export class DepositOwnerDialog implements IDepositOwnerAgent {
             }
         );
 
-        const status = await this.user.send_message(
-            with_button_grid(message, [[have_paid_botton]])
-        );
+        const status = await this.user.send_message(message, {
+            buttons: [[have_paid_botton]],
+        });
 
         return status.as_status();
     }

@@ -17,7 +17,7 @@ import { Expected } from "@src/utils/expected.js";
 import { telegram_config } from "@tests/helpers/config.js";
 import { value } from "@tests/helpers/expected.js";
 import { mock_analytic } from "@tests/mocks/analytic.js";
-import { TelegramDelivery, mock_telegram, telegram_callback, telegram_message } from "@tests/mocks/telegram.js";
+import { TelegramDelivery, inline_grid, mock_telegram, telegram_callback, telegram_message } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
 
@@ -93,7 +93,7 @@ function fixture(lang = Language.EN, coverage_days = 17.25) {
             const message_id = state.messages.length + 100;
             state.rich_messages.push(params);
             assert.ok(params.rich_message.html);
-            state.messages.push({ chat_id: params.chat_id, text: params.rich_message.html, message_id });
+            state.messages.push({ chat_id: params.chat_id, text: params.rich_message.html, options: { reply_markup: params.reply_markup }, message_id });
             return { message_id };
         },
         async editMessageText(params) {
@@ -120,11 +120,6 @@ function fixture(lang = Language.EN, coverage_days = 17.25) {
         return user;
     }
     return { state, environment, bot, new_session, user: new_session() };
-}
-
-function embedded_buttons(html: string): { callback_data: string }[] {
-    return [...html.matchAll(/<tg-button[^>]*data="([^"]+)"/g)]
-        .map(match => ({ callback_data: match[1] }));
 }
 
 async function click(context: ReturnType<typeof fixture>, data: string | undefined, message_id = 100, overrides: Partial<TelegramBot.CallbackQuery> = {}) {
@@ -164,8 +159,8 @@ for (const lang of [Language.EN, Language.RU]) {
             const message = context.state.messages[0];
             const payload = context.state.rich_messages[0];
             assert.equal(payload.chat_id, 123);
-            assert.deepEqual(payload.reply_markup, { remove_keyboard: true });
-            assert.equal(message.options, undefined);
+            assert.deepEqual(inline_grid(payload).map(row => row.length), [2, 2, 2]);
+            assert.doesNotMatch(message.text, /<tg-button/);
             assert.match(message.text, /<table bordered striped compact>/);
             assert.match(message.text, /<th>(Piece|Произведение)<\/th>/);
             assert.ok(message.text.includes('<td>Long &lt;b&gt;piece&lt;/b&gt; &amp; &quot;friends&quot; beyond sixteen characters</td>'));
@@ -173,17 +168,17 @@ for (const lang of [Language.EN, Language.RU]) {
             assert.match(message.text, /<td align="right">2\.0<\/td>/);
             assert.match(message.text, /<td align="right">50%<\/td>/);
             assert.doesNotMatch(message.text, /<pre>|<b>piece/);
-            const keyboard = embedded_buttons(message.text);
+            const keyboard = inline_grid(message).flat();
             assert.deepEqual(keyboard.map(button => button.callback_data),
                 ["30", "60", "90", "180", "all", "close"].map(action => `stats:v1:${action}`));
-            const rows = [...message.text.matchAll(/<tg-button-row>(.*?)<\/tg-button-row>/g)];
-            assert.deepEqual(rows.map(row => embedded_buttons(row[1]).map(button => button.callback_data)), [
+            const rows = inline_grid(message);
+            assert.deepEqual(rows.map(row => row.map(button => button.callback_data)), [
                 ["stats:v1:30", "stats:v1:60"],
                 ["stats:v1:90", "stats:v1:180"],
                 ["stats:v1:all", "stats:v1:close"],
             ]);
             assert.doesNotMatch(message.text, /style="link"/);
-            assert.match(message.text, /<tg-button type="callback_data" style="danger" data="stats:v1:close">/);
+            assert.equal(rows[2][1].style, "danger");
 
             const { from, to } = context.state.queries[0];
             assert.deepEqual(from, apply_interval(to, { days: -30 }));
@@ -205,7 +200,7 @@ test("all period buttons and close survive a fresh session without widget state"
         await new ChoristerStatisticsWidget(context.user, journal).start();
         await new ChoristerStatisticsWidget(context.user, journal).start();
         [first, second] = context.state.messages;
-        buttons = embedded_buttons(first.text);
+        buttons = inline_grid(first).flat();
     }
 
     // 2. replace the session and change current profile and attendance data
@@ -237,10 +232,10 @@ test("all period buttons and close survive a fresh session without widget state"
             assert.equal(edit.chat_id, 123);
             assert.equal(edit.text, undefined);
             assert.equal(edit.parse_mode, undefined);
-            assert.deepEqual(edit.reply_markup, { inline_keyboard: [] });
+            assert.deepEqual(inline_grid(edit).map(row => row.length), [2, 2, 2]);
             assert.match(edit.rich_message!.html!, /Твоя статистика посещений/);
             assert.match(edit.rich_message!.html!, /<td align="right">100%<\/td>/);
-            assert.equal(embedded_buttons(edit.rich_message!.html!).length, 6);
+            assert.equal(inline_grid(edit).flat().length, 6);
             if (days === undefined) {
                 assert.match(edit.rich_message!.html!, /за всё время \(18 дн\.\)/);
             }
@@ -354,7 +349,7 @@ for (const failure of ["profile error", "profile exception", "analytic error", "
         // 3. verify error feedback without a replacement widget
         {
             assert.equal(context.state.messages.length, 1);
-            assert.equal(context.state.messages[0].options?.reply_markup, undefined);
+            assert.deepEqual(inline_grid(context.state.messages[0]), []);
             assert.equal(context.state.edits.length, 0);
         }
 
@@ -400,7 +395,7 @@ test("repeated identical updates are harmless and legacy buttons are unavailable
     {
         context.state.no_change = false;
         assert.equal((await new ChoristerStatisticsWidget(context.user, journal).start()).ok, true);
-        const keyboard = embedded_buttons(context.state.messages[0].text);
+        const keyboard = inline_grid(context.state.messages[0]).flat();
         await click(context, keyboard[0].callback_data, context.state.messages[0].message_id);
         assert.equal(context.state.edits.length, 1);
     }
@@ -465,7 +460,7 @@ for (const lang of [Language.EN, Language.RU]) {
             assert.match(html, /(No pieces for this period|За этот период нет произведений)/);
             assert.match(html, /: —<\/p>/);
             assert.doesNotMatch(html, /<table|NaN|Infinity|0%/);
-            assert.equal(embedded_buttons(html).length, 6);
+            assert.equal(inline_grid(context.state.rich_messages[0]).flat().length, 6);
         }
 
         // 3. select all time and verify that an empty history covers zero days
@@ -504,6 +499,58 @@ for (const [lang, coverage_days, expected] of [
             assert.deepEqual(context.state.queries[0].from, new Date(0));
             const html = context.state.edits[0].rich_message!.html!;
             assert.ok(html.includes(expected));
+        }
+    });
+}
+
+for (const failure of [undefined, "replacement", "cleanup", "edit"] as const) {
+    test(`legacy statistics replacement handles ${failure ?? "success"}`, async () => {
+        // Motivation: embedded controls make old widgets immutable; migration
+        // must deliver usable controls and preserve delivery or cleanup errors.
+
+        // 1. simulate a retained message whose edit is rejected by Telegram
+        let context;
+        {
+            context = fixture();
+            context.bot.api.editMessageText = async () => {
+                throw new Error(failure === "edit" ? "offline" : "Bad Request: message can't be edited");
+            };
+            if (failure === "replacement") {
+                const send = context.bot.api.sendRichMessage;
+                context.bot.api.sendRichMessage = async params => {
+                    if (params.rich_message.html?.includes("<table")) {
+                        throw new Error("replacement unavailable");
+                    }
+                    return send(params);
+                };
+            }
+            if (failure === "cleanup") {
+                context.bot.api.deleteMessage = async () => false;
+            }
+        }
+
+        // 2. request a new period through the retained embedded callback
+        let result;
+        {
+            result = await ChoristerStatisticsWidget.on_callback(telegram_callback({
+                data: "stats:v1:60", from: { id: 123, first_name: "Member", is_bot: false },
+                message: telegram_message({ message_id: 42 }),
+            }), context.user, journal);
+        }
+
+        // 3. check replacement delivery and that failures remain failures
+        {
+            assert.equal(result.ok, failure === undefined);
+            const widgets = context.state.rich_messages.filter(payload =>
+                payload.rich_message.html?.includes("<table"));
+            assert.equal(widgets.length, failure === "replacement" || failure === "edit" ? 0 : 1);
+            if (widgets.length) {
+                assert.deepEqual(inline_grid(widgets[0]).map(row => row.length), [2, 2, 2]);
+                assert.doesNotMatch(widgets[0].rich_message.html!, /<tg-button/);
+                assert.match(widgets[0].rich_message.html!, /last 60 days/);
+            }
+            assert.deepEqual(context.state.deletions,
+                failure === undefined ? [{ chat_id: 123, message_id: 42 }] : []);
         }
     });
 }

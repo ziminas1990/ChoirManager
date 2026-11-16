@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import * as TelegramBot from "node-telegram-bot-api";
 import { after, mock, test } from "node:test";
 
 import { DepositOwnerDialog } from "@src/adapters/telegram/dialogs/deposit_owner_dialog.js";
@@ -15,7 +16,7 @@ import { Expected } from "@src/utils/expected.js";
 
 import { telegram_config } from "@tests/helpers/config.js";
 import { user_profile } from "@tests/helpers/user.js";
-import { embedded_grid, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
+import { inline_grid, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
 
@@ -37,6 +38,7 @@ function fixture(lang = Language.EN, transactions = history(23)) {
     const profile = user_profile("member", { lang, roles: [Role.Chorister] });
     const state = {
         messages: [] as string[],
+        keyboards: [] as TelegramBot.SendRichMessageParams[],
         requests: [] as string[],
     };
     const environment = new Environment();
@@ -50,7 +52,9 @@ function fixture(lang = Language.EN, transactions = history(23)) {
     };
     Environment.set_global(environment);
     const bot = mock_telegram({
-        sendRichMessage: async ({ rich_message }) => {
+        sendRichMessage: async (params) => {
+            const { rich_message } = params;
+            state.keyboards.push(params);
             state.messages.push(rich_message.html!);
             return { message_id: 99 + state.messages.length };
         },
@@ -102,7 +106,7 @@ for (const lang of [Language.RU, Language.EN]) {
             mock.method(context.user, "edit_message", async () => {
                 throw new Error("transaction history must not edit messages");
             });
-            await click(context, embedded_grid(context.state.messages[0])[0][0].callback_data);
+            await click(context, inline_grid(context.state.keyboards[0])[0][0].callback_data);
         }
 
         // 3. verify all 23 rows, original ordering and no navigation markup
@@ -153,7 +157,8 @@ for (const lang of [Language.RU, Language.EN]) {
                 : ["Date", "Operation", "Balance", "Comment"]);
             assert.doesNotMatch(html, /GEL|₾/);
             assert.ok(html.endsWith("</table>"));
-            assert.deepEqual(embedded_grid(html), []);
+            assert.doesNotMatch(html, /<tg-button/);
+            assert.deepEqual(inline_grid(context.state.keyboards.at(-1)!), []);
         }
     });
 

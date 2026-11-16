@@ -1,4 +1,4 @@
-import { render_button_grid } from "../button_grid.js";
+import { MessageOptions, GridButton } from "@src/interfaces/user_agent.js";
 import * as TelegramBot from "node-telegram-bot-api";
 
 import { ChoristerAttendanceStat, IAnalyticService } from "@src/interfaces/analytic_service.js";
@@ -112,8 +112,7 @@ export class ChoristerStatisticsWidget {
                 return await this.report_failure(statistic.as_status());
             }
             const updated = await this.update_widget(
-                Messages.statistics(statistic.value, profile.lang, period_days)
-                + "\n" + Messages.controls(profile.lang));
+                Messages.statistics(statistic.value, profile.lang, period_days));
             return updated.ok ? updated : await this.report_failure(updated);
         } catch (error) {
             return await this.report_failure(Expected.exception("failed to collect statistics", error));
@@ -127,14 +126,25 @@ export class ChoristerStatisticsWidget {
     }
 
     private async update_widget(html: string): Promise<Status> {
+        const options: MessageOptions = {
+            buttons: Messages.controls(this.user.info().lang),
+        };
         if (this.message_id === undefined) {
-            return (await this.user.send_message(html)).as_status();
+            return (await this.user.send_message(html, options)).as_status();
         }
-        const updated = await this.user.edit_message(
-            this.message_id, { text: html });
+        const updated = await this.user.edit_message(this.message_id, { text: html, ...options });
         // Repeated clicks can produce identical message contents.
         if (!updated.ok && updated.error.includes("message is not modified")) {
             return Expected.ok(undefined);
+        }
+        if (!updated.ok && /message (?:can[’']?t|cannot) be edited/i.test(updated.error)) {
+            // Embedded controls on older messages prevent edits. Deliver a fresh
+            // widget before removing the old one; delivery failures stay errors.
+            const replacement = await this.user.send_message(html, options);
+            if (!replacement.ok) {
+                return replacement.as_status();
+            }
+            return await this.user.delete_message(this.message_id);
         }
         return updated;
     }
@@ -197,20 +207,20 @@ class Messages {
         ].join("\n");
     }
 
-    static controls(lang: Language): string {
+    static controls(lang: Language): GridButton[][] {
         const ru = lang === Language.RU;
         const periods = statistics_period_days.map(days => ({
             text: ru ? `За ${days} дней` : `For ${days} days`,
             callback_data: `${statistics_prefix}${days}`,
         }));
-        return render_button_grid([
+        return [
             periods.slice(0, 2),
             periods.slice(2, 4),
             [
                 { text: ru ? "За всё время" : "All time", callback_data: `${statistics_prefix}all` },
                 { text: ru ? "Закрыть" : "Close", callback_data: `${statistics_prefix}close`, style: "danger" },
             ],
-        ]);
+        ];
     }
 
     static fail_message(lang: Language): string {

@@ -16,7 +16,7 @@ import { Expected } from "@src/utils/expected.js";
 import { telegram_config } from "@tests/helpers/config.js";
 import { value } from "@tests/helpers/expected.js";
 import { mock_scores } from "@tests/mocks/scores.js";
-import { TelegramDelivery, embedded_grid, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
+import { TelegramDelivery, inline_grid, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
 
@@ -503,7 +503,7 @@ test("lists use compact stable buttons for long Unicode titles and distinct auth
     let buttons;
     {
         assert.equal((await dialog.send_scores_list(scores)).ok, true);
-        const grid = embedded_grid(context.state.messages[0].text);
+        const grid = inline_grid(context.state.messages[0]);
         assert.deepEqual(grid.map(row => row.length), [2, 1]);
         buttons = grid.flat();
     }
@@ -581,7 +581,7 @@ test("buttons survive recreation of the user, environment, and catalog in a diff
         const dialog = value(ChoristerDialog.create(previous.user, telegram_config().runtime,
                 mock_user_replica({ resolve_user: () => Expected.ok(previous.user.info()) }), journal, telegram_config().assistant));
         await dialog.send_scores_list(previous.state.catalog);
-        data = embedded_grid(previous.state.messages[0].text)[0][0].callback_data;
+        data = inline_grid(previous.state.messages[0])[0][0].callback_data;
     }
 
     // 3. recreate the user and environment with a reordered catalog

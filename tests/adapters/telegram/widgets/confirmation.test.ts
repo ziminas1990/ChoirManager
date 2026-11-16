@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import * as TelegramBot from "node-telegram-bot-api";
 import { after, mock, test } from "node:test";
 
 import { TelegramCallbacks } from "@src/adapters/telegram/callbacks.js";
@@ -15,7 +16,7 @@ import { GlobalFormatter } from "@src/utils.js";
 import { Expected } from "@src/utils/expected.js";
 
 import { telegram_config } from "@tests/helpers/config.js";
-import { TelegramDelivery, embedded_grid, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
+import { TelegramDelivery, inline_grid, mock_telegram, telegram_callback } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
 
@@ -30,6 +31,7 @@ type State = {
     messages: TelegramDelivery[];
     answers: string[];
     edits: string[];
+    edit_payloads: TelegramBot.EditMessageTextParams[];
     deletions: number[];
 };
 
@@ -46,6 +48,7 @@ function fixture(lang = Language.EN) {
         messages: [],
         answers: [],
         edits: [],
+        edit_payloads: [],
         deletions: [],
     };
     const environment = new Environment();
@@ -70,6 +73,7 @@ function fixture(lang = Language.EN) {
         },
         async editMessageText(params) {
             state.edits.push(params!.rich_message!.html!);
+            state.edit_payloads.push(params!);
             return true;
         },
         async deleteMessage({ message_id }) {
@@ -437,7 +441,7 @@ test("a repeated confirmation click does not apply the choice again", async () =
         const widget = new ConfirmationWidget(
             context.user, journal, "Add Anna?", "Yes", "No");
         assert.equal((await widget.start()).ok, true);
-        data = embedded_grid(context.state.messages[0].text)[0][0].callback_data;
+        data = inline_grid(context.state.messages[0])[0][0].callback_data;
         const pending = widget.answer();
         await click(context, data);
         decision = await pending;
@@ -462,7 +466,7 @@ for (const outcome of ["choice", "timeout", "edit failure"] as const) {
         // Motivation: rendered controls and registered actions must end
         // together, and a failed edit cannot produce a successful decision.
 
-        // 1. show a prompt and record its embedded callback
+        // 1. show a prompt and record its inline callback
         let context;
         let widget;
         let data;
@@ -471,7 +475,7 @@ for (const outcome of ["choice", "timeout", "edit failure"] as const) {
             widget = new ConfirmationWidget(context.user, journal, "Continue?", "Yes", "No",
                 outcome === "timeout" ? 0.01 : undefined);
             assert.equal((await widget.start()).ok, true);
-            const grid = embedded_grid(context.state.messages[0].text);
+            const grid = inline_grid(context.state.messages[0]);
             assert.deepEqual(grid.map(row => row.map(button => button.text)), [["Yes", "No"]]);
             data = grid[0][0].callback_data;
         }
@@ -491,6 +495,7 @@ for (const outcome of ["choice", "timeout", "edit failure"] as const) {
             }
             if (outcome !== "edit failure") {
                 assert.deepEqual(context.state.edits, ["Continue?"]);
+                assert.deepEqual(inline_grid(context.state.edit_payloads.at(-1)!), []);
             }
         }
 
@@ -520,7 +525,7 @@ for (const outcome of ["cancel", "publish", "failure"] as const) {
             registration = mock.method(FeedbackActions, "register_new_feedback", async () =>
                 outcome === "failure" ? Expected.err("offline") : Expected.ok(undefined));
             assert.equal((await widget.start()).ok, true);
-            privacy = embedded_grid(context.state.edits.at(-1)!);
+            privacy = inline_grid(context.state.edit_payloads.at(-1)!);
             assert.deepEqual(privacy.map(row => row.map(button => button.text)), [
                 ["Send anonymously"], ["Send on behalf of my party"], ["Send on my behalf"], ["Cancel"],
             ]);
@@ -530,7 +535,7 @@ for (const outcome of ["cancel", "publish", "failure"] as const) {
         let confirmation;
         {
             await click(context, privacy[0][0].callback_data);
-            confirmation = embedded_grid(context.state.edits.at(-1)!);
+            confirmation = inline_grid(context.state.edit_payloads.at(-1)!);
             assert.deepEqual(confirmation.map(row => row.map(button => button.text)), [["Send!"], ["Cancel"]]);
             const count = context.state.edits.length;
             await click(context, privacy[2][0].callback_data);
@@ -542,7 +547,7 @@ for (const outcome of ["cancel", "publish", "failure"] as const) {
             await click(context, confirmation[outcome === "cancel" ? 1 : 0][0].callback_data);
             assert.equal(widget.finished(), true);
             if (outcome === "failure") {
-                assert.deepEqual(embedded_grid(context.state.edits.at(-1)!), []);
+                assert.deepEqual(inline_grid(context.state.edit_payloads.at(-1)!), []);
             } else {
                 assert.deepEqual(context.state.deletions, [1]);
             }
@@ -573,7 +578,7 @@ test("a failed feedback edit ends the flow and invalidates its controls", async 
         context = fixture();
         widget = new FeedbackWidget(context.user, journal);
         assert.equal((await widget.start()).ok, true);
-        cancel = embedded_grid(context.state.edits.at(-1)!)[0][0].callback_data;
+        cancel = inline_grid(context.state.edit_payloads.at(-1)!)[0][0].callback_data;
     }
 
     // 2. reject the next update and ensure the error reaches the caller

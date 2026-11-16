@@ -64,12 +64,10 @@ export function telegram_token(t: TestContext) {
     } };
 }
 
-export function embedded_grid(html: string): { text: string; callback_data?: string; url?: string }[][] {
-    const decode = (text: string) => text.replace(/&quot;/g, '"').replace(/&gt;/g, ">")
-        .replace(/&lt;/g, "<").replace(/&amp;/g, "&");
-    return [...html.matchAll(/<tg-button-row>(.*?)<\/tg-button-row>/gs)].map(row =>
-        [...row[1].matchAll(/<tg-button type="(callback_data|url)"(?: style="[^"]*")? (?:data|url)="([^"]*)">(.*?)<\/tg-button>/gs)]
-            .map(button => ({ text: decode(button[3]), [button[1]]: decode(button[2]) })));
+export function inline_grid(message: { options?: { reply_markup?: unknown }; reply_markup?: unknown }) {
+    const markup = (message.reply_markup ?? message.options?.reply_markup) as
+        { inline_keyboard?: TelegramBot.InlineKeyboardButton[][] } | undefined;
+    return markup?.inline_keyboard ?? [];
 }
 
 export async function emit_telegram(

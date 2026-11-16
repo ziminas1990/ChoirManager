@@ -10,9 +10,17 @@ export enum ConfirmationError {
     TimedOut = 1,
 }
 
-// Edits replace the complete Rich HTML body and its embedded controls.
+export type CallbackButton = { text: string; callback_data: string; style?: "danger" };
+export type GridButton = CallbackButton | { text: string; url: string };
+
+// Optional inline controls, separate from Rich HTML content.
+export type MessageOptions = {
+    buttons?: readonly (readonly GridButton[])[];
+};
+
+// Edits replace Rich HTML content and controls; omitting buttons removes them.
 // Use <br> or block tags for visible line breaks; raw newlines are whitespace.
-export type EditMessageOptions = {
+export type EditMessageOptions = MessageOptions & {
     text: string;
 };
 
@@ -23,9 +31,9 @@ export interface IUserAgent
     // Canonical identity: UserData.id.system_id, not telegram username.
     userid(): string;
 
-    // Text messages use Rich HTML, including embedded controls.
+    // Text messages use Rich HTML content and optional inline controls.
     // Use <br> or block tags for visible line breaks.
-    send_message(message: string): Promise<Expected<number>>;
+    send_message(message: string, options?: MessageOptions): Promise<Expected<number>>;
 
     edit_message(message_id: number, options: EditMessageOptions): Promise<Status>;
 

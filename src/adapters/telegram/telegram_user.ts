@@ -1,4 +1,3 @@
-import { CallbackButton } from "./button_grid.js";
 import * as TelegramBot from "node-telegram-bot-api";
 import { fromPath } from "node-telegram-bot-api/node";
 
@@ -9,6 +8,8 @@ import {
     IDepositOwnerAgent,
     IUserAgent,
     EditMessageOptions,
+    MessageOptions,
+    CallbackButton,
 } from "@src/interfaces/user_agent.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { IJournal } from "@src/interfaces/journal.js";
@@ -174,7 +175,7 @@ export class TelegramUser implements IUserAgent {
     }
 
     // From IUserAgent
-    async send_message(message: string): Promise<Expected<number>> {
+    async send_message(message: string, options?: MessageOptions): Promise<Expected<number>> {
         if (!this.bot) {
             return return_fail("API is not initialized", this.journal);
         }
@@ -183,8 +184,9 @@ export class TelegramUser implements IUserAgent {
             const sent = await this.bot.api.sendRichMessage({
                 chat_id: this.chat_id,
                 rich_message: { html: message },
-                // Also removes keyboards retained by clients from older versions.
-                reply_markup: { remove_keyboard: true },
+                reply_markup: !options?.buttons?.length
+                    ? { remove_keyboard: true }
+                    : { inline_keyboard: options.buttons.map(row => [...row]) },
             });
             this.journal.info({ message }, "message sent")
             return Expected.ok(sent.message_id);
@@ -247,14 +249,13 @@ export class TelegramUser implements IUserAgent {
         }
         try {
             await this.wait_api_cooldown();
-            await this.bot.api.editMessageText({
+            const edited = await this.bot.api.editMessageText({
                 chat_id: this.chat_id,
                 message_id,
                 rich_message: { html: what.text },
-                // Clear separate controls on messages sent before Rich HTML grids.
-                reply_markup: { inline_keyboard: [] },
+                reply_markup: { inline_keyboard: (what.buttons ?? []).map(row => [...row]) },
             });
-            return Expected.ok(undefined);
+            return edited ? Expected.ok(undefined) : return_fail("Failed to edit message", this.journal);
         } catch (e) {
             return return_exception(e, this.journal);
         }

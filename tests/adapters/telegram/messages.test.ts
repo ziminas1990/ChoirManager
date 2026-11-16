@@ -15,18 +15,17 @@ import { MemoryJournal } from "@src/components/memory_journal.js";
 import { Deposit } from "@src/entities/deposit.js";
 import { create_task_update, TaskData } from "@src/entities/task.js";
 import { Language } from "@src/entities/user.js";
-import { IUserAgent } from "@src/interfaces/user_agent.js";
+import { EditMessageOptions, MessageOptions, IUserAgent } from "@src/interfaces/user_agent.js";
 import { TaskTrackerEvent } from "@src/interfaces/task_tracker_service.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { current_month, escape_html, Formatter, GlobalFormatter } from "@src/utils.js";
-import { render_button_grid, with_button_grid } from "@src/adapters/telegram/button_grid.js";
 import { Expected } from "@src/utils/expected.js";
 import { render_confirmation, render_result } from "@src/utils/string_engine/administration.js";
 import { render_task_tracker_event } from "@src/utils/string_engine/task_tracker.js";
 
 import { telegram_config } from "@tests/helpers/config.js";
 import { user_profile } from "@tests/helpers/user.js";
-import { embedded_grid, telegram_message } from "@tests/mocks/telegram.js";
+import { inline_grid, telegram_message } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 
 mock.method(CoreAPI, "on_new_user_agent", () => Expected.ok(undefined));
@@ -65,14 +64,13 @@ test("Rich HTML is serialized through the SDK for sending and editing", async ()
     // Motivation: mocking SDK methods cannot detect incorrectly named wire
     // parameters or accidentally sending rich content through ordinary HTML.
 
-    // 1. prepare a rich message containing a table and an embedded callback
+    // 1. prepare a rich message containing a table and code block
     let context;
     let html;
     {
         context = fixture();
         html = '<table>\n<tr><td>Piece</td><td>50%</td></tr>\n</table>'
-            + '<pre><code>first line\n  second line</code></pre>'
-            + '<p><tg-button type="callback_data" data="stats:v1:60">60 days</tg-button></p>';
+            + '<pre><code>first line\n  second line</code></pre>';
     }
 
     // 2. send through the real SDK and verify the nested HTML payload
@@ -192,7 +190,7 @@ for (const lang of [Language.RU, Language.EN]) {
 
 test("deposit information, reminders and changes preserve lines and blank lines", async () => {
     // Motivation: nested deposit templates must retain their spacing when
-    // embedded with payment details and Rich HTML callback controls.
+    // embedded with payment details and inline callback controls.
 
     // 1. prepare a deposit dialog with payment details and an unpaid month
     let context;
@@ -216,16 +214,16 @@ test("deposit information, reminders and changes preserve lines and blank lines"
         })).ok, true);
     }
 
-    // 3. check nested line breaks, formatting and embedded controls on the wire
+    // 3. check nested line breaks, formatting and inline controls on the wire
     {
         const [summary, reminder, change] = context.calls.map(call =>
             JSON.parse(String(call.fields.get("rich_message"))).html as string);
         assert.ok(summary.startsWith("Your deposit:<br><br>Funds on deposit: 90 GEL<br>Paid for"));
         assert.match(summary, /<br><br>You are expected to pay another 50 GEL/);
         assert.match(summary, /<b>Bank<\/b>:<br>Account: <code>GE123<\/code><br>Receiver: <code>Singer<\/code>/);
-        assert.equal(embedded_grid(summary)[0][0].text, "Transactions");
+        assert.equal(inline_grid({ reply_markup: JSON.parse(String(context.calls[0].fields.get("reply_markup"))) })[0][0].text, "Transactions");
         assert.match(reminder, /fee\.<br><br>The membership fee can be transferred/);
-        assert.equal(embedded_grid(reminder)[0][0].text, "I have paid already 🤷");
+        assert.equal(inline_grid({ reply_markup: JSON.parse(String(context.calls[1].fields.get("reply_markup"))) })[0][0].text, "I have paid already 🤷");
         assert.ok(change.startsWith("<b>Deposit changes: credited 90 GEL</b><br><br>Funds on deposit:"));
         assert.match(change, /\(credited 90 GEL\)<br>Membership for/);
         assert.match(change, /\(credited 20 GEL\)<br><br>You are expected/);
@@ -465,24 +463,28 @@ test("local document uploads retain bytes, metadata and the destination topic", 
 });
 
 
-test("edits replace embedded controls and clear legacy inline keyboards", async () => {
-    // Motivation: refreshing old messages must remove separate controls, and
-    // subsequent edits must replace the entire embedded grid with the body.
+test("edits replace inline controls and remove them on completion", async () => {
+    // Motivation: widget updates must carry editable content and controls in
+    // separate API fields, and API failures must reach the caller.
 
     // 1. prepare an agent and a message containing controls
     let context;
-    let html;
+    let message: EditMessageOptions;
     {
         context = fixture();
-        html = with_button_grid("Changed", [[{ text: "OK", callback_data: "ok" }]]);
+        message = {
+            text: "Changed",
+            buttons: [[{ text: "OK", callback_data: "ok" }]],
+        };
     }
 
     // 2. replace controls together with content and then remove them
-    for (const text of [html, "Completed"]) {
-        assert.equal((await context.user.edit_message(42, { text })).ok, true);
+    for (const options of [message, { text: "Completed" }]) {
+        assert.equal((await context.user.edit_message(42, options)).ok, true);
         const fields: FormData = context.calls.at(-1)!.fields;
-        assert.deepEqual(JSON.parse(String(fields.get("rich_message"))), { html: text });
-        assert.deepEqual(JSON.parse(String(fields.get("reply_markup"))), { inline_keyboard: [] });
+        assert.deepEqual(JSON.parse(String(fields.get("rich_message"))), { html: options.text });
+        assert.deepEqual(JSON.parse(String(fields.get("reply_markup"))),
+            { inline_keyboard: options.buttons ?? [] });
     }
 
     // 3. ensure edit failures are returned to the caller
@@ -495,31 +497,29 @@ test("edits replace embedded controls and clear legacy inline keyboards", async 
     }
 });
 
-test("button grids preserve rows and literal callback and URL labels", () => {
-    // Motivation: dynamic grids have partial last rows, and metacharacters
-    // in literal labels or actions must never become markup.
+test("inline grids preserve rows and literal callback and URL labels on the wire", async () => {
+    // Motivation: dynamic grids have partial last rows and literal labels that
+    // must reach Telegram unchanged, outside the Rich HTML body.
 
-    // 1. render mixed actions with an incomplete final row
-    let html;
+    // 1. prepare mixed actions with an incomplete final row
+    let context;
     let grid;
     {
+        context = fixture();
         grid = [
             [{ text: 'A < B & "C"', callback_data: 'value<&">' },
                 { text: "Join & sing", url: 'https://example.org/?a=1&b="2"' }],
             [{ text: "Last", callback_data: "last" }],
         ];
-        html = with_button_grid("<b>Body</b>", grid);
     }
 
-    // 2. verify exact row boundaries, escaped literals and body placement
+    // 2. send through the SDK and check content and controls independently
     {
-        assert.deepEqual(embedded_grid(html), grid);
-        assert.ok(html.startsWith("<b>Body</b>\n<tg-button-row>"));
-        assert.doesNotMatch(html, /<table|style="primary"/);
-        assert.match(html, /A &lt; B &amp; &quot;C&quot;/);
-        assert.match(html, /data="value&lt;&amp;&quot;&gt;"/);
-        assert.match(html, /type="url" url="https:\/\/example.org\/\?a=1&amp;b=&quot;2&quot;"/);
-        assert.equal(render_button_grid([]), "");
-        assert.equal(with_button_grid("Body", []), "Body");
+        const agent: IUserAgent = context.user;
+        const options: MessageOptions = { buttons: grid };
+        assert.equal((await agent.send_message("<b>Body</b>", options)).ok, true);
+        const fields = context.calls[0].fields;
+        assert.deepEqual(JSON.parse(String(fields.get("rich_message"))), { html: "<b>Body</b>" });
+        assert.deepEqual(JSON.parse(String(fields.get("reply_markup"))), { inline_keyboard: grid });
     }
 });

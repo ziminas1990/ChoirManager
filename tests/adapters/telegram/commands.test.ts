@@ -185,8 +185,8 @@ for (const lang of [Language.EN, Language.RU]) {
             assert.equal(consumed.mock.calls[0].arguments[0].text, "Please add another rehearsal");
             assert.equal(assistant.mock.callCount(), 0);
             assert.match(context.state.edits.at(-1)!.rich_message!.html!, /Please add another rehearsal/);
-            assert.ok(context.state.messages.every(message =>
-                JSON.stringify(message.reply_markup) === JSON.stringify({ remove_keyboard: true })));
+            assert.ok(context.state.messages.every(message => message.reply_markup
+                && ("inline_keyboard" in message.reply_markup || "remove_keyboard" in message.reply_markup)));
         }
 
         // 6. accept retained keyboard buttons during migration

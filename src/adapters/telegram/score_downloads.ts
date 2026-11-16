@@ -1,4 +1,4 @@
-import { CallbackButton } from "./button_grid.js";
+import { CallbackButton } from "@src/interfaces/user_agent.js";
 
 import type { TelegramUser } from "./telegram_user.js";
 import { Score } from "@src/entities/score.js";

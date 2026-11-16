@@ -22,7 +22,6 @@ import { AssistantConfig } from "@src/config.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { Environment } from "@src/components/environment.js";
 import { ScoreDownloads } from "@src/adapters/telegram/score_downloads.js";
-import { with_button_grid } from "../button_grid.js";
 import { TelegramCommands } from "../commands.js";
 
 
@@ -137,12 +136,9 @@ export class ChoristerDialog implements IChorister {
 
         const buttons = scores.map(score => ScoreDownloads.create_button(score));
 
-        const status = await this.user.send_message(
-            with_button_grid(
-                this.get_scores_list(this.user.info().lang),
-                split_to_columns(buttons, 2)
-            )
-        );
+        const status = await this.user.send_message(this.get_scores_list(this.user.info().lang), {
+            buttons: split_to_columns(buttons, 2),
+        });
 
         return status.as_status();
     }

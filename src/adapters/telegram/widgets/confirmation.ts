@@ -1,9 +1,8 @@
-import { with_button_grid, CallbackButton } from "../button_grid.js";
 import * as TelegramBot from "node-telegram-bot-api";
 
 import { AbstractWidget } from "@src/adapters/telegram/widgets/abstract.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
-import { ConfirmationError } from "@src/interfaces/user_agent.js";
+import { CallbackButton, ConfirmationError } from "@src/interfaces/user_agent.js";
 import { IJournal } from "@src/interfaces/journal.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { return_fail } from "@src/utils.js";
@@ -50,8 +49,9 @@ export class ConfirmationWidget implements AbstractWidget {
             ),
         };
 
-        const sent = await this.user.send_message(with_button_grid(
-            this.question, [[this.buttons.positive, this.buttons.negative]]));
+        const sent = await this.user.send_message(this.question, {
+            buttons: [[this.buttons.positive, this.buttons.negative]],
+        });
         if (!sent.ok) {
             await this.release();
             this.settle(sent.cast_error());

@@ -1,4 +1,4 @@
-import { with_button_grid, CallbackButton } from "../button_grid.js";
+import { CallbackButton } from "@src/interfaces/user_agent.js";
 import * as TelegramBot from "node-telegram-bot-api";
 
 import { IJournal } from "@src/interfaces/journal.js";
@@ -85,8 +85,9 @@ export class FeedbackWidget implements AbstractWidget {
             return Expected.ok(undefined);
         }
 
-        const sent_status = await this.user.send_message(with_button_grid(
-            Messages.creating_widget_text(this.user.info().lang), [[this.buttons().cancel]]));
+        const sent_status = await this.user.send_message(Messages.creating_widget_text(this.user.info().lang), {
+            buttons: [[this.buttons().cancel]],
+        });
         if (!sent_status.ok) {
             await this.release_resources(false);
             this.state = "failed";
@@ -117,22 +118,23 @@ export class FeedbackWidget implements AbstractWidget {
         switch (this.state) {
             case "waiting_details":
                 return this.user.edit_message(this.message_id, {
-                    text: with_button_grid(Messages.ask_for_details_text(this.user.info().lang),
-                        [[this.buttons().cancel]]),
+                    text: Messages.ask_for_details_text(this.user.info().lang),
+                    buttons: [[this.buttons().cancel]],
                 });
             case "choose_privacy":
                 return this.user.edit_message(this.message_id, {
-                    text: with_button_grid(Messages.select_privacy_widget_text(this.feedback, this.user.info().lang), [
+                    text: Messages.select_privacy_widget_text(this.feedback, this.user.info().lang),
+                    buttons: [
                         [this.buttons().send_anonymous],
                         [this.buttons().send_from_my_party],
                         [this.buttons().send_from_me],
                         [this.buttons().cancel],
-                    ]),
+                    ],
                 });
             case "waiting_confirmation":
                 return this.user.edit_message(this.message_id, {
-                    text: with_button_grid(Messages.confirm_widget_text(this.feedback, this.user.info().lang),
-                        [[this.buttons().confirm], [this.buttons().cancel]]),
+                    text: Messages.confirm_widget_text(this.feedback, this.user.info().lang),
+                    buttons: [[this.buttons().confirm], [this.buttons().cancel]],
                 });
             case "finished":
                 return await this.release_resources();
