@@ -27,10 +27,6 @@ export class KeyValueTelegramSettingsStorage implements ITelegramSettingsStorage
         }
     }
 
-    async create(settings: TelegramSettings): Promise<Status> {
-        return this.storage.create(this.key, JSON.stringify(to_record(settings)));
-    }
-
     async update(settings: TelegramSettings): Promise<Status> {
         return this.storage.update(this.key, JSON.stringify(to_record(settings)));
     }

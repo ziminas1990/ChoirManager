@@ -1,11 +1,8 @@
 import { TelegramSettingsStorageConfig } from "@src/adapters/telegram_settings_storage/factory.js";
 import { AssistantConfig, BotConfig, BotConfigJson } from "@src/config.js";
-import { RuntimeConfig } from "@src/runtime.js";
 
 export function telegram_config() {
     return {
-        runtime: new RuntimeConfig({ runtime_cache_filename: "/tmp/choir-test-runtime.json",
-            runtime_dump_interval_sec: 60, logs_file: "/tmp/choir-test.log" }),
         assistant: new AssistantConfig({ model: "gpt-6.1-sol" }),
     };
 }
@@ -21,8 +18,7 @@ export function telegram_settings_storage_config(): TelegramSettingsStorageConfi
 
 export function bot_config(overrides: Partial<BotConfigJson> = {}): BotConfig {
     return new BotConfig({
-        runtime_cache_filename: "/tmp/choir-test-runtime.json", google_cloud_key_file: "unused",
-        runtime_dump_interval_sec: 60, logs_file: "/tmp/choir-test.log",
+        google_cloud_key_file: "unused",
         tg_adapter: { token_file: "unused", formatting: "html",
             settings_storage: telegram_settings_storage_config(),
             users_storage: {

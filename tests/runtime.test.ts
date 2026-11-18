@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 
 import { LocalBroadcaster } from "@src/adapters/local_message_queue/local_broadcaster.js";
@@ -40,11 +39,7 @@ test("managers agent runs independently and keeps processing after failures", { 
         const users = new UserService(mock_collection<UserData, UserPatch>({
             async proceed() { main_calls += 1; },
         }), journal);
-        const loaded = Runtime.Load(bot_config({
-            runtime_cache_filename: `/tmp/choirmanager-no-cache-${randomUUID()}`,
-        }), new Database(), users, journal);
-        assert.equal(loaded.ok, true);
-        runtime = loaded.value;
+        runtime = new Runtime(bot_config(), new Database(), users, journal);
         journal.clear();
         runtime["managers_agent"] = mock_managers_agent({
             async proceed() {

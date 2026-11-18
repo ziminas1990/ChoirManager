@@ -7,7 +7,6 @@ import { Runtime } from "@src/runtime.js";
 
 import { mock_collection } from "./collection.js";
 import { bot_config } from "@tests/helpers/config.js";
-import { value } from "@tests/helpers/expected.js";
 
 export function mock_runtime(overrides: Partial<Runtime> = {}): Runtime {
     // Isolate the existing singleton while creating a complete runtime object.
@@ -16,8 +15,7 @@ export function mock_runtime(overrides: Partial<Runtime> = {}): Runtime {
     try {
         const journal = new MemoryJournal();
         const users = new UserService(mock_collection<UserData, UserPatch>(), journal);
-        const runtime = value(Runtime.unpack(bot_config(), new Database(), users,
-            { version: 4, users: [] }, journal));
+        const runtime = new Runtime(bot_config(), new Database(), users, journal);
         return Object.assign(runtime, overrides);
     } finally {
         Runtime["instance"] = previous;

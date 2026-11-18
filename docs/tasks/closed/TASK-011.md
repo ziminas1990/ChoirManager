@@ -22,7 +22,7 @@ existing settings from runtime.json without overwriting settings already
 stored in Firestore. Keep access within the project's storage and service
 boundaries, with an explicitly configured database.
 
-This complements [TASK-010](../TASK-010.md): after both changes, the bot must no
+This complements [TASK-010](./TASK-010.md): after both changes, the bot must no
 longer depend on runtime.json to restore sessions or Telegram settings.
 
 ## Acceptance

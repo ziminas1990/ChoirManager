@@ -19,7 +19,6 @@ import { Message } from "@src/interfaces/messages_backlog.js";
 import { AnnouncesChat } from "@src/use_cases/announces_chat.js";
 import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { AssistantConfig } from "@src/config.js";
-import { RuntimeConfig } from "@src/runtime.js";
 import { Environment } from "@src/components/environment.js";
 import { IPlainCollection } from "@src/interfaces/plain_collection.js";
 import { ITelegramSettingsStorage } from "@src/interfaces/storage/telegram_settings_storage.js";
@@ -45,7 +44,6 @@ export type IcomingItem = {
 
 export type TgAdapterCfg = {
     deposit_presentation?: DepositPresentationConfig;
-    runtime: RuntimeConfig;
     assistant: AssistantConfig;
 }
 
@@ -138,7 +136,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
             }
 
             for (const [telegram_id, user] of this.users.entries()) {
-                const status = user.init(this.bot);
+                const status = user.init(this.bot, false);
                 if (!status.ok) {
                     this.journal.error(`failed to init user: ${status.error}`);
                     this.users.delete(telegram_id);
@@ -524,7 +522,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 return resolved.cast_error<TelegramUser>();
             }
             const agent = await this.create_telegram_agent(
-                resolved.value, telegram_id, chat_id);
+                resolved.value, telegram_id, chat_id, false);
             if (!agent.ok) {
                 return agent;
             }
@@ -568,7 +566,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
                 .wrap_error(`failed to store telegram user ${telegram_id}`);
         }
 
-        return this.create_telegram_agent(resolved.value, telegram_id, chat_id);
+        return this.create_telegram_agent(resolved.value, telegram_id, chat_id, true);
     }
 
     private async raise_user_from_record(record: TelegramUserRecord): Promise<Status> {
@@ -607,6 +605,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         user_data: UserData,
         telegram_id: number,
         chat_id: number,
+        notify_join: boolean,
     ): Promise<Expected<TelegramUser>> {
         if (this.bot == undefined) {
             return Expected.err("bot is not initialized");
@@ -616,7 +615,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
         const new_user = new TelegramUser(
             user_data, chat_id, this.adapter_cfg, this.env, this.journal);
-        const status = new_user.init(this.bot);
+        const status = new_user.init(this.bot, notify_join);
         if (!status.ok) {
             return status.wrap_error("initialization error");
         }

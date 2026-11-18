@@ -49,7 +49,6 @@ To run:
 mkdir -p config
 mkdir -p logs
 touch ./config/botcfg.json
-touch ./config/runtime.json
 touch ./config/google_cloud_key.json
 touch ./config/tgbot_token
 touch ./config/openai_api_key

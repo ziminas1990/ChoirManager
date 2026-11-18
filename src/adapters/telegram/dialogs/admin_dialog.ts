@@ -19,12 +19,4 @@ export class AdminDialog implements IAdminAgent {
             message,
         ].join("<br>"))).as_status();
     }
-
-    async send_runtime_backup(filepath: string): Promise<Status> {
-        return await this.user.send_file(filepath);
-    }
-
-    async send_logs(filepath: string): Promise<Status> {
-        return await this.user.send_file(filepath);
-    }
 }

@@ -1,9 +1,7 @@
 import { Expected, Status } from "@src/utils/expected.js";
 import { IJournal } from "@src/interfaces/journal.js";
 import { Runtime } from "@src/runtime.js";
-import { RuntimeConfig } from "@src/runtime.js";
-import { return_fail } from "@src/utils.js";
-import { Role, UserData, user_has_role, user_tg_username } from "@src/entities/user.js";
+import { user_tg_username } from "@src/entities/user.js";
 import { exit } from "process";
 
 export class AdminActions {
@@ -20,57 +18,6 @@ export class AdminActions {
                 }
             }
         }
-    }
-
-    static async send_runtime_backup(user: UserData, config: RuntimeConfig, journal: IJournal): Promise<Status> {
-        const tgid = user_tg_username(user);
-        journal.info(`Sending runtime backup to @${tgid}`);
-
-        if (!user_has_role(user, Role.Admin)) {
-            return return_fail(`User ${tgid} is not an admin`, journal);
-        }
-
-        const user_logic = Runtime.get_instance().get_user_logic(user.id.system_id);
-        if (!user_logic) {
-            return return_fail(`User ${tgid} has no runtime session`, journal);
-        }
-
-        for (const agent of user_logic.as_admin()) {
-            const status = await agent.send_runtime_backup(config.runtime_cache_filename);
-            if (!status.ok) {
-                journal.warning([
-                    `Failed to send runtime backup to @${user_tg_username(user)}`,
-                    `Error: ${status.error}`,
-                ].join("\n"));
-            }
-        }
-        return Expected.ok(undefined);
-    }
-
-    static async send_logs(user: UserData, config: RuntimeConfig, journal: IJournal): Promise<Status> {
-        const tgid = user_tg_username(user);
-        journal.info(`Sending logs to @${tgid}`);
-
-        if (!user_has_role(user, Role.Admin)) {
-            return return_fail(`User ${tgid} is not an admin`, journal);
-        }
-
-        const user_logic = Runtime.get_instance().get_user_logic(user.id.system_id);
-        if (!user_logic) {
-            return return_fail(`User ${tgid} has no runtime session`, journal);
-        }
-
-        for (const agent of user_logic.as_admin()) {
-            const status = await agent.send_logs(config.logs_file);
-            if (!status.ok) {
-                journal.warning([
-                    `Failed to send runtime backup to @${user_tg_username(user)}`,
-                    `Error: ${status.error}`,
-                ].join("\n"));
-            }
-        }
-
-        return Expected.ok(undefined);
     }
 
     static stop_application(journal: IJournal): Promise<Status> {

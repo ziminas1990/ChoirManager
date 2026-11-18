@@ -1,13 +1,8 @@
-import fs from "fs";
-import crypto from "crypto";
-import path from "path";
-
 import { BotConfig } from "./config.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Database } from "./database.js";
 import { user_tg_username } from "./entities/user.js";
-import { UserLogic, PackedUserLogic } from "./logic/user.js";
-import { pack_map, PackedMap } from "./utils.js";
+import { UserLogic } from "./logic/user.js";
 import { Proceeder } from "./logic/abstracts.js";
 import { ManagersAgentLogic } from "./logic/managers_agent.js";
 import { UserService } from "./components/user_service.js";
@@ -47,88 +42,11 @@ import { SimpleMemoryTools } from "./components/ai/tools/simple_memory_tools.js"
 import { DepositEventsHandler } from "./logic/deposit_events_handler.js";
 import { AnalyticServiceFactory } from "./adapters/analytic_service/factory.js";
 
-export type RuntimeConfigJson = {
-    runtime_cache_filename: string;
-    runtime_dump_interval_sec: number;
-    logs_file: string;
-}
-
-export class RuntimeConfig {
-    constructor(private readonly json: RuntimeConfigJson) {}
-
-    get runtime_cache_filename(): string {
-        return this.json.runtime_cache_filename;
-    }
-
-    get runtime_dump_interval_sec(): number {
-        return this.json.runtime_dump_interval_sec;
-    }
-
-    get logs_file(): string {
-        return this.json.logs_file;
-    }
-
-    verify(): Status {
-        if (!this.json.runtime_cache_filename) {
-            return Expected.err("'runtime_cache_filename' MUST be specified");
-        }
-        if (!this.json.logs_file) {
-            return Expected.err("'logs_file' MUST be specified");
-        }
-        if (!this.json.runtime_dump_interval_sec) {
-            return Expected.err("'runtime_dump_interval_sec' MUST be specified");
-        }
-        if (this.json.runtime_dump_interval_sec < 0) {
-            return Expected.err("'runtime_dump_interval_sec' MUST be positive");
-        }
-        return Expected.ok(undefined);
-    }
-}
-
 export class Runtime {
-
     private static instance?: Runtime;
-
-    static Load(
-        config: BotConfig,
-        database: Database,
-        user_service: UserService,
-        parent_journal: IJournal,
-    ): Expected<Runtime> {
-        const journal = parent_journal.child("rt");
-        const runtime_cache_filename = path.resolve(config.runtime.runtime_cache_filename);
-        try {
-            journal.info({ runtime_cache_filename }, "Reading runtime cache");
-            const packed_raw = fs.readFileSync(runtime_cache_filename, "utf8");
-            journal.info({
-                runtime_cache_filename,
-                bytes: Buffer.byteLength(packed_raw, "utf8"),
-            }, "Runtime cache read");
-
-            const packed = JSON.parse(packed_raw);
-            const runtime = Runtime.unpack(config, database, user_service, packed, journal);
-            if (!runtime.ok) {
-                journal.error({
-                    runtime_cache_filename,
-                    error: runtime.error,
-                }, "Failed to unpack runtime cache");
-            }
-            return runtime;
-        } catch (e) {
-            journal.error({
-                runtime_cache_filename,
-                error: e instanceof Error ? e.message : String(e),
-                stack: e instanceof Error ? e.stack : undefined,
-            }, "Failed to load runtime cache, falling back to empty runtime");
-            const empty_runtime = new Runtime(config, database, user_service, "", new Map(), journal);
-            return Expected.ok(empty_runtime);
-        }
-    }
 
     private started_at: Date = new Date();
 
-    private next_dump: Date = new Date();
-    private update_interval_sec: number = 0;
     private scores_service?: ScoresService;
     private new_records_fetcher?: NewRecordsFetcher;
     private feedback_storage?: IFeedbackStorage;
@@ -156,35 +74,27 @@ export class Runtime {
     // some lokng operation, it won't affect another users
     private user_proceeders: Map<UserLogic, Proceeder<void>> = new Map();
 
-    private last_backup: {
-        hash: string;
-        time: Date;
-    };
+    private readonly users = new Map<string, UserLogic>();
+    private readonly journal: IJournal;
+
+    constructor(
+        private readonly config: BotConfig,
+        private readonly database: Database,
+        private readonly user_service: UserService,
+        parent_journal: IJournal,
+    ) {
+        if (Runtime.instance) {
+            throw new Error("Runtime is already initialized");
+        }
+        this.journal = parent_journal.child("rt");
+        Runtime.instance = this;
+    }
 
     static get_instance(): Runtime {
         if (!Runtime.instance) {
             throw new Error("Runtime is not initialized");
         }
         return Runtime.instance;
-    }
-
-    private constructor(
-        private readonly config: BotConfig,
-        private database: Database,
-        private user_service: UserService,
-        private runtime_hash: string,
-        private users: Map<string, UserLogic>,
-        private journal: IJournal)
-    {
-        if (Runtime.instance) {
-            throw new Error("Runtime is already initialized");
-        }
-        Runtime.instance = this;
-
-        this.last_backup = {
-            hash: runtime_hash,
-            time: new Date(),
-        };
     }
 
     running_time_sec(): number {
@@ -215,7 +125,6 @@ export class Runtime {
                     this.config.tg_adapter,
                     {
                         deposit_presentation: this.config.deposit_service,
-                        runtime: this.config.runtime,
                         assistant: this.config.assistant,
                     },
                     {
@@ -274,15 +183,6 @@ export class Runtime {
         const messages_provider_status = await this.messages_provider.init();
         if (!messages_provider_status.ok) {
             return messages_provider_status.wrap_error("Failed to initialize messages provider");
-        }
-
-        this.update_interval_sec = this.config.runtime.runtime_dump_interval_sec;
-        if (this.update_interval_sec > 0) {
-            this.next_dump = new Date();
-        }
-
-        for (const user of this.users.values()) {
-            this.on_user_added(user, true);
         }
 
         await AdminActions.notify_all_admins(
@@ -519,7 +419,7 @@ export class Runtime {
     }
 
     // Create UserLogic if the user already exists in UserService.
-    ensure_user_logic(system_id: string): UserLogic | undefined {
+    ensure_user_logic(system_id: string, notify_join: boolean): UserLogic | undefined {
         const existing = this.get_user_logic(system_id);
         if (existing) {
             return existing;
@@ -544,7 +444,14 @@ export class Runtime {
         );
 
         this.users.set(system_id, user_logic);
-        this.on_user_added(user_logic, false);
+        if (notify_join) {
+            const user = user_logic.data;
+            const name = user.name.length > 0 ? user.name : "(no name)";
+            void AdminActions.notify_all_admins(
+                `User ${name} ${user.surname} (@${user_tg_username(user)}) has joined`,
+                this.journal,
+            );
+        }
         return user_logic;
     }
 
@@ -656,120 +563,6 @@ export class Runtime {
             this.user_proceeders.set(user, proceeder);
         }
 
-        if (now >= this.next_dump && this.update_interval_sec > 0) {
-            const runtime_hash = this.do_backup();
-            this.next_dump = new Date(Date.now() + this.update_interval_sec * 1000);
-
-            // Send runtime backup to admins (not more than once a day)
-            if (this.last_backup.hash != runtime_hash) {
-                const time_diff = new Date().getTime() - this.last_backup.time.getTime();
-                if (time_diff > 24 * 60 * 60 * 1000) {
-                    for (const user of this.all_users()) {
-                        if (user.is_admin()) {
-                            await AdminActions.send_runtime_backup(user.data, this.config.runtime, this.journal);
-                        }
-                    }
-                    this.last_backup = {
-                        hash: runtime_hash,
-                        time: new Date(),
-                    }
-                }
-            }
-        }
         return Expected.ok(undefined);
     }
-
-    // Return hash
-    do_backup(): string {
-        const runtime_data = JSON.stringify(Runtime.pack(this), null, 2);
-        const runtime_hash = crypto.createHash("sha256").update(runtime_data).digest("hex");
-        const runtime_cache_filename = path.resolve(this.config.runtime.runtime_cache_filename);
-        const bytes = Buffer.byteLength(runtime_data, "utf8");
-
-        if (runtime_hash != this.runtime_hash) {
-            this.journal.info({
-                runtime_cache_filename,
-                bytes,
-                hash: runtime_hash,
-            }, "Writing runtime dump");
-            fs.writeFileSync(runtime_cache_filename, runtime_data);
-            this.journal.info({
-                runtime_cache_filename,
-                bytes,
-                hash: runtime_hash,
-            }, "Runtime dump written");
-            this.runtime_hash = runtime_hash;
-        }
-        return runtime_hash;
-    }
-
-    static pack(runtime: Runtime) {
-        return {
-            version: 4,
-            users: pack_map(runtime.users, UserLogic.pack)
-        } as const;
-    }
-
-    static unpack(
-        config: BotConfig,
-        database: Database,
-        user_service: UserService,
-        packed: ReturnType<typeof Runtime.pack>,
-        journal: IJournal
-    )
-    : Expected<Runtime>
-    {
-        const runtime_hash = crypto.createHash("sha256").update(JSON.stringify(packed)).digest("hex");
-
-        if (packed.version != 4) {
-            const old_version: number = packed.version == "1.0" ? 1 : packed.version;
-            if (old_version === 1) {
-                return Expected.err("Exporting from runtime version 1 is not supported");
-            }
-        }
-
-        const replica = user_service.as_replica();
-        const users = unpack_runtime_users(packed.users, replica, journal);
-
-        const runtime = new Runtime(config, database, user_service, runtime_hash, users, journal);
-        return Expected.ok(runtime);
-    }
-
-    private async on_user_added(user: UserLogic, startup: boolean): Promise<void> {
-        // Notify admins:
-        if (!startup) {
-            const name = user.data.name.length > 0 ? user.data.name : "(no name)";
-            AdminActions.notify_all_admins(
-                `User ${name} ${user.data.surname} (@${user_tg_username(user.data)}) has joined`,
-                this.journal);
-        }
-    }
-}
-
-
-function unpack_runtime_users(
-    packed_users: PackedMap<string, PackedUserLogic>,
-    replica: IUserServiceReplica,
-    journal: IJournal,
-): Map<string, UserLogic> {
-    const users = new Map<string, UserLogic>();
-    for (const [key, packed] of packed_users) {
-        // v2/v3 sessions use Telegram usernames instead of system IDs.
-        const resolved = packed.system_id
-            ? replica.resolve_user({ system_id: packed.system_id })
-            : replica.resolve_user({ tg_username: packed.tgid ?? key });
-        const label = packed.system_id ?? packed.tgid ?? key;
-        if (!resolved.ok || !resolved.value) {
-            journal.warning(
-                `loading users: ${resolved.ok ? `User '${label}' not found` : resolved.error}`);
-            continue;
-        }
-        const status = UserLogic.unpack(resolved.value, packed, journal, replica);
-        if (!status.ok) {
-            journal.warning(`loading users: ${status.error}`);
-            continue;
-        }
-        users.set(resolved.value.id.system_id, status.value);
-    }
-    return users;
 }

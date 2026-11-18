@@ -5,12 +5,6 @@ import { IJournal } from "@src/interfaces/journal.js";
 import { IAccounterAgent, IAdminAgent, IChorister, IDepositOwnerAgent, IUserAgent } from '@src/interfaces/user_agent.js';
 import { IUserServiceReplica } from '@src/interfaces/user_service.js';
 
-export type PackedUserLogic = {
-    system_id?: string;
-    // runtime.json v3 stored telegram username here
-    tgid?: string;
-};
-
 export class UserLogic extends Logic<void> {
     private journal: IJournal;
 
@@ -122,34 +116,6 @@ export class UserLogic extends Logic<void> {
         }
 
         return Expected.ok([]);
-    }
-
-    static pack(user: UserLogic) {
-        return {
-            system_id: user.system_id,
-        } as const;
-    }
-
-    static unpack(
-        user: UserData,
-        packed: PackedUserLogic,
-        parent_journal: IJournal,
-        users: IUserServiceReplica,
-    ): Expected<UserLogic> {
-        const system_id = packed.system_id ?? user.id.system_id;
-        if (!system_id) {
-            return Expected.err("User system_id is missing");
-        }
-
-        const logic = new UserLogic(
-            system_id,
-            user,
-            100,
-            parent_journal,
-            users,
-        );
-
-        return Expected.ok(logic);
     }
 
     private has_role(roles: Role | readonly Role[]): boolean {

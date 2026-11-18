@@ -1,7 +1,7 @@
 import { CollectionReference } from "@google-cloud/firestore";
 
 import { GoogleAuth } from "@src/api/google_auth.js";
-import { IKeyValueStorage, KeyValueStorageError } from "@src/interfaces/storage/key_value_storage.js";
+import { IKeyValueStorage } from "@src/interfaces/storage/key_value_storage.js";
 import { Expected, Status } from "@src/utils/expected.js";
 
 export type Config = {
@@ -15,19 +15,6 @@ export class GoogleFirestoreKeyValueStorage implements IKeyValueStorage {
     constructor(config: Config) {
         const database = GoogleAuth.get_firestore(config.database_id);
         this.collection = database.collection(config.collection_name);
-    }
-
-    async create(key: string, document: string): Promise<Status> {
-        try {
-            await this.collection.doc(key).create({ value: document });
-            return Expected.ok(undefined);
-        } catch (error) {
-            const status: Status = Expected.exception(`Failed to create document '${key}'`, error);
-            if (Helpers.is_already_exists(error)) {
-                return status.set_error_code(KeyValueStorageError.AlreadyExists);
-            }
-            return status;
-        }
     }
 
     async get(key: string): Promise<Expected<string | undefined>> {
@@ -62,15 +49,5 @@ export class GoogleFirestoreKeyValueStorage implements IKeyValueStorage {
         } catch (error) {
             return Expected.exception(`Failed to delete document '${key}'`, error);
         }
-    }
-}
-
-class Helpers {
-    // Firestore reports a duplicate document as gRPC status ALREADY_EXISTS (code 6).
-    static is_already_exists(error: unknown): boolean {
-        return typeof error === "object"
-            && error !== null
-            && "code" in error
-            && error.code === 6;
     }
 }

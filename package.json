@@ -11,8 +11,7 @@
     "build_and_run": "npm run build && npm run app",
     "autotests": "npm run typecheck && npm test",
     "typecheck": "tsc -p tsconfig.tests.json",
-    "test": "node scripts/run-tests.mjs",
-    "migrate:telegram-settings": "npm run compile && node dist/scripts/migrate_telegram_settings.js"
+    "test": "node scripts/run-tests.mjs"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.16",

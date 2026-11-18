@@ -85,13 +85,7 @@ async function main() {
 
     const database = new Database();
 
-    root_logger.info("Loading runtime...");
-    const runtime_status = Runtime.Load(config, database, user_service, root_logger);
-    if (!runtime_status.ok) {
-        root_logger.error(`Failed to load runtime: ${runtime_status.error}`);
-        await wait_and_exit(10000, 1);
-    }
-    const runtime = runtime_status.value!;
+    const runtime = new Runtime(config, database, user_service, root_logger);
 
     const openai_status = init_openai_api(config);
     if (!openai_status.ok) {

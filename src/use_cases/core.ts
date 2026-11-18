@@ -10,9 +10,12 @@ export class CoreAPI {
         this.journal = journal;
     }
 
-    public static on_new_user_agent(user_id: string, agent: IUserAgent): Status {
+    public static on_new_user_agent(
+        user_id: string, agent: IUserAgent, notify_join: boolean)
+    : Status
+    {
         const runtime = Runtime.get_instance();
-        const user = runtime.ensure_user_logic(user_id);
+        const user = runtime.ensure_user_logic(user_id, notify_join);
         if (!user) {
             return Expected.err(`user '${user_id}' not found`);
         }

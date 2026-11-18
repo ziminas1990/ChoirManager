@@ -110,8 +110,4 @@ export interface IAdminAgent {
     base(): IUserAgent;
 
     send_notification(message: string): Promise<Status>;
-
-    send_runtime_backup(filepath: string): Promise<Status>;
-
-    send_logs(filepath: string): Promise<Status>;
 }

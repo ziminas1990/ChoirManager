@@ -144,7 +144,7 @@ for (const lang of [Language.EN, Language.RU]) {
         let dialog;
         {
             context = fixture(lang);
-            dialog = value(ChoristerDialog.create(context.user, telegram_config().runtime,
+            dialog = value(ChoristerDialog.create(context.user,
                 mock_user_replica({ resolve_user: () => Expected.ok(context.user.info()) }), journal, telegram_config().assistant));
         }
 

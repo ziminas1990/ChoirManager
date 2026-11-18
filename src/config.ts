@@ -36,7 +36,6 @@ import {
     TelegramSettingsStorageConfig,
     TelegramSettingsStorageFactory,
 } from "@src/adapters/telegram_settings_storage/factory.js";
-import { RuntimeConfig } from "@src/runtime.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Formatting } from "@src/utils.js";
 import { verify_openai_model } from "@src/api/openai_models.js";
@@ -255,11 +254,8 @@ export class MessagesProviderConfig {
 
 export type BotConfigJson = {
     analytic_service?: AnalyticServiceConfigJson;
-    runtime_cache_filename: string;
     google_cloud_key_file: string;
-    runtime_dump_interval_sec: number;
     openai_api_key_file?: string;
-    logs_file: string;
     tg_adapter: TgAdapterConfigJson;
     user_service: UserServiceConfigJson;
     messages_provider: MessagesProviderConfigJson;
@@ -281,7 +277,6 @@ export type BotConfigJson = {
 
 export class BotConfig {
     public readonly analytic_service: AnalyticServiceConfig;
-    public readonly runtime: RuntimeConfig;
     public readonly tg_adapter?: TgAdapterConfig;
     public readonly user_service?: UserServiceConfig;
     public readonly messages_provider?: MessagesProviderConfig;
@@ -298,11 +293,6 @@ export class BotConfig {
 
     constructor(public readonly json: BotConfigJson) {
         this.analytic_service = new AnalyticServiceConfig(json.analytic_service ?? { type: "local" });
-        this.runtime = new RuntimeConfig({
-            runtime_cache_filename: json.runtime_cache_filename,
-            runtime_dump_interval_sec: json.runtime_dump_interval_sec,
-            logs_file: json.logs_file,
-        });
 
         if (json.tg_adapter != undefined) {
             this.tg_adapter = new TgAdapterConfig(json.tg_adapter);
@@ -356,11 +346,6 @@ export class BotConfig {
         let status = this.tg_adapter.verify();
         if (!status.ok) {
             return status.wrap_error("'tg_adapter' misconfiguration");
-        }
-
-        status = this.runtime.verify();
-        if (!status.ok) {
-            return status.wrap_error("runtime misconfiguration");
         }
 
         status = this.analytic_service.verify();

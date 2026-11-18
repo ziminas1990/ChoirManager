@@ -6,7 +6,7 @@ export function mock_telegram_settings_storage(
     overrides: Partial<ITelegramSettingsStorage> = {},
 ): ITelegramSettingsStorage {
     return {
-        get: unexpected, create: unexpected, update: unexpected, delete: unexpected,
+        get: unexpected, update: unexpected, delete: unexpected,
         ...overrides,
     };
 }

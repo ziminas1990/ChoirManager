@@ -6,8 +6,6 @@ export function mock_admin_agent(overrides: Partial<IAdminAgent> = {}): IAdminAg
     return {
         base: unexpected,
         send_notification: unexpected,
-        send_runtime_backup: unexpected,
-        send_logs: unexpected,
         ...overrides,
     };
 }

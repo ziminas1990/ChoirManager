@@ -15,85 +15,115 @@ import { Database } from "@src/database.js";
 import { Language, UserData, Voice } from "@src/entities/user.js";
 import { UserPatch } from "@src/interfaces/user_service.js";
 import { Runtime } from "@src/runtime.js";
-import { CoreAPI } from "@src/use_cases/core.js";
 import { Expected } from "@src/utils/expected.js";
 
 import { bot_config, telegram_config, telegram_settings_storage_config } from "@tests/helpers/config.js";
 import { mock_collection } from "@tests/mocks/collection.js";
 import { read_only_plain_collection } from "@tests/mocks/plain_collection.js";
-import { telegram_token } from "@tests/mocks/telegram.js";
+import { emit_telegram, telegram_message, telegram_token } from "@tests/mocks/telegram.js";
 import { mock_telegram_settings_storage } from "@tests/mocks/telegram_settings_storage.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
-import { mock_user_service } from "@tests/mocks/user_service.js";
 
 afterEach(() => mock.restoreAll());
 
 function token_file(t: TestContext) { return telegram_token(t).filename; }
 
-test("Telegram adapter loads and registers users from an injected collection", async t => {
-    // Motivation: supplying a collection must preserve user reconstruction and
-    // collection maintenance without needing a storage factory override.
+test("Telegram adapter restores sessions and registers first contacts after startup", async t => {
+    // Motivation: removing the snapshot must preserve delivery to known users
+    // immediately after restart and register new contacts on demand.
 
-    // 1. supply a saved Telegram binding and its corresponding domain user
+    // 1. Set up a user roster, one persisted binding, and an empty runtime.
+    let runtime;
     let collection;
-    let user;
-    let registration;
     let reads;
     let ticks;
+    const journal = new MemoryJournal();
+    const member: UserData = {
+        id: { system_id: "member-id", tg_username: "member" },
+        name: "Member", surname: "Singer", lang: Language.EN, voice: Voice.Alto, roles: [],
+    };
+    const newcomer: UserData = {
+        ...member, id: { system_id: "new-id", tg_username: "newcomer" }, name: "New",
+    };
     {
-        user = { id: { system_id: "member-id", tg_username: "member" },
-            name: "Member", surname: "Singer", lang: Language.EN,
-            voice: Voice.Alto, roles: [] };
-        collection = read_only_plain_collection([{
+        const previous = Runtime["instance"];
+        Runtime["instance"] = undefined;
+        t.after(() => { Runtime["instance"] = previous; });
+
+        const users = new UserService(mock_collection<UserData, UserPatch>({
+            async get_all() { return Expected.ok([member, newcomer]); },
+        }), journal);
+        assert.equal((await users.init()).ok, true);
+        const environment = new Environment();
+        environment.user_service = users;
+        Environment.set_global(environment);
+
+        collection = read_only_plain_collection<TelegramUserRecord>([{
             id: "123", revision: 1, user_id: "member-id",
             telegram_username: "member", private_chat_id: 456,
         }]);
         reads = mock.method(collection, "get_all");
         ticks = mock.method(collection, "proceed");
-        registration = mock.method(CoreAPI, "on_new_user_agent", () => Expected.ok(undefined));
-        const environment = new Environment();
-        environment.user_service = mock_user_service({
-            async resolve_user(id) {
-                assert.deepEqual(id, { system_id: "member-id" });
-                return Expected.ok(user);
-            },
-        });
-        Environment.set_global(environment);
+        runtime = new Runtime(bot_config(), new Database(), users, journal);
     }
 
-    // 2. initialize the adapter and observe the reconstructed user agent
+    // 2. Initialize Telegram and deliver to the restored chat before user contact.
     let adapter;
+    let token;
     let commands;
     {
-        const filename = token_file(t);
+        token = telegram_token(t);
         const menu = mock.method(TelegramBot.Api.prototype, "setChatMenuButton", async () => true);
-        commands = mock.method(TelegramBot.Api.prototype, "setMyCommands", async (_params: TelegramBot.SetMyCommandsParams) => true);
-        adapter = new TgAdapter({ token_file: filename, formatting: "html" },
-            telegram_config(), { users: mock_user_replica() }, collection,
-            mock_telegram_settings_storage({ get: async () => Expected.ok(undefined) }), new MemoryJournal());
+        commands = mock.method(TelegramBot.Api.prototype, "setMyCommands", async () => true);
+        const send = mock.method(TelegramBot.Api.prototype, "sendRichMessage",
+            async (_params: TelegramBot.SendRichMessageParams) => ({ message_id: 1 }));
+        adapter = new TgAdapter({ token_file: token.filename, formatting: "html" },
+            telegram_config(), { users: runtime.get_user_service_replica() }, collection,
+            mock_telegram_settings_storage({ get: async () => Expected.ok(undefined) }), journal);
+
         assert.equal(reads.mock.callCount(), 0);
+        assert.equal(runtime.get_user_logic("member-id"), undefined);
         const initialized = await adapter.init();
         assert.equal(initialized.ok, true, initialized.ok ? undefined : initialized.error);
         assert.equal(reads.mock.callCount(), 1);
-        assert.equal(registration.mock.callCount(), 1);
-        const [id, agent] = registration.mock.calls[0].arguments;
-        assert.equal(id, "member-id");
+        const agent = runtime.get_user_logic("member-id")?.all_agents()[0];
         assert.ok(agent instanceof TelegramUser);
-        assert.deepEqual(agent.info(), user);
-        assert.equal(agent.private_chat_id(), 456);
+        assert.deepEqual(agent.info(), member);
+        assert.equal((await agent.send_message("Reminder")).ok, true);
+        assert.equal(send.mock.calls[0].arguments[0].chat_id, 456);
+        assert.equal(journal.records.some(record => record.message === "Notifying all admins"), false);
         assert.deepEqual(menu.mock.calls[0].arguments, [{ menu_button: { type: "commands" } }]);
         assert.equal(commands.mock.callCount(), 0);
     }
 
-    // 3. maintain the same injected collection during adapter processing
+    // 3. Maintain the collection and check that the idle user has no commands.
+    const now = new Date();
     {
-        const now = new Date();
         assert.equal((await adapter.proceed(now)).ok, true);
         assert.deepEqual(ticks.mock.calls[0].arguments, [now]);
-        const agent = registration.mock.calls[0].arguments[1];
+        const agent = runtime.get_user_logic("member-id")?.all_agents()[0];
         assert.ok(agent);
         await agent.proceed(now);
         assert.equal(commands.mock.callCount(), 0);
+    }
+
+    // 4. Receive the first private message and create a session for the new binding.
+    {
+        const create = mock.method(collection, "create", async (record: TelegramUserRecord) => Expected.ok(record));
+        await emit_telegram(token.client(), "message", telegram_message({
+            from: { id: 789, first_name: "New", is_bot: false, username: "newcomer" },
+            chat: { id: 789, type: "private" },
+            text: "/start",
+        }));
+        assert.equal((await adapter.proceed(new Date(now.getTime() + 100))).ok, true);
+        assert.equal(create.mock.callCount(), 1);
+        assert.equal(create.mock.calls[0].arguments[0].user_id, "new-id");
+        const agent = runtime.get_user_logic("new-id")?.all_agents()[0];
+        assert.ok(agent instanceof TelegramUser);
+        assert.equal(agent.private_chat_id(), 789);
+        const notifications = journal.records.filter(record => record.message === "Notifying all admins");
+        assert.equal(notifications.length, 1);
+        assert.match(String(notifications[0].fields.notification), /@newcomer.*has joined/);
     }
 });
 
@@ -178,15 +208,14 @@ test("Telegram adapter factory returns collection configuration errors", () => {
     }
 });
 
-test("runtime restoration leaves Telegram adapter construction to startup", t => {
-    // Motivation: restoring sessions must not construct Telegram dependencies,
-    // since adapter initialization now loads routing from its own storage.
+test("runtime construction leaves Telegram adapter initialization to startup", async t => {
+    // Motivation: creating the in-memory registry must leave Telegram storage
+    // reads and configuration failures to the asynchronous startup path.
 
-    // 1. configure an invalid Telegram collection and a session snapshot
+    // 1. Configure an invalid Telegram collection.
     let config;
     let users;
     let factory;
-    const packed: ReturnType<typeof Runtime.pack> = { version: 4, users: [] };
     const journal = new MemoryJournal();
     {
         const previous = Runtime["instance"];
@@ -201,12 +230,20 @@ test("runtime restoration leaves Telegram adapter construction to startup", t =>
         factory = mock.method(TgAdapterFactory, "create");
     }
 
-    // 2. restore runtime without constructing the Telegram adapter
+    // 2. Construct the empty runtime without constructing the Telegram adapter.
+    let runtime;
     {
-        const restored = Runtime.unpack(config, new Database(), users, packed, journal);
-        assert.equal(restored.ok, true, restored.ok ? undefined : restored.error);
-        assert.equal(Runtime.get_instance(), restored.value);
+        runtime = new Runtime(config, new Database(), users, journal);
+        assert.equal(Runtime.get_instance(), runtime);
         assert.equal(factory.mock.callCount(), 0);
-        assert.deepEqual(Runtime.pack(restored.value), packed);
+        assert.deepEqual(runtime.get_users(), []);
+    }
+
+    // 3. Start the runtime and report the invalid Telegram collection.
+    {
+        const started = await runtime.start();
+        assert.equal(started.ok, false);
+        assert.match(started.error, /Failed to start Telegram adapter.*database_id/);
+        assert.equal(factory.mock.callCount(), 1);
     }
 });

@@ -495,7 +495,7 @@ test("lists use compact stable buttons for long Unicode titles and distinct auth
             "Длинное название 🎵".repeat(100), "Автор".repeat(100), "", 60,
             "https://example.org/long.pdf");
         scores = [...context.state.catalog, long_score];
-        dialog = value(ChoristerDialog.create(context.user, telegram_config().runtime,
+        dialog = value(ChoristerDialog.create(context.user,
                 mock_user_replica({ resolve_user: () => Expected.ok(context.user.info()) }), journal, telegram_config().assistant));
     }
 
@@ -578,7 +578,7 @@ test("buttons survive recreation of the user, environment, and catalog in a diff
     // 2. render a list and retain the selected button's payload
     let data;
     {
-        const dialog = value(ChoristerDialog.create(previous.user, telegram_config().runtime,
+        const dialog = value(ChoristerDialog.create(previous.user,
                 mock_user_replica({ resolve_user: () => Expected.ok(previous.user.info()) }), journal, telegram_config().assistant));
         await dialog.send_scores_list(previous.state.catalog);
         data = inline_grid(previous.state.messages[0])[0][0].callback_data;

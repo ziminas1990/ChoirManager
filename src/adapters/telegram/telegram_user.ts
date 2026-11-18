@@ -31,11 +31,9 @@ import { ConfirmationWidget } from "./widgets/confirmation.js";
 import { TelegramCommands } from "./commands.js";
 import { DepositPresentationConfig } from "@src/adapters/deposit_service/factory.js";
 import { AssistantConfig } from "@src/config.js";
-import { RuntimeConfig } from "@src/runtime.js";
 
 export type TelegramUserCfg = {
     deposit_presentation?: DepositPresentationConfig;
-    runtime: RuntimeConfig;
     assistant: AssistantConfig;
 }
 
@@ -78,11 +76,11 @@ export class TelegramUser implements IUserAgent {
         this.timings = {};
     }
 
-    init(bot: TelegramBot.Bot): Status {
+    init(bot: TelegramBot.Bot, notify_join = false): Status {
         this.bot = bot;
         this.applied_commands = undefined;
 
-        const status = CoreAPI.on_new_user_agent(this.userid(), this);
+        const status = CoreAPI.on_new_user_agent(this.userid(), this, notify_join);
         if (!status.ok) {
             return status.wrap_error(`Can't register user ${this.userid()} agent`);
         }
@@ -422,7 +420,6 @@ export class TelegramUser implements IUserAgent {
         }
         const created = ChoristerDialog.create(
             this,
-            this.cfg.runtime,
             this.env.users,
             this.journal,
             this.cfg.assistant,

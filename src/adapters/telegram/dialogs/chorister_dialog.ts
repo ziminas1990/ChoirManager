@@ -17,7 +17,6 @@ import { Feedback } from "@src/entities/feedback.js";
 import { IChorister, IUserAgent } from "@src/interfaces/user_agent.js";
 import { ChoristerStatisticsWidget } from "@src/adapters/telegram/widgets/chorister_statistics.js";
 import { ChoristerToolsManager } from "@src/components/ai/chorister_tools_manager.js";
-import { RuntimeConfig } from "@src/runtime.js";
 import { AssistantConfig } from "@src/config.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import { Environment } from "@src/components/environment.js";
@@ -33,7 +32,6 @@ export class ChoristerDialog implements IChorister {
 
     constructor(
         private user: TelegramUser,
-        private readonly runtime_config: RuntimeConfig,
         journal: IJournal,
         private readonly assistant: ChoristerAgent,
         private readonly tools_manager: ChoristerToolsManager,
@@ -44,7 +42,6 @@ export class ChoristerDialog implements IChorister {
 
     static create(
         user: TelegramUser,
-        runtime_config: RuntimeConfig,
         users: IUserServiceReplica,
         parent_journal: IJournal,
         assistant_config: AssistantConfig,
@@ -82,7 +79,7 @@ export class ChoristerDialog implements IChorister {
             return Expected.exception("failed to create chorister assistant", e);
         }
 
-        dialog = new ChoristerDialog(user, runtime_config, journal, assistant, tools.value);
+        dialog = new ChoristerDialog(user, journal, assistant, tools.value);
         return Expected.ok(dialog);
     }
 
@@ -210,10 +207,6 @@ export class ChoristerDialog implements IChorister {
                 return await this.start_feedback_activity();
             case "/scores":
                 return await ScoresActions.scores_list_requested(this.user, this.journal);
-            case "/backup":
-                return AdminActions.send_runtime_backup(this.user.info(), this.runtime_config, this.journal);
-            case "/get_logs":
-                return AdminActions.send_logs(this.user.info(), this.runtime_config, this.journal);
             case "/stop":
                 return AdminActions.stop_application(this.journal);
             default:

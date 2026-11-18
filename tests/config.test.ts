@@ -23,8 +23,7 @@ test("configuration loading forwards diagnostics to the selected journal", t => 
         filename = join(directory, "botcfg.json");
         const storage = { type: "google_firestore", database_id: "test", collection_name: "users" };
         writeFileSync(filename, JSON.stringify({
-            runtime_cache_filename: "runtime.json", runtime_dump_interval_sec: 10,
-            logs_file: "bot.log", google_cloud_key_file: "google.json",
+            google_cloud_key_file: "google.json",
             openai_api_key_file: "openai.key",
             tg_adapter: { token_file: "telegram.key", formatting: "html", users_storage: storage,
                 settings_storage: telegram_settings_storage_config() },
