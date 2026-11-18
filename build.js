@@ -23,6 +23,8 @@ const shared = {
   },
 };
 
+console.log("Bundling the app")
+
 Promise.all([
   build({
     ...shared,

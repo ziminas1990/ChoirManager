@@ -191,7 +191,7 @@ test("all period buttons and close survive a fresh session without widget state"
     // session must recover actions from the payload and message alone.
 
     // 1. send two widgets and retain only their Telegram message data
-    let context;
+    let context: ReturnType<typeof fixture>;
     let buttons;
     let first;
     let second;
