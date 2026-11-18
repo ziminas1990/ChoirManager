@@ -144,7 +144,7 @@ export class GoogleSpreadsheetMessagesProvider implements IMessagesProvider {
             return "";
         }
 
-        return mustache.render(template, params);
+        return mustache.render(template, params).replace(/\r\n|\r|\n/g, "<br>");
     }
 
     private async refetch(): Promise<Status> {

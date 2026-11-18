@@ -8,6 +8,14 @@
         "token_file": "./config/tgbot_token",
         "bot_id": "",
         "formatting": "html",
+        "settings_storage": {
+            "document": "tg_adapter_data",
+            "storage": {
+                "type": "google_firestore",
+                "database_id": "",
+                "collection_name": "settings"
+            }
+        },
         "users_storage": {
             "type": "cache_aside_collection",
             "cache_size": 500,

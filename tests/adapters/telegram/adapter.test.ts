@@ -18,10 +18,11 @@ import { Runtime } from "@src/runtime.js";
 import { CoreAPI } from "@src/use_cases/core.js";
 import { Expected } from "@src/utils/expected.js";
 
-import { bot_config, telegram_config } from "@tests/helpers/config.js";
+import { bot_config, telegram_config, telegram_settings_storage_config } from "@tests/helpers/config.js";
 import { mock_collection } from "@tests/mocks/collection.js";
 import { read_only_plain_collection } from "@tests/mocks/plain_collection.js";
 import { telegram_token } from "@tests/mocks/telegram.js";
+import { mock_telegram_settings_storage } from "@tests/mocks/telegram_settings_storage.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
 
@@ -68,7 +69,8 @@ test("Telegram adapter loads and registers users from an injected collection", a
         const menu = mock.method(TelegramBot.Api.prototype, "setChatMenuButton", async () => true);
         commands = mock.method(TelegramBot.Api.prototype, "setMyCommands", async (_params: TelegramBot.SetMyCommandsParams) => true);
         adapter = new TgAdapter({ token_file: filename, formatting: "html" },
-            telegram_config(), { users: mock_user_replica() }, collection, new MemoryJournal());
+            telegram_config(), { users: mock_user_replica() }, collection,
+            mock_telegram_settings_storage({ get: async () => Expected.ok(undefined) }), new MemoryJournal());
         assert.equal(reads.mock.callCount(), 0);
         const initialized = await adapter.init();
         assert.equal(initialized.ok, true, initialized.ok ? undefined : initialized.error);
@@ -95,24 +97,24 @@ test("Telegram adapter loads and registers users from an injected collection", a
     }
 });
 
-test("restored Telegram chat routes work with an injected collection", async t => {
-    // Motivation: changing restoration dependencies must preserve stored chat
-    // and thread identifiers used to deliver announcements and managers' posts.
+test("Telegram chat routes load from injected settings storage", async t => {
+    // Motivation: stored chat and thread identifiers must reach the public
+    // routes used to deliver announcements and managers' posts.
 
-    // 1. restore the adapter and capture outgoing Telegram deliveries
+    // 1. initialize the adapter with saved settings and capture deliveries
     let adapter;
     const deliveries: { id: TelegramBot.ChatId; text: string; thread?: number }[] = [];
-    const packed = { choir_chat_id: -100, announce_thread_id: 12, managers_chat_id: -200 };
+    const settings = { choir_chat_id: -100, announce_thread_id: 12, managers_chat_id: -200 };
     {
         mock.method(TelegramBot.Api.prototype, "sendRichMessage", async ({ chat_id, rich_message, message_thread_id }: TelegramBot.SendRichMessageParams) => {
             assert.ok(chat_id !== undefined);
             deliveries.push({ id: chat_id, text: rich_message.html!, thread: message_thread_id });
             return { message_id: deliveries.length };
         });
-        adapter = TgAdapter.unpack({ token_file: token_file(t), formatting: "html" },
-            telegram_config(), { users: mock_user_replica() }, read_only_plain_collection<TelegramUserRecord>(), packed, new MemoryJournal());
+        adapter = new TgAdapter({ token_file: token_file(t), formatting: "html" },
+            telegram_config(), { users: mock_user_replica() }, read_only_plain_collection<TelegramUserRecord>(),
+            mock_telegram_settings_storage({ get: async () => Expected.ok(settings) }), new MemoryJournal());
         assert.equal((await adapter.init()).ok, true);
-        assert.deepEqual(TgAdapter.pack(adapter), packed);
     }
 
     // 2. deliver through each restored public chat route
@@ -142,7 +144,8 @@ test("Telegram adapter initialization reports injected collection read failures"
         const collection = read_only_plain_collection<TelegramUserRecord>();
         mock.method(collection, "get_all", async () => Expected.err("User store unavailable"));
         adapter = new TgAdapter({ token_file: token_file(t), formatting: "html" },
-            telegram_config(), { users: mock_user_replica() }, collection, new MemoryJournal());
+            telegram_config(), { users: mock_user_replica() }, collection,
+            mock_telegram_settings_storage({ get: async () => Expected.ok(undefined) }), new MemoryJournal());
     }
 
     // 2. surface the read failure with adapter initialization context
@@ -153,51 +156,57 @@ test("Telegram adapter initialization reports injected collection read failures"
     }
 });
 
-test("Telegram adapter factory returns collection configuration errors in both creation modes", () => {
+test("Telegram adapter factory returns collection configuration errors", () => {
     // Motivation: a broken user store must produce an Expected failure before
-    // either starting a new adapter or restoring saved routing information.
+    // starting the adapter, rather than throwing from storage construction.
 
     // 1. configure an invalid nested collection
     let config;
     {
         config = new TgAdapterConfig({ token_file: "unused", formatting: "html",
+            settings_storage: telegram_settings_storage_config(),
             users_storage: { type: "cache_aside_collection", cache_size: 10,
                 underlying: { type: "google_firestore", database_id: "", collection_name: "users" } } });
     }
 
-    // 2. reject new and restored adapters without throwing
-    for (const packed of [undefined, { managers_chat_id: -200 }]) {
-        const created = TgAdapterFactory.create(config, telegram_config(), { users: mock_user_replica() }, new MemoryJournal(), packed);
+    // 2. reject adapter creation without throwing
+    {
+        const created = TgAdapterFactory.create(
+            config, telegram_config(), { users: mock_user_replica() }, new MemoryJournal());
         assert.equal(created.ok, false);
         assert.match(created.error, /Failed to create Telegram users collection.*database_id/);
     }
 });
 
-test("runtime restoration reports collection errors and can retry with valid configuration", () => {
-    // Motivation: failed adapter assembly must not leave a runtime singleton
-    // behind or lose restored chat routes when configuration is corrected.
+test("runtime restoration leaves Telegram adapter construction to startup", t => {
+    // Motivation: restoring sessions must not construct Telegram dependencies,
+    // since adapter initialization now loads routing from its own storage.
 
-    // 1. fail restoration before a runtime can be registered
-    const storage = { type: "google_firestore" as const, database_id: "", collection_name: "users" };
-    const config = bot_config({ tg_adapter: { token_file: "unused", formatting: "html", users_storage: storage } });
-    const users = new UserService(mock_collection<UserData, UserPatch>(), new MemoryJournal());
-    const packed: ReturnType<typeof Runtime.pack> = { version: 4, users: [], tg_adapter: {
-        choir_chat_id: -100, announce_thread_id: 12, managers_chat_id: -200,
-    } };
+    // 1. configure an invalid Telegram collection and a session snapshot
+    let config;
+    let users;
+    let factory;
+    const packed: ReturnType<typeof Runtime.pack> = { version: 4, users: [] };
     const journal = new MemoryJournal();
     {
-        const restored = Runtime.unpack(config, new Database(), users, packed, journal);
-        assert.equal(restored.ok, false);
-        assert.match(restored.error, /Failed to restore Telegram adapter.*database_id/);
-        assert.throws(() => Runtime.get_instance(), /Runtime is not initialized/);
+        const previous = Runtime["instance"];
+        Runtime["instance"] = undefined;
+        t.after(() => { Runtime["instance"] = previous; });
+        config = bot_config({ tg_adapter: {
+            token_file: "unused", formatting: "html",
+            users_storage: { type: "google_firestore", database_id: "", collection_name: "users" },
+            settings_storage: telegram_settings_storage_config(),
+        } });
+        users = new UserService(mock_collection<UserData, UserPatch>(), journal);
+        factory = mock.method(TgAdapterFactory, "create");
     }
 
-    // 2. correct the store and restore routing without contacting Firestore
+    // 2. restore runtime without constructing the Telegram adapter
     {
-        storage.database_id = "test";
         const restored = Runtime.unpack(config, new Database(), users, packed, journal);
         assert.equal(restored.ok, true, restored.ok ? undefined : restored.error);
         assert.equal(Runtime.get_instance(), restored.value);
+        assert.equal(factory.mock.callCount(), 0);
         assert.deepEqual(Runtime.pack(restored.value), packed);
     }
 });

@@ -17,7 +17,7 @@ export function mock_runtime(overrides: Partial<Runtime> = {}): Runtime {
         const journal = new MemoryJournal();
         const users = new UserService(mock_collection<UserData, UserPatch>(), journal);
         const runtime = value(Runtime.unpack(bot_config(), new Database(), users,
-            { version: 4, users: [], tg_adapter: undefined }, journal));
+            { version: 4, users: [] }, journal));
         return Object.assign(runtime, overrides);
     } finally {
         Runtime["instance"] = previous;

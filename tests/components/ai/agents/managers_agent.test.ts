@@ -26,6 +26,7 @@ import { memory_fixture } from "@tests/mocks/controlled_memory_backlog.js";
 import { mock_llm } from "@tests/mocks/llm.js";
 import { read_only_plain_collection } from "@tests/mocks/plain_collection.js";
 import { mock_runtime } from "@tests/mocks/runtime.js";
+import { mock_telegram_settings_storage } from "@tests/mocks/telegram_settings_storage.js";
 import { emit_telegram, telegram_message as sdk_message, telegram_token } from "@tests/mocks/telegram.js";
 import { mock_user_replica } from "@tests/mocks/user_replica.js";
 import { mock_user_service } from "@tests/mocks/user_service.js";
@@ -93,9 +94,11 @@ async function fixture(t: TestContext, respond?: (context: Context, options: Too
         private_chat_id: 123, telegram_username: profile.id.tg_username!,
     }]);
     const telegram = telegram_token(t);
-    const adapter = TgAdapter.unpack({ token_file: telegram.filename, formatting: "html" },
+    const adapter = new TgAdapter({ token_file: telegram.filename, formatting: "html" },
         telegram_config(), { users: mock_user_replica({ resolve_user: () => Expected.ok(profile) }) },
-        users_collection, { managers_chat_id }, journal);
+        users_collection, mock_telegram_settings_storage({
+            get: async () => Expected.ok({ managers_chat_id }),
+        }), journal);
     assert.equal((await adapter.init()).ok, true);
     let tick = Date.now();
     return {

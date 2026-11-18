@@ -9,7 +9,7 @@ and need storage independent of the local runtime snapshot.
 
 ## Require
 
-Use a Firestore collection named runtime for dynamic bot settings that must
+Use a Firestore collection named settings for dynamic bot settings that must
 survive restarts. Store Telegram adapter settings in its tg_adapter_data
 document, including:
 
@@ -22,13 +22,13 @@ existing settings from runtime.json without overwriting settings already
 stored in Firestore. Keep access within the project's storage and service
 boundaries, with an explicitly configured database.
 
-This complements [TASK-010](TASK-010.md): after both changes, the bot must no
+This complements [TASK-010](../TASK-010.md): after both changes, the bot must no
 longer depend on runtime.json to restore sessions or Telegram settings.
 
 ## Acceptance
 
 - Configuring a Telegram chat or announcement thread updates
-  runtime/tg_adapter_data in the configured Firestore database.
+  settings/tg_adapter_data in the configured Firestore database.
 - A confirmed settings change survives an immediate restart without waiting
   for a local runtime dump.
 - After settings have been migrated, the bot restores configured chat routing
@@ -40,3 +40,10 @@ longer depend on runtime.json to restore sessions or Telegram settings.
   reported without confirming that a change was saved.
 - Local migration and validation use only ursa-major-db-test and leave
   production databases untouched.
+
+## Completion
+
+Telegram settings storage and a standalone migration command were implemented.
+Existing tests were adapted to the new API. The task was closed at the user's
+request without running tests, type checking, builds, migration, or live
+Firestore validation.

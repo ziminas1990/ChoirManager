@@ -6,11 +6,13 @@ import { after, mock, test } from "node:test";
 
 import { Bot } from "node-telegram-bot-api";
 
+import { GoogleSpreadsheetMessagesProvider } from "@src/adapters/messages_provider/google_spreadsheet.js";
 import { GroupChat } from "@src/adapters/telegram/group_chat.js";
 import { DepositOwnerDialog } from "@src/adapters/telegram/dialogs/deposit_owner_dialog.js";
 import { ManagersGroup } from "@src/adapters/telegram/dialogs/managers_group.js";
 import { FeedbackWidget } from "@src/adapters/telegram/widgets/feedback_activity.js";
 import { TelegramUser } from "@src/adapters/telegram/telegram_user.js";
+import { GoogleSpreadsheet } from "@src/api/google_docs.js";
 import { MemoryJournal } from "@src/components/memory_journal.js";
 import { Deposit } from "@src/entities/deposit.js";
 import { create_task_update, TaskData } from "@src/entities/task.js";
@@ -136,6 +138,53 @@ test("private and group messages use Rich HTML with identical content", async ()
         assert.deepEqual(JSON.parse(String(preview.fields.get("reply_markup"))), { remove_keyboard: true });
         assert.equal(publication.fields.get("chat_id"), "-100");
         assert.equal(publication.fields.get("message_thread_id"), "12");
+    }
+});
+
+test("attendance templates preserve headings, list rows and blank lines in Rich HTML", async t => {
+    // Motivation: spreadsheet templates and injected attendance lists use plain
+    // newlines, which collapse when the rendered report reaches Rich HTML.
+
+    // 1. load multiline spreadsheet templates through the messages provider
+    let context;
+    let provider;
+    {
+        context = fixture();
+        const notification = '<b>{{chorister_name}}</b>\r\n\r\n{{attendance_stat}}';
+        const report = '{{#has_choristers}}<b>Reminders:</b>\n{{choristers_list}}\n\n'
+            + '{{/has_choristers}}{{#has_bad_attendance}}<b>Attendance:</b>\n'
+            + '{{bad_attendance}}{{/has_bad_attendance}}';
+        t.mock.method(GoogleSpreadsheet.prototype, "read", async () => Expected.ok([
+            ["Message", "EN", "RU"],
+            ["ATTENDANCE_NOTIFICATION", notification, notification],
+            ["ATTENDANCE_REMINDERS_REPORT", report, report],
+        ]));
+        provider = new GoogleSpreadsheetMessagesProvider("test-sheet", "Messages", new MemoryJournal());
+        assert.equal((await provider.init()).ok, true);
+    }
+
+    // 2. deliver rendered templates with escaped names and multiline lists
+    {
+        const notification = provider.get_attendance_notification_message(Language.EN, {
+            chorister_name: "A & <B>", skipped_rehersals: 3, attendance_stat: "59% (23/39 hours)",
+        });
+        assert.equal((await context.user.send_message(notification)).ok, true);
+        const report = provider.get_attendance_reminders_report_message(Language.RU, {
+            has_choristers: true, choristers_list: "A & <B> (@first)\nSecond (@second)",
+            has_bad_attendance: true,
+            bad_attendance: "First (@first) - 59% (23 hours)\r\nSecond (@second) - 30% (12 hours)",
+        });
+        assert.equal((await context.group.send_message(report)).ok, true);
+    }
+
+    // 3. verify visible separators and escaping in the actual Telegram payload
+    {
+        const messages = context.calls.map(call =>
+            JSON.parse(String(call.fields.get("rich_message"))).html as string);
+        assert.equal(messages[0], '<b>A &amp; &lt;B&gt;</b><br><br>59% (23&#x2F;39 hours)');
+        assert.equal(messages[1], '<b>Reminders:</b><br>A &amp; &lt;B&gt; (@first)<br>Second (@second)'
+            + '<br><br><b>Attendance:</b><br>First (@first) - 59% (23 hours)'
+            + '<br>Second (@second) - 30% (12 hours)');
     }
 });
 

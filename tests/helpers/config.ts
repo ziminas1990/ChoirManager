@@ -1,3 +1,4 @@
+import { TelegramSettingsStorageConfig } from "@src/adapters/telegram_settings_storage/factory.js";
 import { AssistantConfig, BotConfig, BotConfigJson } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
 
@@ -9,12 +10,23 @@ export function telegram_config() {
     };
 }
 
+export function telegram_settings_storage_config(): TelegramSettingsStorageConfig {
+    return {
+        document: "tg_adapter_data",
+        storage: {
+            type: "google_firestore", database_id: "ursa-major-db-test", collection_name: "settings",
+        },
+    };
+}
+
 export function bot_config(overrides: Partial<BotConfigJson> = {}): BotConfig {
     return new BotConfig({
         runtime_cache_filename: "/tmp/choir-test-runtime.json", google_cloud_key_file: "unused",
         runtime_dump_interval_sec: 60, logs_file: "/tmp/choir-test.log",
-        tg_adapter: { token_file: "unused", formatting: "html", users_storage: {
-            type: "google_firestore", database_id: "test", collection_name: "telegram_users" } },
+        tg_adapter: { token_file: "unused", formatting: "html",
+            settings_storage: telegram_settings_storage_config(),
+            users_storage: {
+                type: "google_firestore", database_id: "test", collection_name: "telegram_users" } },
         user_service: { type: "local", storage: {
             type: "google_firestore", database_id: "test", collection_name: "users" } },
         messages_provider: { sheet_id: "test", table_name: "Messages" },

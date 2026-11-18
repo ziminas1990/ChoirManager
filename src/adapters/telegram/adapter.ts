@@ -6,6 +6,7 @@ import { IJournal } from "@src/interfaces/journal.js";
 import { Formatting, return_fail } from "@src/utils.js";
 import { Logic } from "@src/logic/abstracts.js";
 import { Role, UserData } from "@src/entities/user.js";
+import { TelegramSettings } from "@src/entities/telegram_settings.js";
 import { Translator } from "@src/use_cases/translator.js";
 import { AdminActions } from "@src/use_cases/admin_actions.js";
 import { IAdapter, IManagersChat } from "@src/interfaces/adapter.js";
@@ -21,6 +22,7 @@ import { AssistantConfig } from "@src/config.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { Environment } from "@src/components/environment.js";
 import { IPlainCollection } from "@src/interfaces/plain_collection.js";
+import { ITelegramSettingsStorage } from "@src/interfaces/storage/telegram_settings_storage.js";
 import { IUserServiceReplica } from "@src/interfaces/user_service.js";
 import {
     TelegramUserRecord,
@@ -51,12 +53,6 @@ export type TgAdapterEnv = {
     users: IUserServiceReplica;
 }
 
-export type PackedTgAdapter = {
-    choir_chat_id?: number;
-    announce_thread_id?: number;
-    managers_chat_id?: number;
-}
-
 export class TgAdapter extends Logic<void> implements IAdapter {
     private bot?: TelegramBot.Bot;
     private users: Map<number, TelegramUser> = new Map();
@@ -67,9 +63,7 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
     private journal: IJournal;
 
-    private choir_chat_id?: number;
-    private announce_thread_id?: number;
-    private managers_chat_id?: number;
+    private settings: TelegramSettings = {};
 
     private managers_chat?: IManagersChat;
 
@@ -78,36 +72,22 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         private readonly adapter_cfg: TgAdapterCfg,
         private readonly env: TgAdapterEnv,
         private readonly users_collection: IPlainCollection<TelegramUserRecord>,
+        private readonly settings_storage: ITelegramSettingsStorage,
         parent_journal: IJournal,
     ) {
         super(50);
         this.journal = parent_journal.child("adapter.telegram");
     }
 
-    public static unpack(
-        cfg: Config,
-        adapter_cfg: TgAdapterCfg,
-        env: TgAdapterEnv,
-        users_collection: IPlainCollection<TelegramUserRecord>,
-        packed: PackedTgAdapter,
-        parent_journal: IJournal)
-    : TgAdapter
-    {
-        const adapter = new TgAdapter(cfg, adapter_cfg, env, users_collection, parent_journal);
-        adapter.unpack(packed);
-        return adapter;
-    }
-
-    public static pack(adapter: TgAdapter) {
-        return {
-            choir_chat_id: adapter.choir_chat_id,
-            announce_thread_id: adapter.announce_thread_id,
-            managers_chat_id: adapter.managers_chat_id,
-        } as const;
-    }
-
     async init(): Promise<Status> {
         try {
+            const settings = await this.settings_storage.get();
+            if (!settings.ok) {
+                return settings.wrap_error("Failed to load Telegram settings");
+            }
+            this.settings = settings.value ?? {};
+            this.managers_chat = undefined;
+
             const token = fs.readFileSync(this.cfg.token_file, 'utf-8');
             if (!token) {
                 return Expected.err("Telegram token not found");
@@ -177,28 +157,33 @@ export class TgAdapter extends Logic<void> implements IAdapter {
     }
 
     async get_announcement_chat(): Promise<IGroupChat | undefined> {
-        if (this.choir_chat_id == undefined || this.announce_thread_id == undefined) {
+        if (this.settings.choir_chat_id == undefined ||
+            this.settings.announce_thread_id == undefined) {
             return undefined;
         }
-        return new GroupChat(this.choir_chat_id, this.announce_thread_id, this.bot!, this.journal);
+        return new GroupChat(
+            this.settings.choir_chat_id,
+            this.settings.announce_thread_id,
+            this.bot!,
+            this.journal);
     }
 
     async get_choir_chat(): Promise<IGroupChat | undefined> {
-        if (this.choir_chat_id == undefined) {
+        if (this.settings.choir_chat_id == undefined) {
             return undefined;
         }
-        return new GroupChat(this.choir_chat_id, undefined, this.bot!, this.journal);
+        return new GroupChat(this.settings.choir_chat_id, undefined, this.bot!, this.journal);
     }
 
     async get_managers_chat(): Promise<IManagersChat | undefined> {
         if (this.managers_chat) {
             return this.managers_chat;
         }
-        if (this.managers_chat_id == undefined) {
+        if (this.settings.managers_chat_id == undefined) {
             return undefined;
         }
         this.managers_chat = new ManagersGroup(
-            new GroupChat(this.managers_chat_id, undefined, this.bot!, this.journal),
+            new GroupChat(this.settings.managers_chat_id, undefined, this.bot!, this.journal),
             this.journal
         );
         return this.managers_chat;
@@ -229,12 +214,6 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         }
 
         return Expected.ok([]);
-    }
-
-    private unpack(packed: PackedTgAdapter) {
-        this.choir_chat_id = packed.choir_chat_id;
-        this.announce_thread_id = packed.announce_thread_id;
-        this.managers_chat_id = packed.managers_chat_id;
     }
 
     // NOTE: this function must NOT be async, it should return immediately
@@ -288,10 +267,11 @@ export class TgAdapter extends Logic<void> implements IAdapter {
         const sent_by_admin   = user_info.roles.includes(Role.Admin);
         const sent_to_bot     = msg.text?.includes("@ursa_major_choir");
         const is_announce     = !general_thread &&
-                                msg.chat.id == this.choir_chat_id &&
-                                msg.message_thread_id == this.announce_thread_id;
+                                msg.chat.id == this.settings.choir_chat_id &&
+                                msg.message_thread_id == this.settings.announce_thread_id;
         const sent_by_manager = user_info.roles.includes(Role.Manager);
-        const sent_to_managers_chat = general_thread && msg.chat.id === this.managers_chat_id;
+        const sent_to_managers_chat = general_thread &&
+                                      msg.chat.id === this.settings.managers_chat_id;
 
         if (sent_to_bot || is_announce) {
             this.log_message(msg, "group");
@@ -328,7 +308,9 @@ export class TgAdapter extends Logic<void> implements IAdapter {
 
     private async handle_edited_group_message(msg: TelegramBot.Message): Promise<Status> {
         this.log_message(msg, "group");
-        if (msg.chat.id !== this.managers_chat_id || msg.message_thread_id !== undefined) {
+        if (msg.chat.id !== this.settings.managers_chat_id ||
+            msg.message_thread_id !== undefined)
+        {
             return Expected.ok(undefined);
         }
         if (msg.text === undefined || msg.from?.id === undefined) {
@@ -424,35 +406,75 @@ export class TgAdapter extends Logic<void> implements IAdapter {
     }
 
     private async on_set_announce_thread_message(msg: TelegramBot.Message): Promise<Status> {
+        const saved = await this.save_settings({
+            ...this.settings,
+            choir_chat_id: msg.chat.id,
+            announce_thread_id: msg.message_thread_id,
+        }, msg);
+        if (!saved.ok) {
+            return saved;
+        }
+
         await this.bot!.api.sendMessage({
             chat_id: msg.chat.id,
             text: "Got it! This will be announces thread now.",
             message_thread_id: msg.message_thread_id,
         });
-        this.choir_chat_id = msg.chat.id;
-        this.announce_thread_id = msg.message_thread_id;
-
         // Notify all admins
         const message = [
             `Announce thread set:`,
-            `Group: ${msg.chat.title} (${this.choir_chat_id})`,
-            `Thread: ${this.announce_thread_id}`,
+            `Group: ${msg.chat.title} (${this.settings.choir_chat_id})`,
+            `Thread: ${this.settings.announce_thread_id}`,
         ].join("<br>");
         await AdminActions.notify_all_admins(message, this.journal);
         return Expected.ok(undefined);
     }
 
     private async on_set_manager_chat_message(msg: TelegramBot.Message): Promise<Status> {
+        const saved = await this.save_settings({
+            ...this.settings,
+            managers_chat_id: msg.chat.id,
+        }, msg);
+        if (!saved.ok) {
+            return saved;
+        }
+
         await this.bot!.api.sendMessage({
             chat_id: msg.chat.id,
             text: "Got it! This will be managers chat now.",
         });
-        this.managers_chat_id = msg.chat.id;
         const message = [
             `Manager chat set:`,
-            `Group: ${msg.chat.title} (${this.managers_chat_id})`,
+            `Group: ${msg.chat.title} (${this.settings.managers_chat_id})`,
         ].join("<br>")
         await AdminActions.notify_all_admins(message, this.journal);
+        return Expected.ok(undefined);
+    }
+
+    private async save_settings(settings: TelegramSettings, msg: TelegramBot.Message): Promise<Status> {
+        let saved: Status;
+        try {
+            saved = await this.settings_storage.update(settings);
+        } catch (error) {
+            saved = Expected.exception("Failed to write Telegram settings", error);
+        }
+        if (!saved.ok) {
+            try {
+                await this.bot!.api.sendMessage({
+                    chat_id: msg.chat.id,
+                    message_thread_id: msg.message_thread_id,
+                    text: "Failed to save Telegram settings. Current settings are unchanged. Please try again.",
+                });
+            } catch (error) {
+                this.journal.warning({ error }, "Failed to send settings save error");
+            }
+            return saved.wrap_error("Failed to save Telegram settings");
+        }
+
+        if (settings.managers_chat_id !== this.settings.managers_chat_id) {
+            this.managers_chat = undefined;
+        }
+        this.settings = settings;
         return Expected.ok(undefined);
     }
 

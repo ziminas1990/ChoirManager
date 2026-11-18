@@ -7,6 +7,8 @@ import { test } from "node:test";
 import { MemoryJournal } from "@src/components/memory_journal.js";
 import { load_config } from "@src/config.js";
 
+import { telegram_settings_storage_config } from "@tests/helpers/config.js";
+
 test("configuration loading forwards diagnostics to the selected journal", t => {
     // Motivation: startup warnings must be observable without replacing a
     // module-owned logger or intercepting console and backend methods.
@@ -24,7 +26,8 @@ test("configuration loading forwards diagnostics to the selected journal", t => 
             runtime_cache_filename: "runtime.json", runtime_dump_interval_sec: 10,
             logs_file: "bot.log", google_cloud_key_file: "google.json",
             openai_api_key_file: "openai.key",
-            tg_adapter: { token_file: "telegram.key", formatting: "html", users_storage: storage },
+            tg_adapter: { token_file: "telegram.key", formatting: "html", users_storage: storage,
+                settings_storage: telegram_settings_storage_config() },
             user_service: { type: "local", storage },
             messages_provider: { sheet_id: "test", table_name: "Messages" },
             assistant: { model: "gpt-4o", prompt_file: "config/prompts/chorister_agent.md" },

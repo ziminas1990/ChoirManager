@@ -11,9 +11,9 @@ Keeping a second list adds a redundant dependency on the local snapshot.
 
 Stop persisting the user session list in runtime.json. Restore sessions from
 persisted Telegram bindings and create them as needed during operation. Keep
-the session registry in memory and preserve Telegram chat settings in the
-runtime snapshot. Existing snapshots containing a session list must remain
-loadable without relying on that list.
+the session registry in memory. Existing snapshots containing a session list
+must remain loadable without relying on that list. Continue loading Telegram
+chat settings from Firestore as specified in [TASK-011](closed/TASK-011.md).
 
 ## Acceptance
 
@@ -24,4 +24,5 @@ loadable without relying on that list.
   without first contacting the bot again.
 - Restoring existing users at startup does not report them as newly joined.
 - Normal user interaction still creates sessions when needed.
-- Telegram chat settings survive a restart, and persisted user data is unchanged.
+- Telegram chat settings load from Firestore after a restart.
+- Persisted user data is unchanged.

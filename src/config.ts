@@ -32,6 +32,10 @@ import {
     PlainCollectionConfig,
     PlainCollectionFactory,
 } from "@src/adapters/plain_collection/factory.js";
+import {
+    TelegramSettingsStorageConfig,
+    TelegramSettingsStorageFactory,
+} from "@src/adapters/telegram_settings_storage/factory.js";
 import { RuntimeConfig } from "@src/runtime.js";
 import { Expected, Status } from "@src/utils/expected.js";
 import { Formatting } from "@src/utils.js";
@@ -42,6 +46,7 @@ export type TgAdapterConfigJson = {
     formatting: Formatting;
     bot_id?: string;
     users_storage: PlainCollectionConfig;
+    settings_storage: TelegramSettingsStorageConfig;
 }
 
 export class TgAdapterConfig {
@@ -63,6 +68,10 @@ export class TgAdapterConfig {
         return this.json.users_storage;
     }
 
+    get settings_storage(): TelegramSettingsStorageConfig {
+        return this.json.settings_storage;
+    }
+
     verify(): Status {
         if (!this.json.token_file) {
             return Expected.err("'token_file' MUST be specified");
@@ -76,6 +85,13 @@ export class TgAdapterConfig {
         const storage_status = PlainCollectionFactory.verify(this.json.users_storage);
         if (!storage_status.ok) {
             return storage_status.wrap_error("'users_storage' misconfiguration");
+        }
+        if (!this.json.settings_storage) {
+            return Expected.err("'settings_storage' MUST be specified");
+        }
+        const settings_status = TelegramSettingsStorageFactory.verify(this.json.settings_storage);
+        if (!settings_status.ok) {
+            return settings_status.wrap_error("'settings_storage' misconfiguration");
         }
         return Expected.ok(undefined);
     }

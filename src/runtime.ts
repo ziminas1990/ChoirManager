@@ -7,7 +7,7 @@ import { Expected, Status } from "@src/utils/expected.js";
 import { Database } from "./database.js";
 import { user_tg_username } from "./entities/user.js";
 import { UserLogic, PackedUserLogic } from "./logic/user.js";
-import { pack_map, PackedMap, return_exception } from "./utils.js";
+import { pack_map, PackedMap } from "./utils.js";
 import { Proceeder } from "./logic/abstracts.js";
 import { ManagersAgentLogic } from "./logic/managers_agent.js";
 import { UserService } from "./components/user_service.js";
@@ -23,7 +23,6 @@ import { AdministrationServiceFactory } from "./adapters/administration_service/
 import { SimpleMemoryServiceFactory } from "./adapters/simple_memory_service/factory.js";
 import { DepositServiceFactory } from "./adapters/deposit_service/factory.js";
 import { ScoresServiceFactory } from "./adapters/scores_service/factory.js";
-import { update_v2_v3 } from "./configuration/update_v2_v3.js";
 import { IAdapter } from "./interfaces/adapter.js";
 import { IRehersalsStorage } from "./interfaces/rehersals_storage.js";
 import { RehersalsStorageFactory } from "./adapters/rehersals_storage/factory.js";
@@ -707,7 +706,6 @@ export class Runtime {
     static pack(runtime: Runtime) {
         return {
             version: 4,
-            tg_adapter: runtime.tg_adapter ? TgAdapter.pack(runtime.tg_adapter) : undefined,
             users: pack_map(runtime.users, UserLogic.pack)
         } as const;
     }
@@ -725,39 +723,15 @@ export class Runtime {
 
         if (packed.version != 4) {
             const old_version: number = packed.version == "1.0" ? 1 : packed.version;
-            try {
-                packed = update_packed_runtime(old_version, packed);
-            } catch (e) {
-                return return_exception<Runtime>(e, journal, "failed to update runtime data");
+            if (old_version === 1) {
+                return Expected.err("Exporting from runtime version 1 is not supported");
             }
         }
 
         const replica = user_service.as_replica();
         const users = unpack_runtime_users(packed.users, replica, journal);
 
-        let tg_adapter: TgAdapter | undefined;
-        if (packed.tg_adapter && config.tg_adapter) {
-            const created = TgAdapterFactory.create(
-                config.tg_adapter,
-                {
-                    deposit_presentation: config.deposit_service,
-                    runtime: config.runtime,
-                    assistant: config.assistant,
-                },
-                {
-                    users: replica,
-                },
-                journal,
-                packed.tg_adapter,
-            );
-            if (!created.ok) {
-                return created.wrap_error("Failed to restore Telegram adapter");
-            }
-            tg_adapter = created.value;
-        }
-
         const runtime = new Runtime(config, database, user_service, runtime_hash, users, journal);
-        runtime.tg_adapter = tg_adapter;
         return Expected.ok(runtime);
     }
 
@@ -780,6 +754,7 @@ function unpack_runtime_users(
 ): Map<string, UserLogic> {
     const users = new Map<string, UserLogic>();
     for (const [key, packed] of packed_users) {
+        // v2/v3 sessions use Telegram usernames instead of system IDs.
         const resolved = packed.system_id
             ? replica.resolve_user({ system_id: packed.system_id })
             : replica.resolve_user({ tg_username: packed.tgid ?? key });
@@ -797,17 +772,4 @@ function unpack_runtime_users(
         users.set(resolved.value.id.system_id, status.value);
     }
     return users;
-}
-
-function update_packed_runtime(old_version: number, data: any)
-: ReturnType<typeof Runtime.pack> {
-    if (old_version == 1) {
-        throw new Error("Exporting from version 1 is not supported");
-    }
-    if (old_version == 2) {
-        data = update_v2_v3(data);
-    }
-    // v3 users are keyed by telegram username and packed as { tgid }.
-    // unpack_runtime_users resolves them and rekeys by system_id.
-    return data;
 }
